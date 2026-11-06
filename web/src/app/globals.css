@@ -82,3 +82,75 @@ body {
   border: 1px solid var(--color-line);
   border-radius: 1rem;
 }
+
+/* ---------- Landing page (src/components/landing) ---------- */
+.landing {
+  scroll-behavior: smooth;
+}
+.landing-glow {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.landing-glow::before,
+.landing-glow::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(110px);
+}
+.landing-glow::before {
+  width: 620px;
+  height: 620px;
+  background: var(--color-brand);
+  top: -260px;
+  left: -160px;
+  opacity: 0.4;
+}
+.landing-glow::after {
+  width: 520px;
+  height: 520px;
+  background: var(--color-brand-2);
+  top: -120px;
+  right: -200px;
+  opacity: 0.22;
+}
+.landing-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: linear-gradient(var(--color-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--color-line) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(ellipse 70% 60% at 50% 20%, #000 30%, transparent 75%);
+  opacity: 0.35;
+}
+.landing-bar {
+  transform-origin: bottom;
+  animation: landing-grow 1.2s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.landing-float {
+  animation: landing-float 6s ease-in-out infinite;
+}
+.landing-faq summary::-webkit-details-marker {
+  display: none;
+}
+.landing-faq-icon {
+  transition: transform 0.2s;
+}
+.landing-faq[open] .landing-faq-icon {
+  transform: rotate(45deg);
+}
+@keyframes landing-grow {
+  from { transform: scaleY(0); }
+  to { transform: scaleY(1); }
+}
+@keyframes landing-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .landing { scroll-behavior: auto; }
+  .landing-bar, .landing-float { animation: none; }
+}
