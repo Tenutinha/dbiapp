@@ -60,4 +60,16 @@ function load(): Env {
   return { ...e, workRoot };
 }
 
-export const env = load();
+let cached: Env | null = null;
+
+/**
+ * Validated on first use, not at import: `next build` imports server modules to collect page
+ * data, and builds (e.g. PR previews) must not need runtime secrets such as DATABASE_URL.
+ * A missing variable still fails loudly — on the first request that needs it.
+ */
+export const env: Env = new Proxy({} as Env, {
+  get(_target, key) {
+    cached ??= load();
+    return cached[key as keyof Env];
+  },
+});
