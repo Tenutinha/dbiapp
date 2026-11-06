@@ -4,6 +4,7 @@ export const CONTACT_EMAIL = "contato@dbi.app.br";
 export const CONTACT_HREF = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent("Quero conhecer a DBI")}`;
 
 export const NAV_LINKS = [
+  { href: "/vitrine", label: "Vitrine" },
   { href: "#como-funciona", label: "Como funciona" },
   { href: "#clientes", label: "Para seus clientes" },
   { href: "#motor", label: "Performance" },

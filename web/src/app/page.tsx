@@ -46,7 +46,12 @@ export default async function HomePage() {
       <PageHeader
         eyebrow={`Olá, ${user.name}`}
         title="Suas organizações"
-        actions={user.isPlatformAdmin && <Link href="/plataforma" className="btn btn-primary">Painel da plataforma</Link>}
+        actions={
+          <>
+            <Link href="/vitrine" className="btn btn-ghost">Vitrine de dashboards</Link>
+            {user.isPlatformAdmin && <Link href="/plataforma" className="btn btn-primary">Painel da plataforma</Link>}
+          </>
+        }
       />
       {orgs.length === 0 ? (
         <Notice>Você ainda não faz parte de nenhuma organização. Peça ao admin para te dar acesso.</Notice>

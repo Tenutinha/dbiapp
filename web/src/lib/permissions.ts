@@ -93,7 +93,7 @@ export function visibleClientIds(m: Membership, allClientIds: readonly string[])
 /** Path segments used by the app itself — cannot be organization or client slugs. */
 export const RESERVED_SLUGS = new Set([
   "api", "s", "d", "admin", "entrar", "login", "logout", "dev", "app", "www", "static", "public",
-  "_next", "favicon-ico", "robots-txt", "sitemap-xml", "novo", "config", "configuracoes", "catalogo", "plataforma", "auth",
+  "_next", "favicon-ico", "robots-txt", "sitemap-xml", "novo", "config", "configuracoes", "catalogo", "plataforma", "auth", "vitrine",
 ]);
 
 const SLUG = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/;

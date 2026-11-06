@@ -68,6 +68,7 @@ describe("platform admin (admin master)", () => {
 
   it("'plataforma' cannot be used as an organization slug", () => {
     expect(isValidSlug("plataforma")).toBe(false);
+    expect(isValidSlug("vitrine")).toBe(false);
   });
 });
 

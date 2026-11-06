@@ -65,7 +65,10 @@ export type Env = z.output<typeof envSchema> & {
 };
 
 function load(): Env {
-  const parsed = envSchema.safeParse(process.env);
+  // Values pasted or piped into a host's dashboard/CLI often carry a trailing newline ("gcs\n"),
+  // which would fail enum/regex checks and take the whole app down. Trim before validating.
+  const trimmed = Object.fromEntries(Object.entries(process.env).map(([k, v]) => [k, v?.trim()]));
+  const parsed = envSchema.safeParse(trimmed);
   if (!parsed.success) {
     const issues = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
     throw new Error(`Invalid server environment (${issues}). See .env.example.`);
