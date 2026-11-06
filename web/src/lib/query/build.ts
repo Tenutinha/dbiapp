@@ -20,6 +20,11 @@ export interface BuiltQuery {
 export type TableFiles = Readonly<Record<string, string>>;
 
 const MAX_FILTER_VALUES = 200;
+/** Enough rows for every Brazilian municipality (5 570) plus the "Exterior" pseudo-area. */
+const MAX_MAP_AREAS = 6000;
+
+/** Visuals that run a query (static text does not). */
+export type QueryVisual = Exclude<Visual, { type: "text" }>;
 
 function factTable(t: Template): string {
   const fact = t.tables.find((tb) => tb.kind === "fact");
@@ -75,7 +80,15 @@ function fieldValue(f: Field): string {
 const measureCol = (m: Measure): string => `${m.sql} AS ${m.id}`;
 const fieldCol = (f: Field): string => `${fieldValue(f)} AS ${f.id}`;
 
-function selectFor(t: Template, visual: Visual): { select: string[]; groupBy: string[]; tail: string } {
+function mapMeasures(visual: Extract<Visual, { type: "map" }>): string[] {
+  const c = visual.color;
+  const ids = c.mode === "category"
+    ? [c.measure, c.colorMeasure, ...(c.strengthMeasure ? [c.strengthMeasure] : [])]
+    : [c.measure];
+  return [...new Set([...ids, ...visual.tooltip])];
+}
+
+function selectFor(t: Template, visual: QueryVisual): { select: string[]; groupBy: string[]; tail: string } {
   const field = (id: string): Field => lookup(t.fields, id, "field");
   const measure = (id: string): Measure => lookup(t.measures, id, "measure");
 
@@ -105,13 +118,21 @@ function selectFor(t: Template, visual: Visual): { select: string[]; groupBy: st
       return {
         select: [...fs.map(fieldCol), ...visual.measures.map((m) => measureCol(measure(m)))],
         groupBy: fs.map((_, i) => String(i + 1)),
-        tail: `ORDER BY ${visual.measures[0]} DESC NULLS LAST LIMIT ${visual.limit}`,
+        tail: `ORDER BY ${visual.orderBy ?? visual.measures[0]} DESC NULLS LAST LIMIT ${visual.limit}`,
+      };
+    }
+    case "map": {
+      const fs = [field(visual.field), ...(visual.labelField ? [field(visual.labelField)] : [])];
+      return {
+        select: [...fs.map(fieldCol), ...mapMeasures(visual).map((m) => measureCol(measure(m)))],
+        groupBy: fs.map((_, i) => String(i + 1)),
+        tail: `LIMIT ${MAX_MAP_AREAS}`,
       };
     }
   }
 }
 
-export function buildVisualQuery(t: Template, files: TableFiles, visual: Visual, filters: FilterSelection): BuiltQuery {
+export function buildVisualQuery(t: Template, files: TableFiles, visual: QueryVisual, filters: FilterSelection): BuiltQuery {
   const { select, groupBy, tail } = selectFor(t, visual);
   const where = buildWhere(t, filters);
   const sql = [

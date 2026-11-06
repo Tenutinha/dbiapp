@@ -4,7 +4,7 @@ import { PageHeader } from "@/components/AppShell";
 import { VitrineFrame } from "@/components/vitrine/VitrineFrame";
 import { ORIGIN_LABEL } from "@/lib/templates/labels";
 import { listTemplates } from "@/lib/templates/registry";
-import { filterVitrine, parseVitrineQuery, toVitrineItem, VITRINE_ORIGINS, vitrineAreas, type VitrineItem } from "@/lib/vitrine";
+import { filterVitrine, isVitrineTemplate, parseVitrineQuery, toVitrineItem, VITRINE_ORIGINS, vitrineAreas, type VitrineItem } from "@/lib/vitrine";
 import { getVitrineViewer } from "@/lib/vitrine-server";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +21,7 @@ interface Props {
 export default async function VitrinePage({ searchParams }: Props) {
   const query = parseVitrineQuery(await searchParams);
   const [templates, viewer] = await Promise.all([listTemplates(), getVitrineViewer()]);
-  const all = templates.map(toVitrineItem);
+  const all = templates.filter(isVitrineTemplate).map(toVitrineItem);
   const items = filterVitrine(all, query);
   const filtered = Boolean(query.q || query.area || query.origin);
 

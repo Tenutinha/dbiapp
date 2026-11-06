@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { loadTemplate } from "../test-helpers";
-import { buildFilterOptionsQuery, buildVisualQuery, buildWhere } from "./build";
+import { buildFilterOptionsQuery, buildVisualQuery, buildWhere, type QueryVisual } from "./build";
 
 const t = loadTemplate("vendas-executivo");
 const files = Object.fromEntries(t.tables.map((tb) => [tb.name, `/data/${tb.name}.parquet`]));
-const visual = (id: string) => t.visuals.find((v) => v.id === id)!;
+const visual = (id: string) => t.visuals.find((v) => v.id === id)! as QueryVisual;
 
 describe("buildWhere", () => {
   it("binds filter values as parameters, never inline", () => {

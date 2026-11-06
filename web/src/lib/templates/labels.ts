@@ -1,6 +1,6 @@
 /** Display labels for the catalog (safe in client and server components). */
 
-export const ORIGIN_LABEL = { powerbi: "Power BI", qlikview: "QlikView" } as const;
+export const ORIGIN_LABEL = { powerbi: "Power BI", qlikview: "QlikView", web: "Feito na web" } as const;
 
 export const STATUS_LABEL = { draft: "Rascunho", published: "Publicado", archived: "Arquivado" } as const;
 

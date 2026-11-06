@@ -16,7 +16,8 @@ const IDENT = /^[a-z_][a-z0-9_]*$/;
 const ident = z.string().regex(IDENT, "use snake_case identifiers");
 
 // No statement separators, comments or string-literal tricks beyond simple quotes.
-const SAFE_SQL = /^[\w\s.,()*+\-/<>=%'!]+$/;
+// Letters may be accented (labels such as 'Não' inside CASE expressions).
+const SAFE_SQL = /^[\p{L}\p{N}_\s.,()*+\-/<>=%'!]+$/u;
 const sqlExpr = z
   .string()
   .min(1)
@@ -51,7 +52,14 @@ const relationshipSchema = z.object({
   to: z.object({ table: ident, column: ident }),
 });
 
-const formatSchema = z.enum(["currency", "number", "integer", "percent"]);
+/** "text" is for measures that return a label (e.g. the winning candidate), shown as-is. */
+const formatSchema = z.enum(["currency", "number", "integer", "percent", "text"]);
+
+export const TEMPLATE_ORIGINS = ["powerbi", "qlikview", "web"] as const;
+export type TemplateOrigin = (typeof TEMPLATE_ORIGINS)[number];
+
+/** Base maps shipped in /public/geo (IBGE meshes); features are keyed by the IBGE code. */
+export const MAP_GEOS = ["municipio", "uf"] as const;
 
 const fieldSchema = z.object({ id: ident, label: z.string(), sql: sqlExpr });
 const measureSchema = z.object({
@@ -88,6 +96,43 @@ const visualSchema = z.discriminatedUnion("type", [
     fields: z.array(ident).min(1),
     measures: z.array(ident).min(1),
     limit: z.number().int().min(1).max(1000).default(20),
+    /** Measure to sort by (default: the first one), always descending. */
+    orderBy: ident.optional(),
+  }),
+  z.object({
+    ...base,
+    type: z.literal("map"),
+    geo: z.enum(MAP_GEOS),
+    /** Field holding the IBGE code of each area. */
+    field: ident,
+    /** Field with the area name, for the tooltip. */
+    labelField: ident.optional(),
+    color: z.discriminatedUnion("mode", [
+      /** Each area painted with the colour a measure returns (e.g. the winner's colour). */
+      z.object({
+        mode: z.literal("category"),
+        /** Text measure: the category shown in tooltip and legend. */
+        measure: ident,
+        /** Text measure returning a #rrggbb colour for the category. */
+        colorMeasure: ident,
+        /** Optional 0–1 measure: lower values are painted lighter. */
+        strengthMeasure: ident.optional(),
+      }),
+      /** Areas painted on a continuous scale. */
+      z.object({
+        mode: z.literal("scale"),
+        measure: ident,
+        scheme: z.enum(["sequential", "diverging"]).default("sequential"),
+      }),
+    ]),
+    /** Extra measures shown in the tooltip. */
+    tooltip: z.array(ident).default([]),
+  }),
+  /** Static explanatory text (paragraphs separated by a blank line). No query. */
+  z.object({
+    ...base,
+    type: z.literal("text"),
+    body: z.string().min(1).max(4000),
   }),
 ]);
 
@@ -97,13 +142,18 @@ export const templateSchema = z
     version: z.number().int().min(1),
     name: z.string(),
     area: z.string(),
-    origin: z.enum(["powerbi", "qlikview"]),
+    origin: z.enum(TEMPLATE_ORIGINS),
     description: z.string(),
     tables: z.array(tableSchema).min(1),
     relationships: z.array(relationshipSchema),
     fields: z.array(fieldSchema),
     measures: z.array(measureSchema).min(1),
     filters: z.array(ident),
+    /**
+     * Filters that always hold exactly one value (single choice, never cleared), with the value used
+     * when nothing is chosen. For measures that only make sense within one slice, e.g. one election.
+     */
+    filterDefaults: z.record(ident, z.string().min(1).max(200)).default({}),
     visuals: z.array(visualSchema).min(1),
   })
   .superRefine((t, ctx) => {
@@ -138,12 +188,28 @@ export const templateSchema = z
     };
 
     t.filters.forEach((f) => needField(f, "filters"));
+    for (const f of Object.keys(t.filterDefaults)) {
+      if (!t.filters.includes(f)) issue(`filterDefaults: "${f}" is not one of the filters`);
+    }
     for (const v of t.visuals) {
       const where = `visual ${v.id}`;
       if (v.type === "kpi" || v.type === "donut") needMeasure(v.measure, where);
       if (v.type === "bar" || v.type === "line" || v.type === "donut") needField(v.field, where);
       if (v.type === "bar" || v.type === "line" || v.type === "table") v.measures.forEach((m) => needMeasure(m, where));
-      if (v.type === "table") v.fields.forEach((f) => needField(f, where));
+      if (v.type === "table") {
+        v.fields.forEach((f) => needField(f, where));
+        if (v.orderBy && !v.measures.includes(v.orderBy)) issue(`${where}: orderBy must be one of its measures`);
+      }
+      if (v.type === "map") {
+        needField(v.field, where);
+        if (v.labelField) needField(v.labelField, where);
+        needMeasure(v.color.measure, where);
+        if (v.color.mode === "category") {
+          needMeasure(v.color.colorMeasure, where);
+          if (v.color.strengthMeasure) needMeasure(v.color.strengthMeasure, where);
+        }
+        v.tooltip.forEach((m) => needMeasure(m, where));
+      }
     }
   });
 
@@ -154,3 +220,4 @@ export type Visual = Template["visuals"][number];
 export type Measure = Template["measures"][number];
 export type Field = Template["fields"][number];
 export type ValueFormat = Measure["format"];
+export type MapVisual = Extract<Visual, { type: "map" }>;
