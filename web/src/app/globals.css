@@ -1,0 +1,84 @@
+@import "tailwindcss";
+
+/* Same palette as the landing page (landing/index.html). */
+@theme {
+  --color-bg: #07090f;
+  --color-bg-2: #0c1019;
+  --color-card: #111623;
+  --color-card-2: #161c2c;
+  --color-line: #222a3d;
+  --color-text: #e8ecf5;
+  --color-muted: #8d97ad;
+  --color-brand: #7c5cff;
+  --color-brand-2: #22d3ee;
+  --color-accent: #f5b83d;
+  --color-ok: #34d399;
+  --color-danger: #f87171;
+  --color-on-brand: #ffffff;
+  --font-sans: var(--font-inter), system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, monospace;
+  --font-serif: var(--font-newsreader), Georgia, serif;
+  --color-paper: #f6f5f1;
+  --color-ink: #1c1c1a;
+  --color-ink-muted: #6e6c66;
+  --color-paper-line: #dddbd3;
+}
+
+:root {
+  --chart-grid: #1b2233;
+  --chart-axis: #2c3550;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.text-grad {
+  background: linear-gradient(100deg, var(--color-brand), var(--color-brand-2));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 0.75rem;
+  padding: 0.6rem 1.1rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+  transition: background 0.15s, opacity 0.15s, transform 0.15s;
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn-primary {
+  background: var(--color-brand);
+  color: var(--color-on-brand);
+  box-shadow: 0 8px 24px -10px color-mix(in srgb, var(--color-brand) 70%, transparent);
+}
+.btn-primary:not(:disabled):hover {
+  transform: translateY(-1px);
+}
+.btn-ghost {
+  border: 1px solid var(--color-line);
+  background: color-mix(in srgb, var(--color-text) 3%, transparent);
+}
+.btn-ghost:hover {
+  background: color-mix(in srgb, var(--color-text) 7%, transparent);
+}
+.card {
+  background: var(--color-card);
+  border: 1px solid var(--color-line);
+  border-radius: 1rem;
+}

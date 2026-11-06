@@ -1,0 +1,109 @@
+"use client";
+
+import { useActionState, useEffect, useState } from "react";
+import { createClientAction, grantAccessAction, type FormState } from "@/app/[org]/admin/actions";
+
+const INITIAL: FormState = { ok: false, message: "" };
+const INPUT = "w-full rounded-lg border border-line bg-bg px-3 py-2 text-sm outline-none focus:border-brand";
+
+function Message({ state }: { state: FormState }) {
+  if (!state.message) return null;
+  return <p role="status" className={`text-xs ${state.ok ? "text-ok" : "text-danger"}`}>{state.message}</p>;
+}
+
+function slugPreview(name: string): string {
+  return name.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
+}
+
+export function CreateClientForm({ orgSlug }: { orgSlug: string }) {
+  const [state, action, pending] = useActionState(createClientAction, INITIAL);
+  const [name, setName] = useState("");
+  const [slug, setSlug] = useState("");
+  useEffect(() => {
+    if (state.ok) {
+      setName("");
+      setSlug("");
+    }
+  }, [state]);
+
+  return (
+    <form action={action} className="card flex flex-col gap-3 p-5">
+      <h3 className="font-semibold">Novo cliente</h3>
+      <input type="hidden" name="org" value={orgSlug} />
+      <label className="flex flex-col gap-1 text-xs text-muted">
+        Nome
+        <input name="name" required value={name} onChange={(e) => setName(e.target.value)} placeholder="Cliente 1" className={INPUT} />
+      </label>
+      <label className="flex flex-col gap-1 text-xs text-muted">
+        Endereço
+        <div className="flex items-center rounded-lg border border-line bg-bg pl-3 text-sm focus-within:border-brand">
+          <span className="whitespace-nowrap text-muted">/{orgSlug}/</span>
+          <input
+            name="slug"
+            value={slug}
+            onChange={(e) => setSlug(e.target.value.toLowerCase())}
+            placeholder={slugPreview(name) || "cliente1"}
+            className="w-full bg-transparent py-2 pr-3 outline-none"
+          />
+        </div>
+      </label>
+      <button className="btn btn-primary" disabled={pending}>{pending ? "Criando…" : "Criar cliente"}</button>
+      <Message state={state} />
+    </form>
+  );
+}
+
+interface GrantAccessFormProps {
+  orgSlug: string;
+  clients: { id: string; name: string }[];
+}
+
+export function GrantAccessForm({ orgSlug, clients }: GrantAccessFormProps) {
+  const [state, action, pending] = useActionState(grantAccessAction, INITIAL);
+  const [scope, setScope] = useState("org");
+  const isClient = scope !== "org";
+  // React resets the form fields after a successful action; keep the controlled scope in sync.
+  useEffect(() => {
+    if (state.ok) setScope("org");
+  }, [state]);
+
+  return (
+    <form action={action} className="card flex flex-col gap-3 p-5">
+      <h3 className="font-semibold">Dar acesso</h3>
+      <input type="hidden" name="org" value={orgSlug} />
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="flex flex-col gap-1 text-xs text-muted">
+          Nome
+          <input name="name" required className={INPUT} placeholder="Maria Souza" />
+        </label>
+        <label className="flex flex-col gap-1 text-xs text-muted">
+          E-mail
+          <input name="email" type="email" required className={INPUT} placeholder="maria@empresa.com" />
+        </label>
+        <label className="flex flex-col gap-1 text-xs text-muted">
+          Onde
+          <select name="scope" value={scope} onChange={(e) => setScope(e.target.value)} className={INPUT}>
+            <option value="org">Equipe da organização</option>
+            {clients.map((c) => <option key={c.id} value={c.id}>Cliente: {c.name}</option>)}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 text-xs text-muted">
+          Papel
+          <select name="role" key={isClient ? "client" : "org"} defaultValue={isClient ? "viewer" : "editor"} className={INPUT}>
+            {!isClient && <option value="admin">Admin — usuários, clientes e dados</option>}
+            {!isClient && <option value="editor">Editor de dados — sobe e publica</option>}
+            <option value="analyst">Analista — vê e compartilha</option>
+            <option value="viewer">Leitor — só vê</option>
+          </select>
+        </label>
+      </div>
+      <p className="text-xs text-muted">
+        {isClient
+          ? "Usuários de cliente veem apenas os dashboards desse cliente."
+          : "Admin e editor acessam todos os clientes; analista e leitor veem só os dashboards da organização."}
+      </p>
+      <button className="btn btn-primary" disabled={pending}>{pending ? "Salvando…" : "Dar acesso"}</button>
+      <Message state={state} />
+    </form>
+  );
+}
