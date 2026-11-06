@@ -1,5 +1,6 @@
 import "server-only";
 import { sql } from "../db";
+import { storage } from "../storage";
 
 export interface OrgOverview {
   id: string;
@@ -48,4 +49,5 @@ export async function createOrganization(input: NewOrganization): Promise<void> 
     if ((err as { code?: string }).code === "23505") throw new DuplicateOrgSlugError(input.slug);
     throw err;
   }
+  await storage.createOrgFolder(input.slug);
 }

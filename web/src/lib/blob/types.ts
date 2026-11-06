@@ -6,4 +6,6 @@ export interface RemoteBucket {
   remove(keys: readonly string[]): Promise<void>;
   /** URL the browser PUTs the file to, valid for a short time. */
   signedUploadUrl(key: string): Promise<string>;
+  /** Creates an empty folder marker (e.g. "orgs/acme/"); succeeds if it already exists. */
+  createFolder(prefix: string): Promise<void>;
 }

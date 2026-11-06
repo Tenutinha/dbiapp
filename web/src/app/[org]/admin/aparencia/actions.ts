@@ -49,10 +49,10 @@ export async function saveColorsAction(_prev: ThemeFormState, formData: FormData
 export async function uploadLogoAction(_prev: ThemeFormState, formData: FormData): Promise<ThemeFormState> {
   try {
     const scope = scopeFrom(formData);
-    const { space } = await requireSpaceAction(scope.org, scope.client, "admin");
+    const { ctx, space } = await requireSpaceAction(scope.org, scope.client, "admin");
     const file = formData.get("logo");
     if (!(file instanceof File) || file.size === 0) return { ok: false, message: "Escolha um arquivo de imagem." };
-    await replaceLogo(space.orgId, space.clientId, file);
+    await replaceLogo(ctx.org, space.clientId, file);
     revalidatePath(`/${scope.org}`, "layout");
     return { ok: true, message: "Logo atualizado." };
   } catch (err) {
@@ -63,8 +63,8 @@ export async function uploadLogoAction(_prev: ThemeFormState, formData: FormData
 export async function removeLogoAction(_prev: ThemeFormState, formData: FormData): Promise<ThemeFormState> {
   try {
     const scope = scopeFrom(formData);
-    const { space } = await requireSpaceAction(scope.org, scope.client, "admin");
-    await removeLogo(space.orgId, space.clientId);
+    const { ctx, space } = await requireSpaceAction(scope.org, scope.client, "admin");
+    await removeLogo(ctx.org, space.clientId);
     revalidatePath(`/${scope.org}`, "layout");
     return { ok: true, message: "Logo removido." };
   } catch (err) {
