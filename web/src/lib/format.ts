@@ -10,6 +10,7 @@ const percent = new Intl.NumberFormat("pt-BR", { style: "percent", maximumFracti
 
 export function formatValue(value: unknown, format: ValueFormat, compact = false): string {
   if (value === null || value === undefined || value === "") return "—";
+  if (format === "text") return String(value);
   const n = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(n)) return String(value);
   switch (format) {

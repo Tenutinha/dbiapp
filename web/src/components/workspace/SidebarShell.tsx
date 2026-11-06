@@ -27,8 +27,13 @@ export function SidebarShell({ title, subtitle, logoUrl, orgSlug, clientSlug, ed
   const [editing, setEditing] = useState(false);
   const pathname = usePathname();
 
-  // Close the mobile drawer after navigating.
+  // Close the mobile drawer after navigating, including jumps to a section of the same page.
   useEffect(() => setOpen(false), [pathname]);
+  useEffect(() => {
+    const close = (): void => setOpen(false);
+    window.addEventListener("hashchange", close);
+    return () => window.removeEventListener("hashchange", close);
+  }, []);
 
   return (
     <>

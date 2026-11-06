@@ -1,6 +1,8 @@
 "use client";
 
-import { TemplateJsonForm } from "@/components/admin/TemplateJsonForm";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { DashboardForm } from "@/components/admin/dashboard-form/DashboardForm";
 import { CenteredModal } from "@/components/CenteredModal";
 
 interface NewDashboardModalProps {
@@ -8,14 +10,16 @@ interface NewDashboardModalProps {
   variant?: "button" | "card";
 }
 
-/**
- * Platform admin shortcut: opens the "register dashboard" form in a centered modal.
- * On success the action redirects to the catalog entry.
- */
+/** Platform admin: registers a new dashboard through the guided form, in a centered modal. */
 export function NewDashboardModal({ variant = "button" }: NewDashboardModalProps) {
+  const router = useRouter();
+  // A new key gives the next registration a blank form.
+  const [formKey, setFormKey] = useState(0);
+
   return (
     <CenteredModal
       label="Cadastrar dashboard"
+      width={980}
       trigger={(open) =>
         variant === "card" ? (
           <button
@@ -25,7 +29,7 @@ export function NewDashboardModal({ variant = "button" }: NewDashboardModalProps
           >
             <span className="text-2xl leading-none text-muted group-hover:text-brand-2" aria-hidden>+</span>
             <span className="text-lg font-bold group-hover:text-brand-2">Cadastrar dashboard</span>
-            <span className="text-xs text-muted">Envie o template.json de um novo dashboard para o catálogo</span>
+            <span className="text-xs text-muted">Nome, análises, sumário e os arquivos que ele espera</span>
           </button>
         ) : (
           <button type="button" className="btn btn-primary" onClick={open}>
@@ -34,7 +38,17 @@ export function NewDashboardModal({ variant = "button" }: NewDashboardModalProps
         )
       }
     >
-      {() => <TemplateJsonForm mode="create" />}
+      {(close) => (
+        <DashboardForm
+          key={formKey}
+          stored={null}
+          onSaved={() => {
+            close();
+            setFormKey((k) => k + 1);
+            router.refresh();
+          }}
+        />
+      )}
     </CenteredModal>
   );
 }

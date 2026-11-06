@@ -11,15 +11,20 @@ interface CenteredModalProps {
   children: (close: () => void) => React.ReactNode;
   /** Panel width in px (capped to the viewport). */
   width?: number;
+  /** Called every time the modal opens (e.g. to load what it shows). */
+  onOpen?: () => void;
 }
 
 /**
  * Native <dialog> shown in the middle of the screen over a dimmed backdrop.
  * Closes on the × button, Esc, or a click outside the panel.
  */
-export function CenteredModal({ label, trigger, children, width = 640 }: CenteredModalProps) {
+export function CenteredModal({ label, trigger, children, width = 640, onOpen }: CenteredModalProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
-  const open = (): void => dialogRef.current?.showModal();
+  const open = (): void => {
+    dialogRef.current?.showModal();
+    onOpen?.();
+  };
   const close = (): void => dialogRef.current?.close();
 
   function onDialogClick(e: React.MouseEvent<HTMLDialogElement>): void {

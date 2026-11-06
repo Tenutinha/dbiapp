@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { Forbidden } from "@/components/AppShell";
 import { DashboardView } from "@/components/dashboard/DashboardView";
+import { DashboardSummary } from "@/components/workspace/DashboardSummary";
 import { instanceLinks } from "@/components/workspace/instanceLinks";
 import { MainHeader, Workspace } from "@/components/workspace/Workspace";
 import { requireInstance } from "@/lib/access";
@@ -9,6 +10,7 @@ import { formatDateLong } from "@/lib/format";
 import { guard } from "@/lib/guard";
 import { loadDashboard } from "@/lib/services/dashboard";
 import { loadSpace } from "@/lib/services/space";
+import { buildSummary } from "@/lib/templates/sections";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Dashboard" };
@@ -32,8 +34,15 @@ export default async function DashboardPage({ params, searchParams }: Props) {
     loadDashboard(access.templateId, access.activeVersionId, await searchParams),
   ]);
 
+  const summary = buildSummary(dashboard.template);
+
   return (
-    <Workspace space={space} currentId={id} userName={access.user.name}>
+    <Workspace
+      space={space}
+      currentId={id}
+      userName={access.user.name}
+      pageSummary={summary.length > 0 ? <DashboardSummary title={access.name} groups={summary} /> : undefined}
+    >
       <MainHeader
         kicker={access.client ? `${access.org.name} · ${access.client.name}` : access.org.name}
         meta={`Atualizado em ${formatDateLong(access.publishedAt)}`}

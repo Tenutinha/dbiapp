@@ -9,11 +9,13 @@ interface WorkspaceProps {
   space: SpaceView;
   currentId: string | null;
   userName: string;
+  /** Summary of the open dashboard, shown above the list of the space's dashboards. */
+  pageSummary?: React.ReactNode;
   children: React.ReactNode;
 }
 
 /** Two-pane layout: light table of contents on the left, the dashboard on the right. */
-export function Workspace({ space, currentId, userName, children }: WorkspaceProps) {
+export function Workspace({ space, currentId, userName, pageSummary, children }: WorkspaceProps) {
   const { org, client, links } = space;
   const canManage = space.actions.has("manageData");
   const catalogHref = `/${org.slug}/catalogo${client ? `?para=${client.slug}` : ""}`;
@@ -58,6 +60,7 @@ export function Workspace({ space, currentId, userName, children }: WorkspacePro
         editorToc={space.editorToc}
         footer={footer}
       >
+        {pageSummary}
         <SidebarNav orgSlug={org.slug} toc={space.toc} currentId={currentId} canManage={canManage} />
       </SidebarShell>
       <main className="px-4 pb-16 sm:px-8 lg:ml-[300px] lg:px-14">

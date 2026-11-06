@@ -72,14 +72,17 @@ export async function insertTemplate(t: Template, status: TemplateStatus, create
   }
 }
 
-/** Replaces the definition of a registered (non built-in) template. */
+/**
+ * Replaces the definition of a template. Built-in ones may be edited too: they stay built in,
+ * so a file in web/templates with a higher version still takes over on the next sync.
+ */
 export async function updateDefinition(t: Template): Promise<void> {
   const m = metaColumns(t);
   await sql`
     UPDATE dashboard_templates
     SET name = ${m.name}, area = ${m.area}, origin = ${m.origin}, description = ${m.description},
         version = ${m.version}, definition = ${sql.json(t as never)}, updated_at = now()
-    WHERE id = ${m.id} AND NOT built_in`;
+    WHERE id = ${m.id}`;
 }
 
 export async function setStatus(id: string, status: TemplateStatus): Promise<void> {

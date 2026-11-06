@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // A second local dev server (e.g. with local storage) needs its own build folder.
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   // Native module: must stay a plain Node require, never bundled.
   serverExternalPackages: ["@duckdb/node-api"],
   poweredByHeader: false,
