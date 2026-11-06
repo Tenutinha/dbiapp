@@ -1,0 +1,8 @@
+[
+  {
+    "origin": ["https://dbi.app.br", "https://www.dbi.app.br", "http://localhost:3000"],
+    "method": ["PUT", "OPTIONS"],
+    "responseHeader": ["Content-Type", "x-upsert"],
+    "maxAgeSeconds": 3600
+  }
+]

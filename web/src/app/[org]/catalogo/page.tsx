@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Forbidden, OrgFrame, PageHeader } from "@/components/AppShell";
-import { Catalog } from "@/components/DashboardLists";
+import { Catalog, type ActiveDashboard } from "@/components/DashboardLists";
 import { getClientContext, getOrgContext, orgActions, requireAction } from "@/lib/access";
+import { getSpaceLayout } from "@/lib/data/layout";
 import { guard } from "@/lib/guard";
 import { listTemplates } from "@/lib/templates/registry";
 
@@ -35,6 +36,12 @@ export default async function CatalogPage({ params, searchParams }: Props) {
   const { ctx, client } = loaded;
   const backHref = `/${ctx.org.slug}${client ? `/${client.slug}` : ""}`;
   const target = client?.name ?? ctx.org.name;
+  const [templates, layout] = await Promise.all([
+    listTemplates(),
+    getSpaceLayout({ orgId: ctx.org.id, clientId: client?.id ?? null }),
+  ]);
+  const active: Record<string, ActiveDashboard> = {};
+  for (const d of layout.dashboards) active[d.templateId] ??= { id: d.id, published: d.published };
 
   return (
     <OrgFrame org={ctx.org} isAdmin={orgActions(ctx).has("admin")} userName={ctx.user.name}>
@@ -42,10 +49,10 @@ export default async function CatalogPage({ params, searchParams }: Props) {
         crumbs={[{ label: target, href: backHref }]}
         eyebrow="Catálogo"
         title={`Adicionar dashboard para ${target}`}
-        subtitle="Cada dashboard declara as tabelas que espera. Depois de ativar, suba os arquivos e publique."
+        subtitle="Escolha os dashboards da sua ferramenta. Cada um declara as tabelas que espera: depois de ativar, suba os arquivos (CSV ou Parquet) e publique."
         actions={<Link href={backHref} className="btn btn-ghost">Voltar</Link>}
       />
-      <Catalog templates={await listTemplates()} orgSlug={ctx.org.slug} clientSlug={client?.slug} targetLabel={target} />
+      <Catalog templates={templates} orgSlug={ctx.org.slug} clientSlug={client?.slug} targetLabel={target} active={active} />
     </OrgFrame>
   );
 }

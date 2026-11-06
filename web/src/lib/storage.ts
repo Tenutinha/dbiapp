@@ -1,9 +1,9 @@
 /**
  * File storage behind one interface:
  *  - local:    files live under DBI_STORAGE_DIR (development).
- *  - supabase: files live in a private Supabase Storage bucket; reads are downloaded once into a
- *              local cache (keys are immutable — every upload gets a new key), so DuckDB keeps
- *              reading plain local files inside its sandbox.
+ *  - supabase / gcs: files live in a private cloud bucket (Supabase Storage or Google Cloud
+ *              Storage); reads are downloaded once into a local cache (keys are immutable — every
+ *              upload gets a new key), so DuckDB keeps reading plain local files inside its sandbox.
  *
  * Keys are relative, e.g. "datasets/<org>/<dashboard>/v3/fato_vendas.ab12cd34.parquet".
  * Older local rows may hold absolute paths; those are still accepted by the local driver.
@@ -12,7 +12,9 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { gcsBucket } from "./blob/gcs";
+import { supabaseBucket } from "./blob/supabase";
+import type { RemoteBucket } from "./blob/types";
 import { env } from "./env";
 
 const KEY = /^(datasets|incoming|branding)\/[A-Za-z0-9._/-]+$/;
@@ -32,15 +34,25 @@ function workPath(key: string): string {
   return p;
 }
 
-let supabase: SupabaseClient | null = null;
-function bucket() {
-  supabase ??= createClient(env.NEXT_PUBLIC_SUPABASE_URL as string, env.SUPABASE_SERVICE_ROLE_KEY as string, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-  return supabase.storage.from(env.DBI_STORAGE_BUCKET);
+let remoteBucket: RemoteBucket | null = null;
+function bucket(): RemoteBucket {
+  remoteBucket ??=
+    env.DBI_STORAGE_DRIVER === "gcs"
+      ? gcsBucket({
+          bucket: env.GCS_BUCKET as string,
+          projectId: env.GCS_PROJECT_ID,
+          credentialsBase64: env.GCS_CREDENTIALS_BASE64,
+          keyFile: env.GOOGLE_APPLICATION_CREDENTIALS,
+        })
+      : supabaseBucket(
+          env.NEXT_PUBLIC_SUPABASE_URL as string,
+          env.SUPABASE_SERVICE_ROLE_KEY as string,
+          env.DBI_STORAGE_BUCKET,
+        );
+  return remoteBucket;
 }
 
-const isRemote = (): boolean => env.DBI_STORAGE_DRIVER === "supabase";
+const isRemote = (): boolean => env.DBI_STORAGE_DRIVER !== "local";
 
 async function exists(p: string): Promise<boolean> {
   return stat(p).then(() => true, () => false);
@@ -48,7 +60,7 @@ async function exists(p: string): Promise<boolean> {
 
 export interface UploadTarget {
   key: string;
-  /** Pre-signed URL the browser PUTs the file to (Supabase only). */
+  /** Pre-signed URL the browser PUTs the file to (cloud drivers only). */
   signedUrl: string;
 }
 
@@ -74,12 +86,10 @@ export const storage = {
     return workPath(key);
   },
 
-  /** Makes a file written at pathFor(key) durable (uploads it on Supabase; no-op on local disk). */
+  /** Makes a file written at pathFor(key) durable (uploads it to the bucket; no-op on local disk). */
   async commit(key: string, contentType: string): Promise<void> {
     if (!isRemote()) return;
-    const body = await readFile(workPath(key));
-    const { error } = await bucket().upload(key, body, { contentType, upsert: false });
-    if (error) throw new Error(`storage upload failed for ${key}: ${error.message}`);
+    await bucket().upload(key, new Uint8Array(await readFile(workPath(key))), contentType);
   },
 
   async putBytes(key: string, bytes: Uint8Array, contentType: string): Promise<void> {
@@ -93,11 +103,10 @@ export const storage = {
   async localPath(key: string): Promise<string> {
     const file = workPath(key);
     if (!isRemote() || (await exists(file))) return file;
-    const { data, error } = await bucket().download(key);
-    if (error || !data) throw new Error(`storage download failed for ${key}: ${error?.message ?? "no data"}`);
+    const data = await bucket().download(key);
     await mkdir(path.dirname(file), { recursive: true });
     const tmp = `${file}.${randomUUID()}.part`;
-    await writeFile(tmp, new Uint8Array(await data.arrayBuffer()));
+    await writeFile(tmp, data);
     await rename(tmp, file);
     return file;
   },
@@ -110,18 +119,13 @@ export const storage = {
   async remove(keys: readonly string[]): Promise<void> {
     const valid = keys.filter((k) => (path.isAbsolute(k) && !isRemote()) || KEY.test(k));
     await Promise.all(valid.map((k) => rm(workPath(k), { force: true }).catch(() => undefined)));
-    if (isRemote() && valid.length > 0) {
-      const { error } = await bucket().remove([...valid]);
-      if (error) console.error("[storage] remove failed", error.message);
-    }
+    if (isRemote() && valid.length > 0) await bucket().remove(valid);
   },
 
-  /** Lets the browser upload straight to Supabase (skips the ~4.5 MB serverless body limit). */
+  /** Lets the browser upload straight to the bucket (skips the ~4.5 MB serverless body limit). */
   async createUploadTarget(key: string): Promise<UploadTarget | null> {
     if (!isRemote()) return null;
     assertKey(key);
-    const { data, error } = await bucket().createSignedUploadUrl(key);
-    if (error || !data) throw new Error(`could not create upload URL: ${error?.message ?? "no data"}`);
-    return { key, signedUrl: data.signedUrl };
+    return { key, signedUrl: await bucket().signedUploadUrl(key) };
   },
 };

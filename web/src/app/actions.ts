@@ -9,7 +9,7 @@ import { getClientContext, getOrgContext, orgActions, requireAction, requireInst
 import { AccessError, DEV_USER_COOKIE, devAuthEnabled } from "@/lib/auth";
 import { createInstance, createShareLink, revokeShareLink } from "@/lib/data/repository";
 import { publishDraft, type PublishResult, UserFacingError } from "@/lib/services/datasets";
-import { getTemplate } from "@/lib/templates/registry";
+import { getCatalogEntry } from "@/lib/templates/registry";
 
 export interface ActionResult<T = undefined> {
   success: boolean;
@@ -39,8 +39,9 @@ export async function activateTemplate(formData: FormData): Promise<void> {
     org: formData.get("org"),
     client: formData.get("client") || undefined,
   });
-  const template = await getTemplate(input.templateId);
-  if (!template) throw new UserFacingError("Template não encontrado.");
+  const entry = await getCatalogEntry(input.templateId);
+  if (!entry || entry.status !== "published") throw new UserFacingError("Este dashboard não está disponível no catálogo.");
+  const { template } = entry;
 
   let orgId: string;
   let clientId: string | null = null;
