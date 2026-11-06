@@ -1,0 +1,24 @@
+<!--
+  Supabase → Authentication → Emails → Templates → "Magic Link"
+  Assunto (Subject): Seu link de acesso à DBI
+  Cole o HTML abaixo no corpo (Message body).
+
+  O link aponta para o nosso site (/auth/confirm) com um token de uso único (token_hash):
+  o servidor valida o token e cria a sessão. Funciona em qualquer navegador ou aparelho.
+-->
+<div style="margin:0;padding:32px 16px;background:#f6f5f1;font-family:Arial,Helvetica,sans-serif;color:#1c1c1a">
+  <div style="max-width:480px;margin:0 auto;background:#ffffff;border:1px solid #e3e1da;border-radius:16px;padding:32px">
+    <p style="margin:0 0 24px;font-size:18px;font-weight:bold;letter-spacing:-0.02em">DBI</p>
+    <h1 style="margin:0 0 12px;font-size:24px;font-weight:normal;font-family:Georgia,serif">Seu link de acesso</h1>
+    <p style="margin:0 0 24px;font-size:15px;line-height:1.5;color:#55554f">
+      Clique no botão abaixo para entrar nos seus dashboards. O link vale por 1 hora e só pode ser usado uma vez.
+    </p>
+    <a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email"
+       style="display:inline-block;background:#7c5cff;color:#ffffff;text-decoration:none;font-weight:bold;font-size:15px;padding:12px 22px;border-radius:10px">
+      Entrar na DBI
+    </a>
+    <p style="margin:28px 0 0;font-size:12px;line-height:1.5;color:#8a887f">
+      Se você não pediu este acesso, pode ignorar este e-mail com segurança.
+    </p>
+  </div>
+</div>

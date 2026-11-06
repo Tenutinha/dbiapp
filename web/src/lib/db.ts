@@ -21,5 +21,22 @@ function connect(): Sql {
 }
 
 /** Single pooled client, reused across dev hot reloads and warm serverless invocations. */
-export const sql: Sql = globalForDb.__dbiSql ?? connect();
-globalForDb.__dbiSql = sql;
+function client(): Sql {
+  globalForDb.__dbiSql ??= connect();
+  return globalForDb.__dbiSql;
+}
+
+/**
+ * Connects on first query, not at import, so `next build` never needs DATABASE_URL.
+ * Behaves exactly like the postgres.js client: tagged templates, sql.begin, sql.json, …
+ */
+export const sql: Sql = new Proxy(function lazySql() {} as unknown as Sql, {
+  apply(_target, _thisArg, args: unknown[]) {
+    return (client() as unknown as (...a: unknown[]) => unknown)(...args);
+  },
+  get(_target, key) {
+    const real = client() as unknown as Record<PropertyKey, unknown>;
+    const value = real[key];
+    return typeof value === "function" ? (value as (...a: unknown[]) => unknown).bind(real) : value;
+  },
+});

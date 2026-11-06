@@ -54,7 +54,9 @@ export interface UploadTarget {
 
 export const storage = {
   /** DuckDB sandbox root. */
-  workRoot: env.workRoot,
+  get workRoot(): string {
+    return env.workRoot;
+  },
   remote: isRemote,
 
   datasetKey(orgId: string, instanceId: string, version: number, table: string): string {
