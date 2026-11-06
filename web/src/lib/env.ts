@@ -16,10 +16,18 @@ const envSchema = z
 
     /** "dev" = "entrar como" switcher (never in production); "supabase" = Supabase Auth (password + e-mail link). */
     DBI_AUTH: z.enum(["dev", "supabase"]).default("dev"),
-    /** "local" = files on this machine's disk; "supabase" = private Supabase Storage bucket. */
-    DBI_STORAGE_DRIVER: z.enum(["local", "supabase"]).default("local"),
+    /** "local" = this machine's disk; "supabase" = private Supabase Storage bucket; "gcs" = Google Cloud Storage. */
+    DBI_STORAGE_DRIVER: z.enum(["local", "supabase", "gcs"]).default("local"),
     DBI_STORAGE_DIR: z.string().min(1).default("./storage"),
     DBI_STORAGE_BUCKET: z.string().regex(/^[a-z0-9-]+$/).default("dbi"),
+
+    /** Google Cloud Storage (DBI_STORAGE_DRIVER=gcs). */
+    GCS_BUCKET: z.string().regex(/^[a-z0-9][a-z0-9._-]{1,220}[a-z0-9]$/).optional(),
+    GCS_PROJECT_ID: z.string().min(1).optional(),
+    /** Server-only. Service-account key JSON, base64-encoded (Vercel). */
+    GCS_CREDENTIALS_BASE64: z.string().min(20).optional(),
+    /** Server-only. Path to a service-account key file (local development). */
+    GOOGLE_APPLICATION_CREDENTIALS: z.string().min(1).optional(),
 
     NEXT_PUBLIC_SUPABASE_URL: z.string().url().optional(),
     NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: z.string().min(20).optional(),
@@ -37,6 +45,16 @@ const envSchema = z
     if (e.DBI_STORAGE_DRIVER === "supabase") {
       need("NEXT_PUBLIC_SUPABASE_URL", "DBI_STORAGE_DRIVER=supabase");
       need("SUPABASE_SERVICE_ROLE_KEY", "DBI_STORAGE_DRIVER=supabase");
+    }
+    if (e.DBI_STORAGE_DRIVER === "gcs") {
+      need("GCS_BUCKET", "DBI_STORAGE_DRIVER=gcs");
+      if (!e.GCS_CREDENTIALS_BASE64 && !e.GOOGLE_APPLICATION_CREDENTIALS) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["GCS_CREDENTIALS_BASE64"],
+          message: "GCS_CREDENTIALS_BASE64 or GOOGLE_APPLICATION_CREDENTIALS required when DBI_STORAGE_DRIVER=gcs",
+        });
+      }
     }
     if (e.DBI_AUTH === "dev") need("DBI_DEMO_USER_EMAIL", "DBI_AUTH=dev");
   });

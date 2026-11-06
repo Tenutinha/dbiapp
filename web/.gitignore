@@ -44,3 +44,7 @@ next-env.d.ts
 !.env.example
 /storage/
 /sample-data/
+
+# Google Cloud service-account keys
+secrets/
+*-key.json

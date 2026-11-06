@@ -23,6 +23,7 @@ export default async function PlatformPage() {
         eyebrow="Admin master"
         title="Plataforma DBI"
         subtitle="Todas as organizações. Como admin da plataforma, você entra em qualquer uma com acesso total."
+        actions={<Link href="/plataforma/catalogo" className="btn btn-primary">Catálogo de dashboards</Link>}
       />
       <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
         <div className="card overflow-x-auto">

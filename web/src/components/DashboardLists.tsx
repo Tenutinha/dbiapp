@@ -1,16 +1,27 @@
+import Link from "next/link";
 import { activateTemplate } from "@/app/actions";
+import { ORIGIN_LABEL } from "@/lib/templates/labels";
 import type { Template } from "@/lib/templates/schema";
 
-const ORIGIN_LABEL = { powerbi: "Power BI", qlikview: "QlikView" } as const;
+/** A dashboard already activated in this space from a catalog template. */
+export interface ActiveDashboard {
+  id: string;
+  published: boolean;
+}
 
 interface CatalogProps {
   templates: Template[];
   orgSlug: string;
   clientSlug?: string;
   targetLabel: string;
+  /** templateId → dashboard already active in this space. */
+  active?: Record<string, ActiveDashboard>;
 }
 
-export function Catalog({ templates, orgSlug, clientSlug, targetLabel }: CatalogProps) {
+export function Catalog({ templates, orgSlug, clientSlug, targetLabel, active = {} }: CatalogProps) {
+  if (templates.length === 0) {
+    return <p className="text-sm text-muted">Nenhum dashboard disponível no catálogo ainda.</p>;
+  }
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {templates.map((t) => (
@@ -33,12 +44,21 @@ export function Catalog({ templates, orgSlug, clientSlug, targetLabel }: Catalog
               </code>
             ))}
           </div>
-          <form action={activateTemplate} className="mt-auto pt-2">
-            <input type="hidden" name="templateId" value={t.id} />
-            <input type="hidden" name="org" value={orgSlug} />
-            {clientSlug && <input type="hidden" name="client" value={clientSlug} />}
-            <button className="btn btn-ghost w-full" type="submit">Ativar para {targetLabel}</button>
-          </form>
+          <div className="mt-auto flex flex-col gap-2 pt-2">
+            {active[t.id] && (
+              <Link href={`/${orgSlug}/d/${active[t.id].id}/dados`} className="btn btn-primary w-full">
+                {active[t.id].published ? "Já ativo · atualizar dados" : "Já ativo · subir dados"}
+              </Link>
+            )}
+            <form action={activateTemplate}>
+              <input type="hidden" name="templateId" value={t.id} />
+              <input type="hidden" name="org" value={orgSlug} />
+              {clientSlug && <input type="hidden" name="client" value={clientSlug} />}
+              <button className="btn btn-ghost w-full" type="submit">
+                {active[t.id] ? "Ativar outra cópia" : `Ativar para ${targetLabel}`}
+              </button>
+            </form>
+          </div>
         </article>
       ))}
     </div>
