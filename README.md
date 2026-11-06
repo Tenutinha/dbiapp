@@ -11,7 +11,8 @@ dbi.app.br/s/<token>                  ← link de convidado (somente leitura)
 
 | Pasta | O que tem |
 |---|---|
-| `landing/` | Landing page estática (abra `landing/index.html`) |
+| `web/src/components/landing/` | Landing page pública — aparece em `dbi.app.br/` para quem não está logado |
+| `landing/` | Rascunho estático antigo da landing (referência) |
 | `web/` | App (Next.js 15 + Postgres + DuckDB) |
 | `docs/arquitetura.md` | Decisões de arquitetura |
 

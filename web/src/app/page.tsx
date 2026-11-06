@@ -1,14 +1,35 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AppShell, Notice, PageHeader } from "@/components/AppShell";
+import type { Metadata } from "next";
+import { LandingPage } from "@/components/landing/LandingPage";
 import { listUserOrganizations } from "@/lib/access";
-import { getCurrentUser } from "@/lib/auth";
+import { AccessError, getCurrentUser, type CurrentUser } from "@/lib/auth";
 import { guard } from "@/lib/guard";
 import { ROLE_LABEL } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
 
+export const metadata: Metadata = {
+  title: { absolute: "DBI — Dashboards prontos, é só engatar os dados" },
+  description:
+    "Dashboards de nível Power BI e QlikView no navegador, para a sua empresa e para os seus clientes. Suba Parquet ou CSV e compartilhe com a sua marca.",
+};
+
+/** Signed-in → the user's organizations; signed-out visitors → the public landing page. */
+async function currentUserOrNull(): Promise<CurrentUser | null> {
+  try {
+    return await getCurrentUser();
+  } catch (err) {
+    if (err instanceof AccessError && err.status === 401) return null;
+    throw err;
+  }
+}
+
 export default async function HomePage() {
+  // Other errors (403, DB down…) fall through to guard() below, which already knows how to show them.
+  const signedIn = await currentUserOrNull().catch(() => undefined);
+  if (signedIn === null) return <LandingPage />;
   const user = await guard(getCurrentUser());
   if (user === "forbidden") {
     return (
@@ -21,7 +42,7 @@ export default async function HomePage() {
   if (orgs.length === 1 && !user.isPlatformAdmin) redirect(`/${orgs[0].slug}`);
 
   return (
-    <AppShell>
+    <AppShell userName={user.name}>
       <PageHeader
         eyebrow={`Olá, ${user.name}`}
         title="Suas organizações"

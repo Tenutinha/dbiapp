@@ -1,8 +1,10 @@
 import "server-only";
 import { cookies } from "next/headers";
 import { cache } from "react";
+import { provisionSelfSignup } from "./data/signup";
 import { sql } from "./db";
 import { env } from "./env";
+import { readSignupMetadata } from "./login";
 import { supabaseServer } from "./supabase/server";
 
 export interface CurrentUser {
@@ -42,14 +44,26 @@ async function userByEmail(email: string): Promise<CurrentUser | null> {
   return user ?? null;
 }
 
-/** Supabase Auth session → our users table, matched by (verified) e-mail. Only invited people get in. */
+/**
+ * Supabase Auth session → our users table, matched by (verified) e-mail. Invited people are
+ * already there; self-service signups get their account + organization on the first visit
+ * after confirming the e-mail.
+ */
 async function supabaseUser(): Promise<CurrentUser> {
   const supabase = await supabaseServer();
   const { data, error } = await supabase.auth.getUser();
   if (error || !data.user?.email) throw NOT_SIGNED_IN();
   const user = await userByEmail(data.user.email);
-  if (!user) throw new AccessError(403, "Seu e-mail ainda não tem acesso à plataforma.");
-  return user;
+  if (user) return user;
+
+  const signup = readSignupMetadata(data.user.user_metadata);
+  if (signup && data.user.email_confirmed_at) {
+    const created = await provisionSelfSignup(data.user.email, signup);
+    console.info(`[auth] self-service signup provisioned (@${data.user.email.split("@")[1]}) org=/${created.orgSlug ?? "-"}`);
+    const provisioned = await userByEmail(data.user.email);
+    if (provisioned) return provisioned;
+  }
+  throw new AccessError(403, "Seu e-mail ainda não tem acesso à plataforma.");
 }
 
 async function devUser(): Promise<CurrentUser> {

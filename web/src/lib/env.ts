@@ -14,7 +14,7 @@ const envSchema = z
     DBI_DEMO_USER_EMAIL: z.string().email().optional(),
     DBI_DEV_AUTH: bool,
 
-    /** "dev" = "entrar como" switcher (never in production); "supabase" = Supabase Auth magic link. */
+    /** "dev" = "entrar como" switcher (never in production); "supabase" = Supabase Auth (password + e-mail link). */
     DBI_AUTH: z.enum(["dev", "supabase"]).default("dev"),
     /** "local" = files on this machine's disk; "supabase" = private Supabase Storage bucket. */
     DBI_STORAGE_DRIVER: z.enum(["local", "supabase"]).default("local"),

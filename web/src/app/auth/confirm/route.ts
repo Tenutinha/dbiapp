@@ -1,12 +1,13 @@
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 import { supabaseAuthEnabled } from "@/lib/auth";
+import { safeNextPath } from "@/lib/login";
 import { supabaseServer } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
-/** Email link types this app sends (magic link and first-login confirmation). */
-const ALLOWED_TYPES: readonly EmailOtpType[] = ["email", "magiclink", "signup", "invite"];
+/** Email link types this app sends (magic link, first-login confirmation, password reset). */
+const ALLOWED_TYPES: readonly EmailOtpType[] = ["email", "magiclink", "signup", "invite", "recovery"];
 const TOKEN_HASH = /^[A-Za-z0-9_-]{16,256}$/;
 
 /**
@@ -32,5 +33,7 @@ export async function GET(req: Request) {
     return fail();
   }
   console.info(`[auth] email link verified (type=${type})`);
-  return NextResponse.redirect(new URL("/", url.origin));
+  // Password reset links always land on the new-password screen; others may carry ?next=/path.
+  const next = type === "recovery" ? "/entrar/nova-senha" : safeNextPath(url.searchParams.get("next"));
+  return NextResponse.redirect(new URL(next, url.origin));
 }

@@ -1,24 +1,43 @@
 "use server";
 
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { z } from "zod";
 import { isInvited, supabaseAuthEnabled } from "@/lib/auth";
+import { emailSchema, passwordSchema, signInErrorMessage } from "@/lib/login";
+import { siteOrigin } from "@/lib/site-origin";
 import { supabaseServer } from "@/lib/supabase/server";
 
 export interface LoginState {
   sent: boolean;
   message: string;
+  /** Typed e-mail, sent back so the form can keep it after an error (React resets forms on submit). */
+  email?: string;
 }
 
-const emailSchema = z.string().trim().toLowerCase().email("Digite um e-mail válido.");
 const GENERIC = "Se este e-mail tiver acesso, enviamos um link para entrar. Confira sua caixa de entrada (e o spam).";
+const DISABLED = "Login por e-mail não está ativo neste ambiente.";
+const domainOf = (email: string): string => email.split("@")[1] ?? "?";
 
-async function siteOrigin(): Promise<string> {
-  const h = await headers();
-  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
-  const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
-  return `${proto}://${host}`;
+/**
+ * E-mail + password. Supabase checks the password; whether the account may use the platform is
+ * decided afterwards by getCurrentUser (invited people, or confirmed self-service signups).
+ * Wrong e-mail and wrong password get the same answer.
+ */
+export async function signInWithPassword(_prev: LoginState, formData: FormData): Promise<LoginState> {
+  if (!supabaseAuthEnabled()) return { sent: false, message: DISABLED };
+  const typed = String(formData.get("email") ?? "").slice(0, 320);
+  const fail = (message: string): LoginState => ({ sent: false, message, email: typed });
+  const email = emailSchema.safeParse(typed);
+  if (!email.success) return fail(email.error.issues[0]?.message ?? "E-mail inválido.");
+  const password = passwordSchema.safeParse(formData.get("password"));
+  if (!password.success) return fail(password.error.issues[0]?.message ?? "Senha inválida.");
+
+  const supabase = await supabaseServer();
+  const { error } = await supabase.auth.signInWithPassword({ email: email.data, password: password.data });
+  if (error) {
+    console.warn(`[auth] password sign-in failed (@${domainOf(email.data)}): status=${error.status} code=${error.code ?? "-"}`);
+    return fail(signInErrorMessage(error));
+  }
+  redirect("/");
 }
 
 /**
@@ -26,12 +45,12 @@ async function siteOrigin(): Promise<string> {
  * way, so the form cannot be used to discover who has an account.
  */
 export async function requestLoginLink(_prev: LoginState, formData: FormData): Promise<LoginState> {
-  if (!supabaseAuthEnabled()) return { sent: false, message: "Login por e-mail não está ativo neste ambiente." };
+  if (!supabaseAuthEnabled()) return { sent: false, message: DISABLED };
   const parsed = emailSchema.safeParse(formData.get("email"));
   if (!parsed.success) return { sent: false, message: parsed.error.issues[0]?.message ?? "E-mail inválido." };
 
   // Logs never contain the full address: only its domain, enough to diagnose delivery.
-  const domain = parsed.data.split("@")[1];
+  const domain = domainOf(parsed.data);
   if (!(await isInvited(parsed.data))) {
     console.warn(`[auth] login requested for a non-invited e-mail (@${domain}) — no link sent`);
     return { sent: true, message: GENERIC };

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { supabaseAuthEnabled } from "@/lib/auth";
 import { SignOutButton } from "./SignOutButton";
 
 export function Logo() {
@@ -46,6 +47,11 @@ export function AppHeader({ org, isAdmin, userName }: AppHeaderProps) {
           {userName && (
             <span className="hidden rounded-full border border-line px-3 py-1 text-xs text-muted sm:inline">{userName}</span>
           )}
+          {userName && supabaseAuthEnabled() && (
+            <Link href="/entrar/nova-senha" className="rounded-lg px-3 py-1.5 text-muted hover:bg-white/5 hover:text-text">
+              Trocar senha
+            </Link>
+          )}
           {userName && <SignOutButton className="rounded-lg px-3 py-1.5 text-muted hover:bg-white/5 hover:text-text" />}
         </nav>
       </div>
@@ -64,10 +70,10 @@ export function OrgFrame({ children, ...header }: AppHeaderProps & { children: R
 }
 
 /** Page container for routes outside an organization layout. */
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({ children, userName }: { children: React.ReactNode; userName?: string }) {
   return (
     <>
-      <AppHeader />
+      <AppHeader userName={userName} />
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6">{children}</main>
     </>
   );
