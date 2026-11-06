@@ -25,7 +25,12 @@ export interface VitrineQuery {
 
 const MAX_QUERY = 80;
 
-export function toVitrineItem(t: Template): VitrineItem {
+/** Only recreated Power BI / QlikView dashboards go to the showcase; bespoke web ones stay private. */
+export function isVitrineTemplate(t: Template): t is Template & { origin: VitrineOrigin } {
+  return (VITRINE_ORIGINS as readonly string[]).includes(t.origin);
+}
+
+export function toVitrineItem(t: Template & { origin: VitrineOrigin }): VitrineItem {
   return {
     id: t.id,
     name: t.name,

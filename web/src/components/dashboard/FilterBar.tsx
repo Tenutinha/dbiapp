@@ -4,7 +4,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 
 export interface FilterBarProps {
-  filters: { fieldId: string; label: string; values: string[]; selected: string[] }[];
+  filters: { fieldId: string; label: string; values: string[]; selected: string[]; single: boolean }[];
 }
 
 function FilterDropdown({
@@ -23,8 +23,14 @@ function FilterDropdown({
   }, []);
 
   const visible = filter.values.filter((v) => v.toLowerCase().includes(query.toLowerCase())).slice(0, 200);
-  const toggle = (v: string): void =>
+  const toggle = (v: string): void => {
+    if (filter.single) {
+      setOpen(false);
+      onChange([v]);
+      return;
+    }
     onChange(filter.selected.includes(v) ? filter.selected.filter((s) => s !== v) : [...filter.selected, v]);
+  };
   const active = filter.selected.length > 0;
 
   return (
@@ -38,7 +44,11 @@ function FilterDropdown({
         }`}
       >
         {filter.label}
-        {active && <span className="ml-1.5 rounded-full bg-brand px-1.5 text-xs text-on-brand">{filter.selected.length}</span>}
+        {filter.single ? (
+          <span className="ml-1.5 font-semibold text-text">{filter.selected[0]}</span>
+        ) : (
+          active && <span className="ml-1.5 rounded-full bg-brand px-1.5 text-xs text-on-brand">{filter.selected.length}</span>
+        )}
         <span className="ml-1.5 text-xs">▾</span>
       </button>
       {open && (
@@ -56,14 +66,20 @@ function FilterDropdown({
             {visible.map((v) => (
               <li key={v}>
                 <label className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-white/5">
-                  <input type="checkbox" checked={filter.selected.includes(v)} onChange={() => toggle(v)} className="accent-brand" />
+                  <input
+                    type={filter.single ? "radio" : "checkbox"}
+                    name={filter.single ? `filtro-${filter.fieldId}` : undefined}
+                    checked={filter.selected.includes(v)}
+                    onChange={() => toggle(v)}
+                    className="accent-brand"
+                  />
                   {v}
                 </label>
               </li>
             ))}
             {visible.length === 0 && <li className="px-2 py-1.5 text-sm text-muted">Nada encontrado</li>}
           </ul>
-          {active && (
+          {active && !filter.single && (
             <button type="button" onClick={() => onChange([])} className="mt-1 w-full rounded-md px-2 py-1.5 text-left text-xs text-brand-2 hover:bg-white/5">
               Limpar seleção
             </button>
@@ -87,7 +103,7 @@ export function FilterBar({ filters }: FilterBarProps) {
     start(() => router.replace(`${pathname}?${next.toString()}`, { scroll: false }));
   }
 
-  const anyActive = filters.some((f) => f.selected.length > 0);
+  const anyActive = filters.some((f) => !f.single && f.selected.length > 0);
 
   return (
     <div className={`mb-6 flex flex-wrap items-center gap-2 transition-opacity ${pending ? "opacity-60" : ""}`}>

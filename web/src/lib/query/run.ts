@@ -16,6 +16,8 @@ export interface FilterOptions {
   label: string;
   values: string[];
   selected: string[];
+  /** Exactly one value, always set (template filterDefaults). */
+  single: boolean;
 }
 
 export interface DashboardData {
@@ -34,6 +36,10 @@ export async function runDashboard(
   return withConnection(storageRoot, async (conn) => {
     const visuals: VisualResult[] = [];
     for (const visual of template.visuals) {
+      if (visual.type === "text") {
+        visuals.push({ visual, rows: [] });
+        continue;
+      }
       try {
         const q = buildVisualQuery(template, files, visual, selection);
         visuals.push({ visual, rows: await queryRows(conn, q.sql, q.params) });
@@ -54,14 +60,23 @@ export async function runDashboard(
       } catch (err) {
         console.error(`[dashboard] filter ${template.id}/${fieldId} failed`, err);
       }
-      filters.push({ fieldId, label: field?.label ?? fieldId, values, selected: [...(selection[fieldId] ?? [])] });
+      filters.push({
+        fieldId,
+        label: field?.label ?? fieldId,
+        values,
+        selected: [...(selection[fieldId] ?? [])],
+        single: fieldId in template.filterDefaults,
+      });
     }
 
     return { visuals, filters, elapsedMs: Math.round(performance.now() - started) };
   });
 }
 
-/** Parses `?f.regiao=Sul&f.regiao=Norte` style search params into a selection. */
+/**
+ * Parses `?f.regiao=Sul&f.regiao=Norte` style search params into a selection.
+ * Filters with a default (template.filterDefaults) keep only the first value and fall back to the default.
+ */
 export function parseSelection(
   template: Template,
   searchParams: Readonly<Record<string, string | string[] | undefined>>,
@@ -70,7 +85,9 @@ export function parseSelection(
   for (const fieldId of template.filters) {
     const raw = searchParams[`f.${fieldId}`];
     const values = (Array.isArray(raw) ? raw : raw ? [raw] : []).map((v) => v.slice(0, 200));
-    if (values.length > 0) selection[fieldId] = values;
+    const fallback = template.filterDefaults[fieldId];
+    if (fallback !== undefined) selection[fieldId] = [values[0] ?? fallback];
+    else if (values.length > 0) selection[fieldId] = values;
   }
   return selection;
 }

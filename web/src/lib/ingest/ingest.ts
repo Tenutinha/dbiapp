@@ -139,7 +139,10 @@ export interface OrphanReport {
   orphans: number;
 }
 
-/** Fact rows whose foreign key has no match in the dimension (shown as "(sem cadastro)"). */
+/**
+ * Fact rows whose foreign key has no match in the dimension (shown as "(sem cadastro)").
+ * Empty keys are not orphans: an optional key column means "not related" (e.g. blank votes).
+ */
 export async function checkRelationships(
   storageRoot: string,
   relationships: readonly { from: { table: string; column: string }; to: { table: string; column: string } }[],
@@ -151,7 +154,8 @@ export async function checkRelationships(
       const [{ n }] = await queryRows(
         conn,
         `SELECT COUNT(*) AS n FROM read_parquet(${quotePath(files[r.from.table])}) f
-         ANTI JOIN read_parquet(${quotePath(files[r.to.table])}) d ON f.${r.from.column} = d.${r.to.column}`,
+         ANTI JOIN read_parquet(${quotePath(files[r.to.table])}) d ON f.${r.from.column} = d.${r.to.column}
+         WHERE f.${r.from.column} IS NOT NULL`,
       );
       reports.push({ relationship: `${r.from.table}.${r.from.column} → ${r.to.table}`, orphans: Number(n) });
     }
