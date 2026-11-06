@@ -1,6 +1,5 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
-import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { setSpaceLogo } from "../data/branding";
 import { storage } from "../storage";
@@ -8,9 +7,10 @@ import { checkLogo, LOGO_EXT } from "../theme/logo";
 
 export class LogoError extends Error {}
 
-function isInsideBrandingDir(p: string, orgId: string): boolean {
-  const dir = path.resolve(storage.root, "_branding", orgId) + path.sep;
-  return path.resolve(p).startsWith(dir);
+/** Only this organization's logos may be deleted (keys, or legacy absolute paths in _branding/<org>/). */
+function isOwnLogo(stored: string, orgId: string): boolean {
+  if (stored.startsWith(`branding/${orgId}/`)) return true;
+  return path.isAbsolute(stored) && stored.includes(`${path.sep}_branding${path.sep}${orgId}${path.sep}`);
 }
 
 /** Validates, stores and activates a new logo; removes the file it replaced. */
@@ -19,21 +19,20 @@ export async function replaceLogo(orgId: string, clientId: string | null, file: 
   const check = checkLogo(bytes);
   if (!check.ok) throw new LogoError(check.error);
 
-  const key = randomUUID();
-  const target = path.join(storage.root, "_branding", orgId, `${key}.${LOGO_EXT[check.mime]}`);
-  await mkdir(path.dirname(target), { recursive: true });
-  await writeFile(target, bytes);
+  const id = randomUUID();
+  const key = storage.brandingKey(orgId, id, LOGO_EXT[check.mime]);
+  await storage.putBytes(key, bytes, check.mime);
 
   try {
-    const previous = await setSpaceLogo(orgId, clientId, { key, path: target, mime: check.mime });
-    if (previous && isInsideBrandingDir(previous, orgId)) await rm(previous, { force: true });
+    const previous = await setSpaceLogo(orgId, clientId, { key: id, path: key, mime: check.mime });
+    if (previous && isOwnLogo(previous, orgId)) await storage.remove([previous]);
   } catch (err) {
-    await rm(target, { force: true });
+    await storage.remove([key]);
     throw err;
   }
 }
 
 export async function removeLogo(orgId: string, clientId: string | null): Promise<void> {
   const previous = await setSpaceLogo(orgId, clientId, null);
-  if (previous && isInsideBrandingDir(previous, orgId)) await rm(previous, { force: true });
+  if (previous && isOwnLogo(previous, orgId)) await storage.remove([previous]);
 }

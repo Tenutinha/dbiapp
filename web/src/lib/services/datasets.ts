@@ -1,7 +1,6 @@
 import "server-only";
-import { randomUUID } from "node:crypto";
 import { createWriteStream } from "node:fs";
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -11,9 +10,10 @@ import { checkRelationships, ingestTable, type OrphanReport, type SourceFormat, 
 import { getDraft, getOrCreateDraft, listFiles, promoteDraft, registerDraftFile } from "../data/repository";
 import { storage } from "../storage";
 import { getTemplate } from "../templates/registry";
-import type { Template } from "../templates/schema";
+import type { Template, TemplateTable } from "../templates/schema";
 
 export const MAX_UPLOAD_BYTES = 2 * 1024 ** 3; // 2 GB
+const PARQUET_MIME = "application/vnd.apache.parquet";
 
 export class UserFacingError extends Error {}
 
@@ -30,57 +30,127 @@ function detectFormat(fileName: string): SourceFormat {
   throw new UserFacingError("Formato não suportado. Envie .parquet ou .csv.");
 }
 
-async function saveIncoming(file: File, target: string): Promise<void> {
-  await mkdir(path.dirname(target), { recursive: true });
-  const body = Readable.fromWeb(file.stream() as unknown as NodeReadableStream);
-  await pipeline(body, createWriteStream(target));
-}
-
-/** Validates and stores one table of the instance's draft dataset. */
-export async function uploadTable(access: InstanceAccess, tableName: string, file: File): Promise<TableReport> {
+async function requireTable(access: InstanceAccess, tableName: string): Promise<TemplateTable> {
   const template = await requireTemplate(access.templateId);
   const table = template.tables.find((t) => t.name === tableName);
   if (!table) throw new UserFacingError(`Tabela "${tableName}" não faz parte deste dashboard.`);
-  if (file.size === 0) throw new UserFacingError("Arquivo vazio.");
-  if (file.size > MAX_UPLOAD_BYTES) throw new UserFacingError("Arquivo maior que 2 GB.");
+  return table;
+}
 
-  const format = detectFormat(file.name);
+function checkSize(size: number): void {
+  if (size <= 0) throw new UserFacingError("Arquivo vazio.");
+  if (size > MAX_UPLOAD_BYTES) throw new UserFacingError("Arquivo maior que 2 GB.");
+}
+
+/**
+ * Validates the raw file at `incomingPath` against the contract, stores the converted Parquet
+ * and registers it in the draft. Shared by the direct and the signed-URL upload paths.
+ */
+async function ingestIntoDraft(
+  access: InstanceAccess, table: TemplateTable, incomingPath: string, originalName: string,
+): Promise<TableReport> {
+  const format = detectFormat(originalName);
   const draft = await getOrCreateDraft(access.instanceId);
-  const versionDir = storage.versionDir(access.org.id, access.instanceId, draft.version);
   // Unique per upload: concurrent uploads never share a file, and published files are never overwritten.
-  const targetPath = path.join(versionDir, `${table.name}.${randomUUID().slice(0, 8)}.parquet`);
-  const incoming = storage.incomingFile(format);
+  const key = storage.datasetKey(access.org.id, access.instanceId, draft.version, table.name);
+  const targetPath = storage.pathFor(key);
+
+  const report = await ingestTable({ storageRoot: storage.workRoot, table, sourcePath: incomingPath, format, targetPath });
+  if (!report.ok) return report;
 
   try {
-    await saveIncoming(file, incoming);
-    const report = await ingestTable({ storageRoot: storage.root, table, sourcePath: incoming, format, targetPath });
-    if (!report.ok) return report;
+    await storage.commit(key, PARQUET_MIME);
+  } catch (err) {
+    console.error("[datasets] could not store converted file", err);
+    await storage.remove([key]);
+    return { ...report, ok: false, rowCount: 0, sizeBytes: 0, errors: ["Não foi possível guardar o arquivo. Tente novamente."] };
+  }
 
-    const registered = await registerDraftFile(access.instanceId, draft.id, {
-      tableName: table.name,
-      storagePath: targetPath,
-      rowCount: report.rowCount,
-      sizeBytes: report.sizeBytes,
-      originalName: file.name.slice(0, 255),
-    });
-    if (!registered.ok) {
-      await rm(targetPath, { force: true });
-      return {
-        ...report, ok: false, rowCount: 0, sizeBytes: 0,
-        errors: ["Uma nova versão foi publicada durante o envio. Envie o arquivo novamente."],
-      };
-    }
-    if (registered.replacedPath?.startsWith(versionDir)) await rm(registered.replacedPath, { force: true });
-    return report;
+  const registered = await registerDraftFile(access.instanceId, draft.id, {
+    tableName: table.name,
+    storagePath: key,
+    rowCount: report.rowCount,
+    sizeBytes: report.sizeBytes,
+    originalName: originalName.slice(0, 255),
+  });
+  if (!registered.ok) {
+    await storage.remove([key]);
+    return {
+      ...report, ok: false, rowCount: 0, sizeBytes: 0,
+      errors: ["Uma nova versão foi publicada durante o envio. Envie o arquivo novamente."],
+    };
+  }
+  // Only files uploaded into this same draft can be replaced (carry-overs happen at publish time).
+  const draftPrefix = `datasets/${access.org.id}/${access.instanceId}/v${draft.version}/`;
+  const legacyDraftDir = `${path.sep}v${draft.version}${path.sep}`;
+  const replaced = registered.replacedPath;
+  if (replaced && (replaced.startsWith(draftPrefix) || (path.isAbsolute(replaced) && replaced.includes(legacyDraftDir)))) {
+    await storage.remove([replaced]);
+  }
+  return report;
+}
+
+// ---------- direct upload (local storage: the file comes in the request body) ----------
+
+async function saveStream(file: File, target: string): Promise<void> {
+  await mkdir(path.dirname(target), { recursive: true });
+  await pipeline(Readable.fromWeb(file.stream() as unknown as NodeReadableStream), createWriteStream(target));
+}
+
+export async function uploadTable(access: InstanceAccess, tableName: string, file: File): Promise<TableReport> {
+  const table = await requireTable(access, tableName);
+  checkSize(file.size);
+  const ext = detectFormat(file.name);
+  const incomingKey = storage.incomingKey(access.instanceId, ext);
+  try {
+    await saveStream(file, storage.pathFor(incomingKey));
+    return await ingestIntoDraft(access, table, storage.pathFor(incomingKey), file.name);
   } finally {
-    await rm(incoming, { force: true });
+    await storage.remove([incomingKey]);
   }
 }
+
+// ---------- signed upload (Supabase: the browser sends the file straight to Storage) ----------
+
+export type UploadPlan = { mode: "direct" } | { mode: "signed"; key: string; signedUrl: string };
+
+export async function planUpload(access: InstanceAccess, tableName: string, fileName: string, size: number): Promise<UploadPlan> {
+  await requireTable(access, tableName);
+  checkSize(size);
+  const target = await storage.createUploadTarget(storage.incomingKey(access.instanceId, detectFormat(fileName)));
+  return target ? { mode: "signed", key: target.key, signedUrl: target.signedUrl } : { mode: "direct" };
+}
+
+export async function ingestUploaded(
+  access: InstanceAccess, tableName: string, key: string, fileName: string,
+): Promise<TableReport> {
+  const table = await requireTable(access, tableName);
+  // The key must be one we issued for this dashboard.
+  if (!key.startsWith(`incoming/${access.instanceId}/`) || !/^incoming\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.(csv|parquet)$/.test(key)) {
+    throw new UserFacingError("Envio inválido. Tente novamente.");
+  }
+  try {
+    const local = await storage.localPath(key).catch(() => {
+      throw new UserFacingError("Arquivo não encontrado no armazenamento. Envie de novo.");
+    });
+    return await ingestIntoDraft(access, table, local, fileName);
+  } finally {
+    await storage.remove([key]);
+  }
+}
+
+// ---------- publish ----------
 
 export interface PublishResult {
   ok: boolean;
   errors: string[];
   orphans: OrphanReport[];
+}
+
+/** Local paths (downloading from Storage when needed) for a table → key map. */
+export async function resolveLocalFiles(keys: Readonly<Record<string, string>>): Promise<Record<string, string>> {
+  const entries = await Promise.all(Object.entries(keys).map(async ([t, k]) => [t, await storage.localPath(k)] as const));
+  return Object.fromEntries(entries);
 }
 
 /**
@@ -106,7 +176,7 @@ export async function publishDraft(access: InstanceAccess): Promise<PublishResul
     return { ok: false, errors: [`Faltam tabelas: ${missing.join(", ")}.`], orphans: [] };
   }
 
-  const orphans = await checkRelationships(storage.root, template.relationships, files);
+  const orphans = await checkRelationships(storage.workRoot, template.relationships, await resolveLocalFiles(files));
   const result = await promoteDraft(access.instanceId, draft.id, required, files, {
     orphans, publishedBy: access.user.id,
   });

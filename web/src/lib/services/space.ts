@@ -13,6 +13,8 @@ export interface SpaceView {
   actions: ReadonlySet<Action>;
   /** Org admin (for the "Administração" link). */
   isOrgAdmin: boolean;
+  /** Platform administrator ("admin master"). */
+  isPlatformAdmin: boolean;
   toc: TocGroup[];
   theme: Theme;
   logoUrl: string | null;
@@ -44,6 +46,7 @@ export async function loadSpace(org: OrgRef, client: ClientRef | null, membershi
     client,
     actions,
     isOrgAdmin: orgScope.has("admin"),
+    isPlatformAdmin: membership.platformAdmin === true,
     theme: branding.theme,
     logoUrl: branding.logoUrl,
     toc: buildToc(layout.sections, layout.dashboards, { includeUnpublished: canManage, includeEmptySections: false }),

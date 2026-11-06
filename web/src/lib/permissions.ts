@@ -30,7 +30,11 @@ export interface Membership {
   orgRole: Role | null;
   /** Roles the user has per client of this organization (client id → role). */
   clientRoles: Readonly<Record<string, ClientRole>>;
+  /** Platform administrator ("admin master"): everything, in every organization and client. */
+  platformAdmin?: boolean;
 }
+
+const ALL_ACTIONS: readonly Action[] = ["view", "share", "manageData", "admin"];
 
 /** The scope being accessed: the organization itself (clientId null) or one of its clients. */
 export interface Scope {
@@ -57,6 +61,7 @@ const CLIENT_SCOPE: Record<ClientRole, readonly Action[]> = {
 };
 
 export function allowedActions(m: Membership, scope: Scope): ReadonlySet<Action> {
+  if (m.platformAdmin) return new Set(ALL_ACTIONS);
   const actions = new Set<Action>();
   if (m.orgRole) {
     const staff = scope.clientId === null ? STAFF_ORG_SCOPE[m.orgRole] : STAFF_ALL_SCOPES[m.orgRole];
@@ -75,7 +80,7 @@ export function can(m: Membership, scope: Scope, action: Action): boolean {
 
 /** Whether the user belongs to the organization at all (staff or any client). */
 export function isMember(m: Membership): boolean {
-  return m.orgRole !== null || Object.keys(m.clientRoles).length > 0;
+  return m.platformAdmin === true || m.orgRole !== null || Object.keys(m.clientRoles).length > 0;
 }
 
 /** Clients whose page the user may open. Staff admin/editor see all of them. */
@@ -88,7 +93,7 @@ export function visibleClientIds(m: Membership, allClientIds: readonly string[])
 /** Path segments used by the app itself — cannot be organization or client slugs. */
 export const RESERVED_SLUGS = new Set([
   "api", "s", "d", "admin", "entrar", "login", "logout", "dev", "app", "www", "static", "public",
-  "_next", "favicon-ico", "robots-txt", "sitemap-xml", "novo", "config", "configuracoes", "catalogo",
+  "_next", "favicon-ico", "robots-txt", "sitemap-xml", "novo", "config", "configuracoes", "catalogo", "plataforma", "auth",
 ]);
 
 const SLUG = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/;

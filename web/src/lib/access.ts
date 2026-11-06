@@ -44,7 +44,7 @@ export interface InstanceAccess extends OrgContext {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const notFound = (): AccessError => new AccessError(404, "Não encontrado.");
 
-const loadMembership = cache(async (userId: string, orgId: string): Promise<Membership> => {
+const loadMembership = cache(async (userId: string, orgId: string, platformAdmin: boolean): Promise<Membership> => {
   const [staff] = await sql<{ role: Role }[]>`
     SELECT role FROM organization_members WHERE organization_id = ${orgId} AND user_id = ${userId}`;
   const clients = await sql<{ clientId: string; role: ClientRole }[]>`
@@ -54,6 +54,7 @@ const loadMembership = cache(async (userId: string, orgId: string): Promise<Memb
   return {
     orgRole: staff?.role ?? null,
     clientRoles: Object.fromEntries(clients.map((c) => [c.clientId, c.role])),
+    platformAdmin,
   };
 });
 
@@ -61,7 +62,7 @@ export const getOrgContext = cache(async (orgSlug: string): Promise<OrgContext> 
   const user = await getCurrentUser();
   const [org] = await sql<OrgRef[]>`SELECT id, slug, name FROM organizations WHERE slug = ${orgSlug}`;
   if (!org) throw notFound();
-  const membership = await loadMembership(user.id, org.id);
+  const membership = await loadMembership(user.id, org.id, user.isPlatformAdmin);
   if (!isMember(membership)) throw notFound();
   return { user, org, membership };
 });
@@ -138,7 +139,7 @@ export async function requireInstance(instanceId: string, action: Action, orgSlu
     WHERE i.id = ${instanceId}`;
   if (!row || (orgSlug !== undefined && row.orgSlug !== orgSlug)) throw notFound();
 
-  const membership = await loadMembership(user.id, row.orgId);
+  const membership = await loadMembership(user.id, row.orgId, user.isPlatformAdmin);
   const actions = allowedActions(membership, { clientId: row.clientId });
   requireAction(actions, action);
 
@@ -161,13 +162,13 @@ export interface UserOrg extends OrgRef {
   orgRole: Role | null;
 }
 
-/** Organizations the user belongs to (as staff or through a client). */
-export async function listUserOrganizations(userId: string): Promise<UserOrg[]> {
+/** Organizations the user belongs to (as staff or through a client); platform admins see every organization. */
+export async function listUserOrganizations(userId: string, platformAdmin = false): Promise<UserOrg[]> {
   return sql<UserOrg[]>`
     SELECT o.id, o.slug, o.name, om.role AS "orgRole"
     FROM organizations o
     LEFT JOIN organization_members om ON om.organization_id = o.id AND om.user_id = ${userId}
-    WHERE om.user_id IS NOT NULL OR EXISTS (
+    WHERE ${platformAdmin} OR om.user_id IS NOT NULL OR EXISTS (
       SELECT 1 FROM client_members cm JOIN org_clients c ON c.id = cm.client_id
       WHERE cm.user_id = ${userId} AND c.organization_id = o.id)
     ORDER BY o.name`;

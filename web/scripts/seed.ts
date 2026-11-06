@@ -75,6 +75,15 @@ async function main(): Promise<void> {
                   ON CONFLICT (client_id, user_id) DO UPDATE SET role = EXCLUDED.role`;
       }
     }
+    // Admin master (platform administrator), from .env.local — never hard-coded.
+    const masterEmail = process.env.DBI_PLATFORM_ADMIN_EMAIL?.trim().toLowerCase();
+    if (masterEmail) {
+      const name = process.env.DBI_PLATFORM_ADMIN_NAME?.trim() || "Admin master";
+      await sql`INSERT INTO users (email, name, is_platform_admin) VALUES (${masterEmail}, ${name}, true)
+                ON CONFLICT (email) DO UPDATE SET is_platform_admin = true, name = EXCLUDED.name`;
+      console.log(`admin master: ${masterEmail}`);
+    }
+
     console.log(`seeded: ${demoEmail} (admin), org /odeontecnologia with /cliente1 and /cliente2, ${ODEON_USERS.length} role users`);
   } finally {
     await sql.end();

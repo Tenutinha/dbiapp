@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { SpaceView } from "@/lib/services/space";
+import { SignOutButton } from "../SignOutButton";
 import { SidebarNav } from "./SidebarNav";
 import { SidebarShell } from "./SidebarShell";
 import { ThemeScope } from "./ThemeScope";
@@ -37,7 +38,11 @@ export function Workspace({ space, currentId, userName, children }: WorkspacePro
       )}
       <div className="flex items-center justify-between gap-2 text-[13px] text-ink-muted">
         <span className="truncate">{userName}</span>
-        {space.isOrgAdmin && <Link href={`/${org.slug}/admin`} className="shrink-0 hover:text-ink hover:underline">Administração</Link>}
+        <span className="flex shrink-0 gap-3">
+          {space.isOrgAdmin && <Link href={`/${org.slug}/admin`} className="hover:text-ink hover:underline">Administração</Link>}
+          {space.isPlatformAdmin && <Link href="/plataforma" className="hover:text-ink hover:underline">Plataforma</Link>}
+          <SignOutButton className="hover:text-ink hover:underline" />
+        </span>
       </div>
     </div>
   );

@@ -4,6 +4,8 @@ const nextConfig: NextConfig = {
   // Native module: must stay a plain Node require, never bundled.
   serverExternalPackages: ["@duckdb/node-api"],
   poweredByHeader: false,
+  // Templates are read from disk at runtime; make sure they ship with every server function.
+  outputFileTracingIncludes: { "/**": ["./templates/**/*"] },
   // Logo uploads (≤ 1 MB) go through server actions.
   experimental: { serverActions: { bodySizeLimit: "2mb" } },
   async headers() {

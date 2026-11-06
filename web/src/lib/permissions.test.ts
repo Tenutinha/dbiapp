@@ -52,6 +52,25 @@ describe("client users", () => {
   });
 });
 
+describe("platform admin (admin master)", () => {
+  const master: Membership = { orgRole: null, clientRoles: {}, platformAdmin: true };
+
+  it("can do everything in any organization and client, without being a member", () => {
+    expect(isMember(master)).toBe(true);
+    expect(actions(master, ORG)).toEqual(["admin", "manageData", "share", "view"]);
+    expect(actions(master, C2)).toEqual(["admin", "manageData", "share", "view"]);
+    expect(visibleClientIds(master, ["c1", "c2"])).toEqual(["c1", "c2"]);
+  });
+
+  it("an explicit false flag grants nothing extra", () => {
+    expect(actions({ orgRole: "viewer", clientRoles: {}, platformAdmin: false }, C1)).toEqual([]);
+  });
+
+  it("'plataforma' cannot be used as an organization slug", () => {
+    expect(isValidSlug("plataforma")).toBe(false);
+  });
+});
+
 describe("membership", () => {
   it("strangers have no rights and are not members", () => {
     const none: Membership = { orgRole: null, clientRoles: {} };

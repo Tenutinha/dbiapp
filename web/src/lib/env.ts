@@ -1,24 +1,63 @@
 import "server-only";
+import os from "node:os";
 import path from "node:path";
 import { z } from "zod";
 
-const envSchema = z.object({
-  DATABASE_URL: z.string().url(),
-  DBI_STORAGE_DIR: z.string().min(1).default("./storage"),
-  DBI_DEMO_USER_EMAIL: z.string().email(),
-  DBI_DEV_AUTH: z
-    .enum(["true", "false"])
-    .default("false")
-    .transform((v) => v === "true"),
-});
+const bool = z
+  .enum(["true", "false"])
+  .default("false")
+  .transform((v) => v === "true");
 
-function load(): z.output<typeof envSchema> & { storageRoot: string } {
+const envSchema = z
+  .object({
+    DATABASE_URL: z.string().url(),
+    DBI_DEMO_USER_EMAIL: z.string().email().optional(),
+    DBI_DEV_AUTH: bool,
+
+    /** "dev" = "entrar como" switcher (never in production); "supabase" = Supabase Auth magic link. */
+    DBI_AUTH: z.enum(["dev", "supabase"]).default("dev"),
+    /** "local" = files on this machine's disk; "supabase" = private Supabase Storage bucket. */
+    DBI_STORAGE_DRIVER: z.enum(["local", "supabase"]).default("local"),
+    DBI_STORAGE_DIR: z.string().min(1).default("./storage"),
+    DBI_STORAGE_BUCKET: z.string().regex(/^[a-z0-9-]+$/).default("dbi"),
+
+    NEXT_PUBLIC_SUPABASE_URL: z.string().url().optional(),
+    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: z.string().min(20).optional(),
+    /** Server-only. Used for Storage; never sent to the browser. */
+    SUPABASE_SERVICE_ROLE_KEY: z.string().min(20).optional(),
+  })
+  .superRefine((e, ctx) => {
+    const need = (key: keyof typeof e, why: string): void => {
+      if (!e[key]) ctx.addIssue({ code: "custom", path: [key], message: `required when ${why}` });
+    };
+    if (e.DBI_AUTH === "supabase") {
+      need("NEXT_PUBLIC_SUPABASE_URL", "DBI_AUTH=supabase");
+      need("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY", "DBI_AUTH=supabase");
+    }
+    if (e.DBI_STORAGE_DRIVER === "supabase") {
+      need("NEXT_PUBLIC_SUPABASE_URL", "DBI_STORAGE_DRIVER=supabase");
+      need("SUPABASE_SERVICE_ROLE_KEY", "DBI_STORAGE_DRIVER=supabase");
+    }
+    if (e.DBI_AUTH === "dev") need("DBI_DEMO_USER_EMAIL", "DBI_AUTH=dev");
+  });
+
+export type Env = z.output<typeof envSchema> & {
+  /** Directory DuckDB may touch: the storage itself (local) or a download cache (Supabase). */
+  workRoot: string;
+};
+
+function load(): Env {
   const parsed = envSchema.safeParse(process.env);
   if (!parsed.success) {
-    const missing = parsed.error.issues.map((i) => i.path.join(".")).join(", ");
-    throw new Error(`Invalid server environment (${missing}). Copy .env.example to .env.local.`);
+    const issues = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
+    throw new Error(`Invalid server environment (${issues}). See .env.example.`);
   }
-  return { ...parsed.data, storageRoot: path.resolve(process.cwd(), parsed.data.DBI_STORAGE_DIR) };
+  const e = parsed.data;
+  const workRoot =
+    e.DBI_STORAGE_DRIVER === "local"
+      ? path.resolve(process.cwd(), e.DBI_STORAGE_DIR)
+      : path.join(os.tmpdir(), "dbi-cache");
+  return { ...e, workRoot };
 }
 
 export const env = load();

@@ -1,5 +1,3 @@
-import { readFile } from "node:fs/promises";
-import path from "node:path";
 import { findLogo } from "@/lib/data/branding";
 import { storage } from "@/lib/storage";
 
@@ -8,19 +6,18 @@ export const runtime = "nodejs";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * Public logo by unguessable key (logos also appear on guest links, which have no session).
- * The key changes on every upload, so responses are cached forever.
+ * Public logo by unguessable id (logos also appear on guest links, which have no session).
+ * The id changes on every upload, so responses are cached forever.
  */
 export async function GET(_req: Request, ctx: { params: Promise<{ key: string }> }) {
   const { key } = await ctx.params;
   if (!UUID.test(key)) return new Response("Not found", { status: 404 });
 
   const logo = await findLogo(key);
-  const root = path.resolve(storage.root) + path.sep;
-  if (!logo || !path.resolve(logo.path).startsWith(root)) return new Response("Not found", { status: 404 });
+  if (!logo) return new Response("Not found", { status: 404 });
 
   try {
-    const body = await readFile(logo.path);
+    const body = await storage.read(logo.path);
     return new Response(new Uint8Array(body), {
       headers: {
         "Content-Type": logo.mime,
@@ -30,7 +27,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ key: string }>
       },
     });
   } catch (err) {
-    console.error("[logo] missing file", key, err);
+    console.error("[logo] could not read", key, err);
     return new Response("Not found", { status: 404 });
   }
 }

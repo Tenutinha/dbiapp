@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { SignOutButton } from "./SignOutButton";
 
 export function Logo() {
   return (
@@ -45,6 +46,7 @@ export function AppHeader({ org, isAdmin, userName }: AppHeaderProps) {
           {userName && (
             <span className="hidden rounded-full border border-line px-3 py-1 text-xs text-muted sm:inline">{userName}</span>
           )}
+          {userName && <SignOutButton className="rounded-lg px-3 py-1.5 text-muted hover:bg-white/5 hover:text-text" />}
         </nav>
       </div>
     </header>

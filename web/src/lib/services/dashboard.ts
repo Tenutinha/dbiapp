@@ -3,7 +3,7 @@ import { listFiles } from "../data/repository";
 import { parseSelection, runDashboard, type DashboardData } from "../query/run";
 import { storage } from "../storage";
 import type { Template } from "../templates/schema";
-import { requireTemplate } from "./datasets";
+import { requireTemplate, resolveLocalFiles } from "./datasets";
 
 export interface LoadedDashboard {
   template: Template;
@@ -22,6 +22,7 @@ export async function loadDashboard(
   const byTable = Object.fromEntries(files.map((f) => [f.tableName, f.storagePath]));
   const fact = template.tables.find((t) => t.kind === "fact")?.name;
   const totalRows = files.find((f) => f.tableName === fact)?.rowCount ?? 0;
-  const data = await runDashboard(storage.root, template, byTable, parseSelection(template, searchParams));
+  const local = await resolveLocalFiles(byTable);
+  const data = await runDashboard(storage.workRoot, template, local, parseSelection(template, searchParams));
   return { template, data, totalRows };
 }

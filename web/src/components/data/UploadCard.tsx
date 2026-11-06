@@ -19,11 +19,57 @@ export interface UploadCardProps {
 
 type UploadState =
   | { kind: "idle" }
-  | { kind: "uploading"; fileName: string }
+  | { kind: "uploading"; fileName: string; step: string }
   | { kind: "done"; report: TableReport }
   | { kind: "error"; message: string; report?: TableReport };
 
 const TONE = { ok: "text-ok", draft: "text-brand-2", missing: "text-accent" } as const;
+
+interface UploadResponse {
+  success: boolean;
+  data?: TableReport;
+  error?: string;
+}
+
+type UploadPlan = { mode: "direct" } | { mode: "signed"; key: string; signedUrl: string };
+
+/**
+ * Asks the server how to send the file: straight in the request (local storage), or to a
+ * pre-signed Storage URL followed by an "ingest" call (production — avoids body size limits).
+ */
+async function sendFile(instanceId: string, table: string, file: File, onStep: (step: string) => void): Promise<UploadResponse> {
+  const base = `/api/instances/${instanceId}/upload`;
+  const planRes = await fetch(`${base}/plan`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ table, fileName: file.name, size: file.size }),
+  });
+  const plan = (await planRes.json()) as { success: boolean; data?: UploadPlan; error?: string };
+  if (!plan.success || !plan.data) return { success: false, error: plan.error ?? "Falha no envio." };
+
+  if (plan.data.mode === "direct") {
+    onStep("Validando");
+    const body = new FormData();
+    body.set("table", table);
+    body.set("file", file);
+    return (await fetch(base, { method: "POST", body })).json() as Promise<UploadResponse>;
+  }
+
+  const put = await fetch(plan.data.signedUrl, {
+    method: "PUT",
+    headers: { "Content-Type": file.type || "application/octet-stream", "x-upsert": "false" },
+    body: file,
+  });
+  if (!put.ok) return { success: false, error: "Não foi possível enviar o arquivo para o armazenamento." };
+
+  onStep("Validando");
+  const ingest = await fetch(`${base}/ingest`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ table, key: plan.data.key, fileName: file.name }),
+  });
+  return ingest.json() as Promise<UploadResponse>;
+}
 
 export function UploadCard({ instanceId, table, status, canUpload }: UploadCardProps) {
   const router = useRouter();
@@ -32,13 +78,11 @@ export function UploadCard({ instanceId, table, status, canUpload }: UploadCardP
   const [dragging, setDragging] = useState(false);
 
   async function upload(file: File): Promise<void> {
-    setState({ kind: "uploading", fileName: file.name });
-    const body = new FormData();
-    body.set("table", table.name);
-    body.set("file", file);
+    setState({ kind: "uploading", fileName: file.name, step: "Enviando" });
     try {
-      const res = await fetch(`/api/instances/${instanceId}/upload`, { method: "POST", body });
-      const json = (await res.json()) as { success: boolean; data?: TableReport; error?: string };
+      const json = await sendFile(instanceId, table.name, file, (step) =>
+        setState({ kind: "uploading", fileName: file.name, step }),
+      );
       if (json.success && json.data) {
         setState({ kind: "done", report: json.data });
         router.refresh();
@@ -104,7 +148,7 @@ export function UploadCard({ instanceId, table, status, canUpload }: UploadCardP
             dragging ? "border-brand bg-brand/10" : "border-line hover:border-brand/60"
           }`}
         >
-          {busy ? `Validando ${state.fileName}…` : "Arraste um .parquet ou .csv, ou clique para escolher"}
+          {busy ? `${state.step} ${state.fileName}…` : "Arraste um .parquet ou .csv, ou clique para escolher"}
         </button>
       )}
       <input
