@@ -8,6 +8,14 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: { "/**": ["./templates/**/*"] },
   // Logo uploads (≤ 1 MB) go through server actions.
   experimental: { serverActions: { bodySizeLimit: "2mb" } },
+  // The showcase and the platform panel now live on the home page; keep old links working.
+  async redirects() {
+    return [
+      { source: "/vitrine", destination: "/#vitrine", permanent: false },
+      { source: "/plataforma", destination: "/", permanent: false },
+      { source: "/plataforma/catalogo", destination: "/#vitrine", permanent: false },
+    ];
+  },
   async headers() {
     return [
       {

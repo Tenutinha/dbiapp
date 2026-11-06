@@ -40,7 +40,7 @@ export default async function VitrineDetailPage({ params }: Props) {
   return (
     <VitrineFrame viewer={viewer}>
       <PageHeader
-        crumbs={[{ label: "Vitrine", href: "/vitrine" }, { label: template.area }]}
+        crumbs={[{ label: "Vitrine", href: "/#vitrine" }, { label: template.area }]}
         eyebrow={`${ORIGIN_LABEL[template.origin]} · ${template.area}`}
         title={template.name}
         subtitle={template.description}

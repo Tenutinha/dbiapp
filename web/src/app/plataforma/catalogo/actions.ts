@@ -53,7 +53,6 @@ function failure(err: unknown, json?: string): TemplateFormState {
 }
 
 function revalidateCatalog(id?: string): void {
-  revalidatePath("/plataforma/catalogo");
   if (id) revalidatePath(`/plataforma/catalogo/${id}`);
   revalidatePath("/", "layout");
 }
@@ -130,5 +129,5 @@ export async function deleteTemplateAction(formData: FormData): Promise<void> {
   if (!deleted) throw new AccessError(403, "Este dashboard está em uso ou é embutido — arquive em vez de excluir.");
   console.info(`[catalog] template deleted: ${id}`);
   revalidateCatalog();
-  redirect("/plataforma/catalogo");
+  redirect("/#vitrine");
 }

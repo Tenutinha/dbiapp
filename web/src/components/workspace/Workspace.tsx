@@ -40,7 +40,7 @@ export function Workspace({ space, currentId, userName, children }: WorkspacePro
         <span className="truncate">{userName}</span>
         <span className="flex shrink-0 gap-3">
           {space.isOrgAdmin && <Link href={`/${org.slug}/admin`} className="hover:text-ink hover:underline">Administração</Link>}
-          {space.isPlatformAdmin && <Link href="/plataforma" className="hover:text-ink hover:underline">Plataforma</Link>}
+          {space.isPlatformAdmin && <Link href="/" className="hover:text-ink hover:underline">Plataforma</Link>}
           <SignOutButton className="hover:text-ink hover:underline" />
         </span>
       </div>
