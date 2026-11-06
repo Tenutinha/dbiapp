@@ -1,14 +1,40 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { requestLoginLink, type LoginState } from "./actions";
 
 const INITIAL: LoginState = { sent: false, message: "" };
 
+/** Supabase reports link problems in the URL hash (#error_code=…), which the server never sees. */
+const HASH_ERRORS: Record<string, string> = {
+  otp_expired: "Este link já foi usado ou expirou. Peça um novo link abaixo — e use sempre o e-mail mais recente.",
+  access_denied: "Não foi possível entrar com este link. Peça um novo abaixo.",
+};
+
+function readHashError(): string | null {
+  const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  const code = params.get("error_code") ?? params.get("error");
+  if (!code) return null;
+  return HASH_ERRORS[code] ?? HASH_ERRORS.access_denied;
+}
+
 export function LoginForm() {
   const [state, action, pending] = useActionState(requestLoginLink, INITIAL);
+  const [linkError, setLinkError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const message = readHashError();
+    if (!message) return;
+    setLinkError(message);
+    // Drop the error from the address bar so a reload does not show it again.
+    window.history.replaceState(null, "", window.location.pathname + window.location.search);
+  }, []);
+
   return (
     <form action={action} className="flex flex-col gap-3">
+      {linkError && !state.message && (
+        <p role="alert" className="rounded-xl border border-danger/40 bg-danger/10 px-4 py-3 text-sm text-danger">{linkError}</p>
+      )}
       <label className="flex flex-col gap-1 text-xs text-muted">
         E-mail
         <input
