@@ -18,7 +18,7 @@ export default async function PlatformPage() {
   const orgs = await listAllOrganizations();
 
   return (
-    <AppShell>
+    <AppShell userName={user.name}>
       <PageHeader
         eyebrow="Admin master"
         title="Plataforma DBI"

@@ -110,7 +110,7 @@ export function Hero() {
             </Link>
           </div>
           <ul className="mt-9 flex flex-wrap gap-x-6 gap-y-2 text-[13.5px] text-muted">
-            {["Sem modelagem do zero", "Um espaço por cliente", "Login sem senha"].map((t) => (
+            {["Sem modelagem do zero", "Um espaço por cliente", "Login com senha ou link"].map((t) => (
               <li key={t} className="flex items-center gap-2">
                 <i className="size-1.5 rounded-full bg-ok shadow-[0_0_8px_var(--color-ok)]" />
                 {t}

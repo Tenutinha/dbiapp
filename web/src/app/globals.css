@@ -47,40 +47,43 @@ body {
   color: transparent;
 }
 
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  border-radius: 0.75rem;
-  padding: 0.6rem 1.1rem;
-  font-weight: 600;
-  font-size: 0.9rem;
-  transition: background 0.15s, opacity 0.15s, transform 0.15s;
-}
-.btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.btn-primary {
-  background: var(--color-brand);
-  color: var(--color-on-brand);
-  box-shadow: 0 8px 24px -10px color-mix(in srgb, var(--color-brand) 70%, transparent);
-}
-.btn-primary:not(:disabled):hover {
-  transform: translateY(-1px);
-}
-.btn-ghost {
-  border: 1px solid var(--color-line);
-  background: color-mix(in srgb, var(--color-text) 3%, transparent);
-}
-.btn-ghost:hover {
-  background: color-mix(in srgb, var(--color-text) 7%, transparent);
-}
-.card {
-  background: var(--color-card);
-  border: 1px solid var(--color-line);
-  border-radius: 1rem;
+/* Components live in a layer so Tailwind utilities (hidden, px-5, w-full…) can override them. */
+@layer components {
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border-radius: 0.75rem;
+    padding: 0.6rem 1.1rem;
+    font-weight: 600;
+    font-size: 0.9rem;
+    transition: background 0.15s, opacity 0.15s, transform 0.15s;
+  }
+  .btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .btn-primary {
+    background: var(--color-brand);
+    color: var(--color-on-brand);
+    box-shadow: 0 8px 24px -10px color-mix(in srgb, var(--color-brand) 70%, transparent);
+  }
+  .btn-primary:not(:disabled):hover {
+    transform: translateY(-1px);
+  }
+  .btn-ghost {
+    border: 1px solid var(--color-line);
+    background: color-mix(in srgb, var(--color-text) 3%, transparent);
+  }
+  .btn-ghost:hover {
+    background: color-mix(in srgb, var(--color-text) 7%, transparent);
+  }
+  .card {
+    background: var(--color-card);
+    border: 1px solid var(--color-line);
+    border-radius: 1rem;
+  }
 }
 
 /* ---------- Landing page (src/components/landing) ---------- */

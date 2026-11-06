@@ -1,24 +1,25 @@
 <!--
   Supabase → Authentication → Emails → Templates → "Confirm signup"
-  Assunto (Subject): Confirme seu acesso à DBI
+  Assunto (Subject): Confirme seu e-mail na DBI
   Cole o HTML abaixo no corpo (Message body).
 
-  Enviado no primeiro acesso de cada pessoa convidada. Mesmo fluxo do link de acesso
-  (/auth/confirm com token_hash), então já entra direto na plataforma.
+  Enviado quando alguém cria conta em /entrar/cadastro (e no primeiro link de acesso de um
+  convidado). Mesmo fluxo do link de acesso (/auth/confirm com token_hash): confirma o e-mail,
+  entra direto e, no cadastro, cria a organização da pessoa.
 -->
 <div style="margin:0;padding:32px 16px;background:#f6f5f1;font-family:Arial,Helvetica,sans-serif;color:#1c1c1a">
   <div style="max-width:480px;margin:0 auto;background:#ffffff;border:1px solid #e3e1da;border-radius:16px;padding:32px">
     <p style="margin:0 0 24px;font-size:18px;font-weight:bold;letter-spacing:-0.02em">DBI</p>
     <h1 style="margin:0 0 12px;font-size:24px;font-weight:normal;font-family:Georgia,serif">Bem-vindo à DBI</h1>
     <p style="margin:0 0 24px;font-size:15px;line-height:1.5;color:#55554f">
-      Você foi convidado para acessar dashboards na DBI. Clique no botão abaixo para confirmar seu e-mail e entrar.
+      Clique no botão abaixo para confirmar seu e-mail e entrar na DBI. O link vale por 1 hora e só pode ser usado uma vez.
     </p>
     <a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email"
        style="display:inline-block;background:#7c5cff;color:#ffffff;text-decoration:none;font-weight:bold;font-size:15px;padding:12px 22px;border-radius:10px">
       Confirmar e entrar
     </a>
     <p style="margin:28px 0 0;font-size:12px;line-height:1.5;color:#8a887f">
-      Se você não esperava este convite, pode ignorar este e-mail com segurança.
+      Se você não criou uma conta nem esperava este convite, pode ignorar este e-mail com segurança.
     </p>
   </div>
 </div>

@@ -42,7 +42,7 @@ export default async function HomePage() {
   if (orgs.length === 1 && !user.isPlatformAdmin) redirect(`/${orgs[0].slug}`);
 
   return (
-    <AppShell>
+    <AppShell userName={user.name}>
       <PageHeader
         eyebrow={`Olá, ${user.name}`}
         title="Suas organizações"

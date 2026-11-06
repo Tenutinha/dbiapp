@@ -1,14 +1,16 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState, useEffect, useState } from "react";
-import { requestLoginLink, type LoginState } from "./actions";
+import { requestLoginLink, signInWithPassword, type LoginState } from "./actions";
+import { Alert, Field, FormMessage, INPUT_CLASS } from "./ui";
 
 const INITIAL: LoginState = { sent: false, message: "" };
 
 /** Supabase reports link problems in the URL hash (#error_code=…), which the server never sees. */
 const HASH_ERRORS: Record<string, string> = {
-  otp_expired: "Este link já foi usado ou expirou. Peça um novo link abaixo — e use sempre o e-mail mais recente.",
-  access_denied: "Não foi possível entrar com este link. Peça um novo abaixo.",
+  otp_expired: "Este link já foi usado ou expirou. Entre com sua senha ou peça um novo link.",
+  access_denied: "Não foi possível entrar com este link. Entre com sua senha ou peça um novo link.",
 };
 
 function readHashError(): string | null {
@@ -18,8 +20,10 @@ function readHashError(): string | null {
   return HASH_ERRORS[code] ?? HASH_ERRORS.access_denied;
 }
 
+type Mode = "password" | "link";
+
 export function LoginForm() {
-  const [state, action, pending] = useActionState(requestLoginLink, INITIAL);
+  const [mode, setMode] = useState<Mode>("password");
   const [linkError, setLinkError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -31,25 +35,98 @@ export function LoginForm() {
   }, []);
 
   return (
+    <div className="flex flex-col gap-5">
+      {linkError && <Alert>{linkError}</Alert>}
+      {mode === "password" ? <PasswordForm /> : <MagicLinkForm />}
+
+      {/* Future: "Continuar com Google" / "Continuar com Microsoft" buttons go above this divider. */}
+      <div className="flex items-center gap-3 text-xs text-muted" aria-hidden>
+        <span className="h-px flex-1 bg-line" />
+        ou
+        <span className="h-px flex-1 bg-line" />
+      </div>
+      <button
+        type="button"
+        className="btn btn-ghost"
+        onClick={() => setMode(mode === "password" ? "link" : "password")}
+      >
+        {mode === "password" ? "Receber link de acesso por e-mail" : "Entrar com e-mail e senha"}
+      </button>
+      <div className="flex flex-col gap-1 text-center text-sm text-muted">
+        <p>
+          Não tem conta?{" "}
+          <Link href="/entrar/cadastro" className="text-text underline underline-offset-4 hover:text-brand">
+            Criar conta
+          </Link>
+        </p>
+        <p>
+          Foi convidado?{" "}
+          <Link href="/entrar/recuperar?primeiro=1" className="text-text underline underline-offset-4 hover:text-brand">
+            Crie sua senha
+          </Link>
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function PasswordForm() {
+  const [state, action, pending] = useActionState(signInWithPassword, INITIAL);
+  const [show, setShow] = useState(false);
+  return (
     <form action={action} className="flex flex-col gap-3">
-      {linkError && !state.message && (
-        <p role="alert" className="rounded-xl border border-danger/40 bg-danger/10 px-4 py-3 text-sm text-danger">{linkError}</p>
-      )}
-      <label className="flex flex-col gap-1 text-xs text-muted">
-        E-mail
+      <Field label="E-mail">
         <input
           name="email"
           type="email"
           required
           autoComplete="email"
           placeholder="voce@empresa.com"
-          className="rounded-lg border border-line bg-bg px-3 py-2.5 text-sm text-text outline-none focus:border-brand"
+          defaultValue={state.email}
+          className={INPUT_CLASS}
         />
-      </label>
+      </Field>
+      <Field
+        label="Senha"
+        hint={
+          <Link href="/entrar/recuperar" className="text-xs text-muted underline underline-offset-4 hover:text-brand">
+            Esqueci minha senha
+          </Link>
+        }
+      >
+        <span className="relative flex">
+          <input
+            name="password"
+            type={show ? "text" : "password"}
+            required
+            autoComplete="current-password"
+            className={`${INPUT_CLASS} w-full pr-16`}
+          />
+          <button
+            type="button"
+            onClick={() => setShow(!show)}
+            className="absolute inset-y-0 right-2 my-auto h-fit px-1 text-xs text-muted hover:text-text"
+            aria-label={show ? "Esconder senha" : "Mostrar senha"}
+          >
+            {show ? "Esconder" : "Mostrar"}
+          </button>
+        </span>
+      </Field>
+      <button className="btn btn-primary" disabled={pending}>{pending ? "Entrando…" : "Entrar"}</button>
+      <FormMessage ok={false} message={state.message} />
+    </form>
+  );
+}
+
+function MagicLinkForm() {
+  const [state, action, pending] = useActionState(requestLoginLink, INITIAL);
+  return (
+    <form action={action} className="flex flex-col gap-3">
+      <Field label="E-mail">
+        <input name="email" type="email" required autoComplete="email" placeholder="voce@empresa.com" className={INPUT_CLASS} />
+      </Field>
       <button className="btn btn-primary" disabled={pending}>{pending ? "Enviando…" : "Receber link de acesso"}</button>
-      {state.message && (
-        <p role="status" className={`text-sm ${state.sent ? "text-ok" : "text-danger"}`}>{state.message}</p>
-      )}
+      <FormMessage ok={state.sent} message={state.message} />
     </form>
   );
 }
