@@ -9,6 +9,7 @@ import type { InstanceAccess } from "../access";
 import { checkRelationships, ingestTable, type OrphanReport, type SourceFormat, type TableReport } from "../ingest/ingest";
 import { getDraft, getOrCreateDraft, listFiles, promoteDraft, registerDraftFile } from "../data/repository";
 import { storage } from "../storage";
+import { isIssuedUploadKey } from "../storage-keys";
 import { getTemplate } from "../templates/registry";
 import type { Template, TemplateTable } from "../templates/schema";
 
@@ -52,7 +53,7 @@ async function ingestIntoDraft(
   const format = detectFormat(originalName);
   const draft = await getOrCreateDraft(access.instanceId);
   // Unique per upload: concurrent uploads never share a file, and published files are never overwritten.
-  const key = storage.datasetKey(access.org.id, access.instanceId, draft.version, table.name);
+  const key = storage.datasetKey(access.org.slug, access.instanceId, draft.version, table.name);
   const targetPath = storage.pathFor(key);
 
   const report = await ingestTable({ storageRoot: storage.workRoot, table, sourcePath: incomingPath, format, targetPath });
@@ -101,7 +102,7 @@ export async function uploadTable(access: InstanceAccess, tableName: string, fil
   const table = await requireTable(access, tableName);
   checkSize(file.size);
   const ext = detectFormat(file.name);
-  const incomingKey = storage.incomingKey(access.instanceId, ext);
+  const incomingKey = storage.uploadKey(access.org.slug, access.instanceId, ext);
   try {
     await saveStream(file, storage.pathFor(incomingKey));
     return await ingestIntoDraft(access, table, storage.pathFor(incomingKey), file.name);
@@ -117,7 +118,7 @@ export type UploadPlan = { mode: "direct" } | { mode: "signed"; key: string; sig
 export async function planUpload(access: InstanceAccess, tableName: string, fileName: string, size: number): Promise<UploadPlan> {
   await requireTable(access, tableName);
   checkSize(size);
-  const target = await storage.createUploadTarget(storage.incomingKey(access.instanceId, detectFormat(fileName)));
+  const target = await storage.createUploadTarget(storage.uploadKey(access.org.slug, access.instanceId, detectFormat(fileName)));
   return target ? { mode: "signed", key: target.key, signedUrl: target.signedUrl } : { mode: "direct" };
 }
 
@@ -126,7 +127,7 @@ export async function ingestUploaded(
 ): Promise<TableReport> {
   const table = await requireTable(access, tableName);
   // The key must be one we issued for this dashboard.
-  if (!key.startsWith(`incoming/${access.instanceId}/`) || !/^incoming\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.(csv|parquet)$/.test(key)) {
+  if (!isIssuedUploadKey(key, access.org.slug, access.instanceId)) {
     throw new UserFacingError("Envio inválido. Tente novamente.");
   }
   try {

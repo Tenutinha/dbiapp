@@ -87,5 +87,14 @@ export function gcsBucket(cfg: GcsConfig): RemoteBucket {
         throw new Error(`could not create upload URL: ${errMsg(e)}`);
       }
     },
+    async createFolder(prefix) {
+      try {
+        // Zero-byte object ending in "/": what the Cloud Console itself creates for a folder.
+        await bucket.file(prefix).save("", { resumable: false, preconditionOpts: { ifGenerationMatch: 0 } });
+      } catch (e) {
+        if ((e as { code?: number }).code === 412) return; // already exists
+        throw new Error(`could not create folder ${prefix}: ${errMsg(e)}`);
+      }
+    },
   };
 }

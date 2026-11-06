@@ -5,7 +5,7 @@
  *              Storage); reads are downloaded once into a local cache (keys are immutable — every
  *              upload gets a new key), so DuckDB keeps reading plain local files inside its sandbox.
  *
- * Keys are relative, e.g. "datasets/<org>/<dashboard>/v3/fato_vendas.ab12cd34.parquet".
+ * Keys are relative and grouped by organization — see storage-keys.ts for the layout.
  * Older local rows may hold absolute paths; those are still accepted by the local driver.
  */
 import "server-only";
@@ -16,14 +16,10 @@ import { gcsBucket } from "./blob/gcs";
 import { supabaseBucket } from "./blob/supabase";
 import type { RemoteBucket } from "./blob/types";
 import { env } from "./env";
+import * as keys from "./storage-keys";
+import { assertKey, StorageKeyError } from "./storage-keys";
 
-const KEY = /^(datasets|incoming|branding)\/[A-Za-z0-9._/-]+$/;
-
-export class StorageKeyError extends Error {}
-
-function assertKey(key: string): void {
-  if (!KEY.test(key) || key.includes("..") || key.includes("//")) throw new StorageKeyError(`invalid storage key: ${key}`);
-}
+export { StorageKeyError };
 
 /** Where a key lives on this machine (the file itself for local, the cache copy for Supabase). */
 function workPath(key: string): string {
@@ -71,14 +67,22 @@ export const storage = {
   },
   remote: isRemote,
 
-  datasetKey(orgId: string, instanceId: string, version: number, table: string): string {
-    return `datasets/${orgId}/${instanceId}/v${version}/${table}.${randomUUID().slice(0, 8)}.parquet`;
-  },
-  incomingKey(instanceId: string, ext: string): string {
-    return `incoming/${instanceId}/${randomUUID()}.${ext}`;
-  },
-  brandingKey(orgId: string, id: string, ext: string): string {
-    return `branding/${orgId}/${id}.${ext}`;
+  datasetKey: keys.datasetKey,
+  uploadKey: keys.uploadKey,
+  brandingKey: keys.brandingKey,
+
+  /**
+   * Creates the organization's folder (orgs/<slug>/) so it shows up right away in the bucket.
+   * Never throws: a missing folder must not fail the signup — files create it anyway.
+   */
+  async createOrgFolder(orgSlug: string): Promise<void> {
+    try {
+      const folder = keys.orgFolder(orgSlug);
+      if (isRemote()) await bucket().createFolder(folder);
+      else await mkdir(path.resolve(env.workRoot, folder), { recursive: true });
+    } catch (err) {
+      console.error("[storage] could not create folder for organization", orgSlug, err);
+    }
   },
 
   /** Local path to write a new object to before `commit`. */
@@ -116,8 +120,8 @@ export const storage = {
   },
 
   /** Deletes objects (remote + local copy). Never throws: cleanup must not break the request. */
-  async remove(keys: readonly string[]): Promise<void> {
-    const valid = keys.filter((k) => (path.isAbsolute(k) && !isRemote()) || KEY.test(k));
+  async remove(list: readonly string[]): Promise<void> {
+    const valid = list.filter((k) => (path.isAbsolute(k) && !isRemote()) || keys.isValidKey(k));
     await Promise.all(valid.map((k) => rm(workPath(k), { force: true }).catch(() => undefined)));
     if (isRemote() && valid.length > 0) await bucket().remove(valid);
   },

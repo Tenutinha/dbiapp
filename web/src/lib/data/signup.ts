@@ -1,5 +1,6 @@
 import "server-only";
 import { sql } from "../db";
+import { storage } from "../storage";
 import { slugCandidates, type SignupMetadata } from "../login";
 
 const SLUG_ATTEMPTS = 20;
@@ -19,7 +20,9 @@ export interface ProvisionedAccount {
 export async function provisionSelfSignup(email: string, meta: SignupMetadata): Promise<ProvisionedAccount> {
   for (let attempt = 1; ; attempt++) {
     try {
-      return await provisionOnce(email, meta);
+      const account = await provisionOnce(email, meta);
+      if (account.orgSlug) await storage.createOrgFolder(account.orgSlug);
+      return account;
     } catch (err) {
       // Another signup grabbed the same free address a moment earlier: pick again.
       const uniqueViolation = (err as { code?: string }).code === "23505";
