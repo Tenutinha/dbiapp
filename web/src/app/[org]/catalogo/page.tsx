@@ -50,7 +50,12 @@ export default async function CatalogPage({ params, searchParams }: Props) {
         eyebrow="Catálogo"
         title={`Adicionar dashboard para ${target}`}
         subtitle="Escolha os dashboards da sua ferramenta. Cada um declara as tabelas que espera: depois de ativar, suba os arquivos (CSV ou Parquet) e publique."
-        actions={<Link href={backHref} className="btn btn-ghost">Voltar</Link>}
+        actions={
+          <>
+            <Link href="/vitrine" className="btn btn-ghost">Ver vitrine</Link>
+            <Link href={backHref} className="btn btn-ghost">Voltar</Link>
+          </>
+        }
       />
       <Catalog templates={templates} orgSlug={ctx.org.slug} clientSlug={client?.slug} targetLabel={target} active={active} />
     </OrgFrame>
