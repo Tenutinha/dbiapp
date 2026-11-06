@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: dbi-postgres
+    environment:
+      POSTGRES_USER: dbi
+      POSTGRES_PASSWORD: ${DBI_DB_PASSWORD:?set DBI_DB_PASSWORD in .env.local}
+      POSTGRES_DB: dbi
+    ports:
+      - "127.0.0.1:54329:5432"
+    volumes:
+      - dbi-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dbi -d dbi"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+volumes:
+  dbi-pgdata:

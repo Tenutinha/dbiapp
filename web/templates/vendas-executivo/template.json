@@ -1,0 +1,101 @@
+{
+  "id": "vendas-executivo",
+  "version": 1,
+  "name": "Visão Executiva de Vendas",
+  "area": "Comercial",
+  "origin": "powerbi",
+  "description": "Receita, margem, ticket médio e desempenho por canal, região, categoria e produto.",
+  "tables": [
+    {
+      "name": "fato_vendas",
+      "kind": "fact",
+      "description": "Uma linha por item vendido.",
+      "sortBy": "data",
+      "columns": [
+        { "name": "id_venda", "type": "integer", "description": "Número do pedido" },
+        { "name": "data", "type": "date" },
+        { "name": "id_cliente", "type": "integer" },
+        { "name": "id_produto", "type": "integer" },
+        { "name": "id_loja", "type": "integer" },
+        { "name": "quantidade", "type": "integer" },
+        { "name": "valor_bruto", "type": "decimal" },
+        { "name": "desconto", "type": "decimal" },
+        { "name": "valor_liquido", "type": "decimal" },
+        { "name": "custo", "type": "decimal" }
+      ]
+    },
+    {
+      "name": "dim_cliente",
+      "kind": "dimension",
+      "description": "Cadastro de clientes.",
+      "key": "id_cliente",
+      "columns": [
+        { "name": "id_cliente", "type": "integer" },
+        { "name": "nome", "type": "text" },
+        { "name": "segmento", "type": "text" },
+        { "name": "uf", "type": "text" }
+      ]
+    },
+    {
+      "name": "dim_produto",
+      "kind": "dimension",
+      "description": "Cadastro de produtos.",
+      "key": "id_produto",
+      "columns": [
+        { "name": "id_produto", "type": "integer" },
+        { "name": "produto", "type": "text" },
+        { "name": "categoria", "type": "text" },
+        { "name": "marca", "type": "text", "required": false }
+      ]
+    },
+    {
+      "name": "dim_loja",
+      "kind": "dimension",
+      "description": "Lojas e canais de venda.",
+      "key": "id_loja",
+      "columns": [
+        { "name": "id_loja", "type": "integer" },
+        { "name": "loja", "type": "text" },
+        { "name": "regiao", "type": "text" },
+        { "name": "canal", "type": "text" }
+      ]
+    }
+  ],
+  "relationships": [
+    { "from": { "table": "fato_vendas", "column": "id_cliente" }, "to": { "table": "dim_cliente", "column": "id_cliente" } },
+    { "from": { "table": "fato_vendas", "column": "id_produto" }, "to": { "table": "dim_produto", "column": "id_produto" } },
+    { "from": { "table": "fato_vendas", "column": "id_loja" }, "to": { "table": "dim_loja", "column": "id_loja" } }
+  ],
+  "fields": [
+    { "id": "ano", "label": "Ano", "sql": "CAST(year(fato_vendas.data) AS VARCHAR)" },
+    { "id": "mes", "label": "Mês", "sql": "strftime(fato_vendas.data, '%Y-%m')" },
+    { "id": "regiao", "label": "Região", "sql": "dim_loja.regiao" },
+    { "id": "canal", "label": "Canal", "sql": "dim_loja.canal" },
+    { "id": "loja", "label": "Loja", "sql": "dim_loja.loja" },
+    { "id": "categoria", "label": "Categoria", "sql": "dim_produto.categoria" },
+    { "id": "produto", "label": "Produto", "sql": "dim_produto.produto" },
+    { "id": "segmento", "label": "Segmento", "sql": "dim_cliente.segmento" }
+  ],
+  "measures": [
+    { "id": "receita", "label": "Receita", "sql": "SUM(fato_vendas.valor_liquido)", "format": "currency" },
+    { "id": "lucro", "label": "Lucro bruto", "sql": "SUM(fato_vendas.valor_liquido) - SUM(fato_vendas.custo)", "format": "currency" },
+    { "id": "margem", "label": "Margem", "sql": "(SUM(fato_vendas.valor_liquido) - SUM(fato_vendas.custo)) / NULLIF(SUM(fato_vendas.valor_liquido), 0)", "format": "percent" },
+    { "id": "pedidos", "label": "Pedidos", "sql": "COUNT(DISTINCT fato_vendas.id_venda)", "format": "integer" },
+    { "id": "ticket_medio", "label": "Ticket médio", "sql": "SUM(fato_vendas.valor_liquido) / NULLIF(COUNT(DISTINCT fato_vendas.id_venda), 0)", "format": "currency" },
+    { "id": "desconto_pct", "label": "Desconto médio", "sql": "SUM(fato_vendas.desconto) / NULLIF(SUM(fato_vendas.valor_bruto), 0)", "format": "percent" },
+    { "id": "quantidade", "label": "Itens vendidos", "sql": "SUM(fato_vendas.quantidade)", "format": "integer" }
+  ],
+  "filters": ["ano", "regiao", "canal", "categoria"],
+  "visuals": [
+    { "id": "k_receita", "type": "kpi", "title": "Receita", "measure": "receita", "span": 3 },
+    { "id": "k_margem", "type": "kpi", "title": "Margem", "measure": "margem", "span": 3 },
+    { "id": "k_ticket", "type": "kpi", "title": "Ticket médio", "measure": "ticket_medio", "span": 3 },
+    { "id": "k_pedidos", "type": "kpi", "title": "Pedidos", "measure": "pedidos", "span": 3 },
+    { "id": "receita_mes", "type": "line", "title": "Receita e lucro por mês", "field": "mes", "measures": ["receita", "lucro"], "sort": "field", "span": 8 },
+    { "id": "receita_canal", "type": "donut", "title": "Receita por canal", "field": "canal", "measure": "receita", "span": 4 },
+    { "id": "receita_categoria", "type": "bar", "title": "Receita por categoria", "field": "categoria", "measures": ["receita"], "sort": "measure_desc", "span": 6, "horizontal": true },
+    { "id": "receita_regiao", "type": "bar", "title": "Receita por região", "field": "regiao", "measures": ["receita", "lucro"], "sort": "measure_desc", "span": 6 },
+    { "id": "top_produtos", "type": "table", "title": "Top produtos", "fields": ["produto", "categoria"], "measures": ["receita", "quantidade", "margem"], "limit": 10, "span": 7 },
+    { "id": "top_lojas", "type": "table", "title": "Top lojas", "fields": ["loja", "regiao"], "measures": ["receita", "ticket_medio"], "limit": 10, "span": 5 }
+  ]
+}
