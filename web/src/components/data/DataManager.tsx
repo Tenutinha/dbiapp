@@ -4,6 +4,7 @@ import { formatBytes } from "@/lib/format";
 import { requireTemplate } from "@/lib/services/datasets";
 import { fiscalImporter, listFiscalPeriods, type FiscalPeriod } from "@/lib/services/fiscal";
 import { storageFolderSuggestions } from "@/lib/services/storage-import";
+import { CLIENTS_DIR } from "@/lib/storage-keys";
 import { DataConnector } from "./connector/DataConnector";
 import type { ConnectorTable } from "./connector/types";
 import { FiscalImporter } from "./FiscalImporter";
@@ -45,9 +46,12 @@ export async function DataManager({ access }: { access: InstanceAccess }) {
   const canUpload = access.actions.has("manageData");
   const fiscal = fiscalImporter(access);
   const periods = fiscal && canUpload ? await fiscalPeriods(access) : [];
-  // Prepared folder named after the dashboard (eleicoes-presidente → preparado/presidente), else the first one.
+  // Prepared folder named after the dashboard (eleicoes-presidente → preparado/presidente); else the
+  // client's own folder (clientes/<cliente>) for a client's dashboard; else the first prepared folder.
   const words = template.id.split("-");
-  const startFolder = suggestions.find((f) => words.some((w) => f.split("/").pop() === w)) ?? suggestions[0] ?? "";
+  const startFolder = suggestions.find((f) => words.some((w) => f.split("/").pop() === w))
+    ?? (access.client?.slug ? `${CLIENTS_DIR}/${access.client.slug}` : undefined)
+    ?? suggestions[0] ?? "";
 
   return (
     <div className="flex flex-col gap-6">

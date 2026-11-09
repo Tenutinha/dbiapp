@@ -40,6 +40,8 @@ export function useConnector(instanceId: string, initialFolder: string) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [links, setLinks] = useState<Link[]>([]);
+  /** Bumped to list the folder again (after storing files in it). */
+  const [version, setVersion] = useState(0);
 
   useEffect(() => {
     let alive = true;
@@ -65,7 +67,10 @@ export function useConnector(instanceId: string, initialFolder: string) {
     return () => {
       alive = false;
     };
-  }, [instanceId, folder]);
+  }, [instanceId, folder, version]);
+
+  /** Lists the open folder again (after the Upload step stored files in it). */
+  const reload = useCallback(() => setVersion((v) => v + 1), []);
 
   /** Wires a storage file to a table and checks its columns right away. */
   const connect = useCallback(async (file: string, table: string) => {
@@ -112,5 +117,5 @@ export function useConnector(instanceId: string, initialFolder: string) {
     finish(link, res);
   }, [instanceId, finish]);
 
-  return { folder, setFolder, data, loading, error, links, connect, disconnect, engage, upload };
+  return { folder, setFolder, data, loading, error, links, connect, disconnect, engage, upload, reload };
 }

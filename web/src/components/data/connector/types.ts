@@ -14,6 +14,8 @@ export interface ConnectorTable {
 export interface ConnectorFile {
   name: string;
   sizeBytes: number;
+  /** Data file that can be wired to a table (other files are only kept in the folder). */
+  engageable: boolean;
 }
 
 /**

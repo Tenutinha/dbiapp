@@ -114,6 +114,13 @@ export function gcsBucket(cfg: GcsConfig): RemoteBucket {
         throw new Error(`could not create upload URL: ${errMsg(e)}`);
       }
     },
+    async copy(fromKey, toKey) {
+      try {
+        await bucket.file(fromKey).copy(bucket.file(toKey), { preconditionOpts: { ifGenerationMatch: 0 } });
+      } catch (e) {
+        throw new Error(`storage copy failed for ${fromKey}: ${errMsg(e)}`);
+      }
+    },
     async createFolder(prefix) {
       try {
         // Zero-byte object ending in "/": what the Cloud Console itself creates for a folder.

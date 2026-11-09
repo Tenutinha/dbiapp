@@ -18,6 +18,12 @@ export async function listClients(orgId: string): Promise<ClientSummary[]> {
 
 export class DuplicateSlugError extends Error {}
 
+/** Current address of a client of this organization (null if it is not this organization's). */
+export async function findClientSlug(orgId: string, clientId: string): Promise<string | null> {
+  const [row] = await sql<{ slug: string }[]>`SELECT slug FROM org_clients WHERE id = ${clientId} AND organization_id = ${orgId}`;
+  return row?.slug ?? null;
+}
+
 export async function createClient(orgId: string, name: string, slug: string): Promise<void> {
   try {
     await sql`INSERT INTO org_clients (organization_id, name, slug) VALUES (${orgId}, ${name}, ${slug})`;

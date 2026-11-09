@@ -86,6 +86,74 @@ export const storage = {
     }
   },
 
+  /** Creates a client's folder (orgs/<org>/clientes/<cliente>/). Never throws, like createOrgFolder. */
+  async createClientFolder(orgSlug: string, clientSlug: string): Promise<void> {
+    try {
+      const folder = keys.clientFolder(orgSlug, clientSlug);
+      if (isRemote()) await bucket().createFolder(folder);
+      else await mkdir(path.resolve(env.workRoot, folder), { recursive: true });
+    } catch (err) {
+      console.error("[storage] could not create folder for client", orgSlug, clientSlug, err);
+    }
+  },
+
+  /** Every object under a prefix (all levels), as keys. */
+  async listAll(prefix: string): Promise<string[]> {
+    assertKey(prefix.replace(/\/$/, ""));
+    const out: string[] = [];
+    const walk = async (p: string): Promise<void> => {
+      if (isRemote()) {
+        const level = await bucket().list(p, 10_000);
+        out.push(...level.files.map((f) => f.key).filter((k) => !k.endsWith("/") && !k.endsWith(".emptyFolderPlaceholder")));
+        for (const f of level.folders) await walk(`${p}${f}/`);
+        return;
+      }
+      const dir = path.resolve(env.workRoot, ...p.split("/").filter(Boolean));
+      for (const e of await readdir(dir, { withFileTypes: true }).catch(() => [])) {
+        if (e.isDirectory()) await walk(`${p}${e.name}/`);
+        else if (!e.name.endsWith(".part")) out.push(`${p}${e.name}`);
+      }
+    };
+    await walk(prefix.endsWith("/") ? prefix : `${prefix}/`);
+    return out;
+  },
+
+  /**
+   * Moves every object of a folder to another folder (copy, then delete). Used when a client's address
+   * changes. Objects already present at the target are left alone (the source copy is kept then).
+   * Returns how many objects moved.
+   */
+  async moveFolder(fromPrefix: string, toPrefix: string): Promise<number> {
+    assertKey(fromPrefix.replace(/\/$/, ""));
+    assertKey(toPrefix.replace(/\/$/, ""));
+    const objects = await this.listAll(fromPrefix);
+    let moved = 0;
+    for (const key of objects) {
+      const target = `${toPrefix}${key.slice(fromPrefix.length)}`;
+      try {
+        if (isRemote()) await bucket().copy(key, target);
+        else {
+          await mkdir(path.dirname(workPath(target)), { recursive: true });
+          if (await exists(workPath(target))) throw new Error("target exists");
+          await rename(workPath(key), workPath(target));
+        }
+        if (isRemote()) await bucket().remove([key]);
+        await rm(workPath(key), { force: true }).catch(() => undefined);
+        moved += 1;
+      } catch (err) {
+        console.error("[storage] could not move", key, "to", target, err);
+      }
+    }
+    if (isRemote()) {
+      await bucket().createFolder(toPrefix).catch(() => undefined);
+      await bucket().remove([fromPrefix, `${fromPrefix}.emptyFolderPlaceholder`]);
+    } else if (moved === objects.length) {
+      // Only empty directories are left behind; never drop a file that failed to move.
+      await rm(path.resolve(env.workRoot, ...fromPrefix.split("/").filter(Boolean)), { recursive: true, force: true }).catch(() => undefined);
+    }
+    return moved;
+  },
+
   /** Local path to write a new object to before `commit`. */
   pathFor(key: string): string {
     return workPath(key);

@@ -5,8 +5,9 @@ import { z } from "zod";
 import { getOrgContext, orgActions, requireAction, type OrgContext } from "@/lib/access";
 import { AccessError } from "@/lib/auth";
 import {
-  countAdmins, createClient, DuplicateSlugError, grantAccess, listOrgPeople, renameClient, revokeClientRole, revokeOrgRole,
+  countAdmins, DuplicateSlugError, grantAccess, listOrgPeople, revokeClientRole, revokeOrgRole,
 } from "@/lib/data/organizations";
+import { createClientWithFolder, renameClientWithFolder } from "@/lib/services/client-folders";
 import { clientNameSchema } from "@/lib/client-name";
 import { CLIENT_ROLES, isValidSlug, ROLES, slugify } from "@/lib/permissions";
 
@@ -58,7 +59,7 @@ export async function renameClientAction(_prev: FormState, formData: FormData): 
     if (!isValidSlug(slug)) {
       return { ok: false, message: `Endereço "${slug}" inválido ou reservado. Use letras minúsculas, números e hífen.` };
     }
-    if (!(await renameClient(ctx.org.id, input.clientId, input.name, slug))) return { ok: false, message: "Cliente não encontrado." };
+    if (!(await renameClientWithFolder(ctx.org, input.clientId, input.name, slug))) return { ok: false, message: "Cliente não encontrado." };
     revalidatePath(`/${ctx.org.slug}`, "layout");
     return { ok: true, message: `Salvo: ${input.name} · /${ctx.org.slug}/${slug}` };
   } catch (err) {
@@ -77,7 +78,7 @@ export async function createClientAction(_prev: FormState, formData: FormData): 
     if (!isValidSlug(slug)) {
       return { ok: false, message: `Endereço "${slug}" inválido ou reservado. Use letras minúsculas, números e hífen.` };
     }
-    await createClient(ctx.org.id, input.name, slug);
+    await createClientWithFolder(ctx.org, input.name, slug);
     revalidatePath(`/${ctx.org.slug}`, "layout");
     return { ok: true, message: `Cliente criado: /${ctx.org.slug}/${slug}` };
   } catch (err) {
