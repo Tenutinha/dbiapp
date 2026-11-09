@@ -7,6 +7,8 @@
  * Uso (em web/, com o .env do ambiente de destino):
  *   node --env-file=<.env> --conditions=react-server --import tsx scripts/pbix/carregar-dashboard.ts \
  *     --template <template.json> --dados <pasta com <tabela>.parquet> --org <slug> [--cliente <slug>] [--nome "<nome>"]
+ * Só com --template (sem --org), apenas grava o template no catálogo como rascunho.
+ * Com --org e sem --dados, ativa o dashboard no espaço, vazio (os dados entram depois pela tela).
  */
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -19,8 +21,9 @@ import { templateSchema, type Template } from "../../src/lib/templates/schema";
 
 interface Args {
   template: string;
-  dados: string;
-  org: string;
+  dados?: string;
+  /** Sem organização, só grava o template no catálogo (rascunho). */
+  org?: string;
   cliente?: string;
   nome?: string;
 }
@@ -33,8 +36,8 @@ function parseArgs(argv: readonly string[]): Args {
   const template = get("--template");
   const dados = get("--dados");
   const org = get("--org");
-  if (!template || !dados || !org) {
-    throw new Error("uso: --template <arquivo> --dados <pasta> --org <slug> [--cliente <slug>] [--nome <nome>]");
+  if (!template) {
+    throw new Error("uso: --template <arquivo> [--org <slug> [--cliente <slug>] [--nome <nome>] [--dados <pasta>]]");
   }
   return { template, dados, org, cliente: get("--cliente"), nome: get("--nome") };
 }
@@ -43,7 +46,13 @@ interface Org { id: string; slug: string; name: string }
 interface Client { id: string; slug: string; name: string }
 interface Admin { id: string; email: string; name: string }
 
-async function loadTargets(a: Args): Promise<{ org: Org; client: Client | null; admin: Admin }> {
+async function loadAdmin(): Promise<Admin> {
+  const [admin] = await sql<Admin[]>`SELECT id, email, name FROM users WHERE is_platform_admin ORDER BY created_at LIMIT 1`;
+  if (!admin) throw new Error("nenhum admin da plataforma no banco");
+  return admin;
+}
+
+async function loadTargets(a: Args & { org: string }): Promise<{ org: Org; client: Client | null; admin: Admin }> {
   const [org] = await sql<Org[]>`SELECT id, slug, name FROM organizations WHERE slug = ${a.org}`;
   if (!org) throw new Error(`organização "${a.org}" não existe`);
   let client: Client | null = null;
@@ -52,9 +61,7 @@ async function loadTargets(a: Args): Promise<{ org: Org; client: Client | null; 
       SELECT id, slug, name FROM org_clients WHERE organization_id = ${org.id} AND slug = ${a.cliente}`;
     if (!client) throw new Error(`cliente "${a.cliente}" não existe na organização ${org.slug}`);
   }
-  const [admin] = await sql<Admin[]>`SELECT id, email, name FROM users WHERE is_platform_admin ORDER BY created_at LIMIT 1`;
-  if (!admin) throw new Error("nenhum admin da plataforma no banco");
-  return { org, client, admin };
+  return { org, client, admin: await loadAdmin() };
 }
 
 /**
@@ -91,11 +98,20 @@ async function ensureInstance(org: Org, client: Client | null, t: Template, name
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const t = templateSchema.parse(JSON.parse(await readFile(args.template, "utf8")));
-  const { org, client, admin } = await loadTargets(args);
+  if (!args.org) {
+    await registerTemplate(t, (await loadAdmin()).id);
+    return;
+  }
+  const { org, client, admin } = await loadTargets({ ...args, org: args.org });
   const name = args.nome ?? t.name;
 
   await registerTemplate(t, admin.id);
   const instanceId = await ensureInstance(org, client, t, name);
+  if (!args.dados) {
+    console.log(`ativado sem dados${client ? ` no espaço ${client.name}` : ""}: /${org.slug}/d/${instanceId}/dados`);
+    return;
+  }
+  const dados = args.dados;
   const [inst] = await sql<{ active_version_id: string | null }[]>`
     SELECT active_version_id FROM dashboard_instances WHERE id = ${instanceId}`;
   const access = {
@@ -111,7 +127,7 @@ async function main(): Promise<void> {
   } as unknown as InstanceAccess; // só os campos que uploadTable/publishDraft usam
 
   for (const table of t.tables) {
-    const bytes = await readFile(path.join(args.dados, `${table.name}.parquet`));
+    const bytes = await readFile(path.join(dados, `${table.name}.parquet`));
     const report = await uploadTable(access, table.name, new File([bytes], `${table.name}.parquet`));
     if (!report.ok) throw new Error(`${table.name}: ${JSON.stringify(report)}`);
     console.log(`dados: ${table.name}: ${report.rowCount.toLocaleString("pt-BR")} linhas`);
