@@ -88,3 +88,9 @@ Migrações desta etapa, **aplicadas no Supabase de produção em 2026-11-09**:
 
 O código lê os dois campos via `to_jsonb(...)`, então continua funcionando num banco sem as migrações
 (sem filtro / sem fundo); só salvar avisa que a migração falta. Para o banco local: `npm --prefix web run db:migrate`.
+
+**Conexão da produção com o banco:** na Vercel, o `DATABASE_URL` precisa usar o **pooler compartilhado** do
+Supabase (`aws-0-us-east-2.pooler.supabase.com:6543`, usuário `postgres.<ref>`). O host direto
+(`db.<ref>.supabase.co:5432`) só tem IPv6, que as funções da Vercel não alcançam — as páginas que consultam o
+banco ficavam carregando até o limite de 300 s (corrigido em 2026-11-09). O código reconhece a porta 6543 e
+ajusta a conexão (sem prepared statements, poucas conexões por instância) em `web/src/lib/db.ts`.
