@@ -30,7 +30,6 @@ export interface SpaceView {
 export async function loadSpace(org: OrgRef, client: ClientRef | null, membership: Membership): Promise<SpaceView> {
   const actions = allowedActions(membership, { clientId: client?.id ?? null });
   const orgScope = allowedActions(membership, { clientId: null });
-  const canManage = actions.has("manageData");
   const canEdit = actions.has("admin");
 
   const clientId = client?.id ?? null;
@@ -49,7 +48,8 @@ export async function loadSpace(org: OrgRef, client: ClientRef | null, membershi
     isPlatformAdmin: membership.platformAdmin === true,
     theme: branding.theme,
     logoUrl: branding.logoUrl,
-    toc: buildToc(layout.sections, layout.dashboards, { includeUnpublished: canManage, includeEmptySections: false }),
+    // The viewing screen lists only what can be viewed; data work lives in the administration.
+    toc: buildToc(layout.sections, layout.dashboards, { includeUnpublished: false, includeEmptySections: false }),
     editorToc: canEdit
       ? buildToc(layout.sections, layout.dashboards, { includeUnpublished: true, includeEmptySections: true })
       : null,

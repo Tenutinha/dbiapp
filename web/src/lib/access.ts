@@ -44,27 +44,42 @@ export interface InstanceAccess extends OrgContext {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const notFound = (): AccessError => new AccessError(404, "Não encontrado.");
 
+interface MembershipRow {
+  orgRole: Role | null;
+  clientRoles: Record<string, ClientRole> | null;
+}
+
+/**
+ * The user's staff role and client roles in an organization, as SQL columns. Kept in one
+ * statement: every round trip to the database costs ~200 ms from outside its region.
+ */
+const membershipColumns = (userId: string, orgIdColumn: ReturnType<typeof sql>) => sql`
+  (SELECT m.role FROM organization_members m
+   WHERE m.organization_id = ${orgIdColumn} AND m.user_id = ${userId}) AS "orgRole",
+  (SELECT jsonb_object_agg(cm.client_id, cm.role)
+   FROM client_members cm JOIN org_clients c ON c.id = cm.client_id
+   WHERE cm.user_id = ${userId} AND c.organization_id = ${orgIdColumn}) AS "clientRoles"`;
+
+const toMembership = (row: MembershipRow, platformAdmin: boolean): Membership => ({
+  orgRole: row.orgRole ?? null,
+  clientRoles: { ...(row.clientRoles ?? {}) },
+  platformAdmin,
+});
+
 const loadMembership = cache(async (userId: string, orgId: string, platformAdmin: boolean): Promise<Membership> => {
-  const [staff] = await sql<{ role: Role }[]>`
-    SELECT role FROM organization_members WHERE organization_id = ${orgId} AND user_id = ${userId}`;
-  const clients = await sql<{ clientId: string; role: ClientRole }[]>`
-    SELECT cm.client_id AS "clientId", cm.role
-    FROM client_members cm JOIN org_clients c ON c.id = cm.client_id
-    WHERE cm.user_id = ${userId} AND c.organization_id = ${orgId}`;
-  return {
-    orgRole: staff?.role ?? null,
-    clientRoles: Object.fromEntries(clients.map((c) => [c.clientId, c.role])),
-    platformAdmin,
-  };
+  const [row] = await sql<MembershipRow[]>`SELECT ${membershipColumns(userId, sql`${orgId}::uuid`)}`;
+  return toMembership(row, platformAdmin);
 });
 
 export const getOrgContext = cache(async (orgSlug: string): Promise<OrgContext> => {
   const user = await getCurrentUser();
-  const [org] = await sql<OrgRef[]>`SELECT id, slug, name FROM organizations WHERE slug = ${orgSlug}`;
-  if (!org) throw notFound();
-  const membership = await loadMembership(user.id, org.id, user.isPlatformAdmin);
+  const [row] = await sql<(OrgRef & MembershipRow)[]>`
+    SELECT o.id, o.slug, o.name, ${membershipColumns(user.id, sql`o.id`)}
+    FROM organizations o WHERE o.slug = ${orgSlug}`;
+  if (!row) throw notFound();
+  const membership = toMembership(row, user.isPlatformAdmin);
   if (!isMember(membership)) throw notFound();
-  return { user, org, membership };
+  return { user, org: { id: row.id, slug: row.slug, name: row.name }, membership };
 });
 
 export const getClientContext = cache(async (orgSlug: string, clientSlug: string): Promise<ClientContext> => {
@@ -136,7 +151,7 @@ export async function requireInstance(instanceId: string, action: Action, orgSlu
     JOIN organizations o ON o.id = i.organization_id
     LEFT JOIN org_clients c ON c.id = i.client_id
     LEFT JOIN dataset_versions v ON v.id = i.active_version_id
-    WHERE i.id = ${instanceId}`;
+    WHERE i.id = ${instanceId} AND i.archived_at IS NULL`;
   if (!row || (orgSlug !== undefined && row.orgSlug !== orgSlug)) throw notFound();
 
   const membership = await loadMembership(user.id, row.orgId, user.isPlatformAdmin);

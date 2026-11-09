@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // A second local dev server (e.g. with local storage) needs its own build folder.
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   // Native module: must stay a plain Node require, never bundled.
   serverExternalPackages: ["@duckdb/node-api"],
   poweredByHeader: false,
@@ -8,6 +10,14 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: { "/**": ["./templates/**/*"] },
   // Logo uploads (≤ 1 MB) go through server actions.
   experimental: { serverActions: { bodySizeLimit: "2mb" } },
+  // The showcase and the platform panel now live on the home page; keep old links working.
+  async redirects() {
+    return [
+      { source: "/vitrine", destination: "/#vitrine", permanent: false },
+      { source: "/plataforma", destination: "/", permanent: false },
+      { source: "/plataforma/catalogo", destination: "/#vitrine", permanent: false },
+    ];
+  },
   async headers() {
     return [
       {

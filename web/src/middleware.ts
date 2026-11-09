@@ -21,7 +21,9 @@ export async function middleware(request: NextRequest) {
       },
     },
   });
-  await supabase.auth.getUser();
+  // Refreshes an expired session (writing the new cookies) and verifies the JWT locally against
+  // the project's signing keys — no round trip to Supabase Auth on every navigation.
+  await supabase.auth.getClaims();
   return response;
 }
 

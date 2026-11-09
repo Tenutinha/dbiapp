@@ -22,6 +22,8 @@ export interface BrandingInput {
   secondaryColor: string | null;
   sidebarColor: string | null;
   appearance: Appearance | null;
+  /** Background of the dashboard area (behind the cards). Null = the appearance's own background. */
+  backgroundColor: string | null;
 }
 
 export const brandingInputSchema = z.object({
@@ -29,6 +31,7 @@ export const brandingInputSchema = z.object({
   secondaryColor: hex.nullable(),
   sidebarColor: hex.nullable(),
   appearance: z.enum(APPEARANCES).nullable(),
+  backgroundColor: hex.nullable().default(null),
 });
 
 export interface Theme {
@@ -36,6 +39,8 @@ export interface Theme {
   secondaryColor: string;
   sidebarColor: string;
   appearance: Appearance;
+  /** Null = the light or dark surfaces of `appearance`; set = surfaces derived from this colour. */
+  backgroundColor: string | null;
 }
 
 export const DEFAULT_THEME: Theme = {
@@ -43,9 +48,12 @@ export const DEFAULT_THEME: Theme = {
   secondaryColor: "#22d3ee",
   sidebarColor: "#f6f5f1",
   appearance: "dark",
+  backgroundColor: null,
 };
 
-export const EMPTY_BRANDING: BrandingInput = { primaryColor: null, secondaryColor: null, sidebarColor: null, appearance: null };
+export const EMPTY_BRANDING: BrandingInput = {
+  primaryColor: null, secondaryColor: null, sidebarColor: null, appearance: null, backgroundColor: null,
+};
 
 /** Most specific wins: client → organization → platform default. */
 export function resolveTheme(...layers: readonly (BrandingInput | null | undefined)[]): Theme {
@@ -61,6 +69,7 @@ export function resolveTheme(...layers: readonly (BrandingInput | null | undefin
     secondaryColor: pick("secondaryColor"),
     sidebarColor: pick("sidebarColor"),
     appearance: pick("appearance"),
+    backgroundColor: pick("backgroundColor"),
   };
 }
 
@@ -138,11 +147,44 @@ const SURFACES: Record<Appearance, Record<string, string>> = {
   },
 };
 
+/** Below this luminance a chosen background counts as dark (cards get lighter, text light). */
+const DARK_BACKGROUND = 0.18;
+
+/** Light or dark, as the browser should treat the dashboard area: from the chosen background when there is one. */
+export function effectiveAppearance(theme: Theme): Appearance {
+  if (!theme.backgroundColor) return theme.appearance;
+  return luminance(theme.backgroundColor) < DARK_BACKGROUND ? "dark" : "light";
+}
+
+/**
+ * Surfaces derived from a chosen dashboard background: cards a bit lighter on a dark background and
+ * almost white on a light one; text is the colour that reads best on both the background and the cards.
+ */
+function surfacesFrom(bg: string): Record<string, string> {
+  const dark = luminance(bg) < DARK_BACKGROUND;
+  const card = dark ? mix(bg, "#ffffff", 0.07) : mix(bg, "#ffffff", 0.7);
+  const card2 = dark ? mix(bg, "#ffffff", 0.11) : mix(bg, "#ffffff", 0.85);
+  const text = ["#17171a", "#e8ecf5", "#000000", "#ffffff"].reduce((best, c) =>
+    Math.min(contrastRatio(bg, c), contrastRatio(card, c)) > Math.min(contrastRatio(bg, best), contrastRatio(card, best)) ? c : best,
+  );
+  return {
+    "--color-bg": bg,
+    "--color-bg-2": mix(bg, text, 0.04),
+    "--color-card": card,
+    "--color-card-2": card2,
+    "--color-line": mix(card, text, 0.16),
+    "--color-text": text,
+    "--color-muted": mix(text, card, 0.4),
+    "--chart-grid": mix(card, text, 0.08),
+    "--chart-axis": mix(card, text, 0.2),
+  };
+}
+
 /** All custom properties a themed subtree needs. Values are validated hex, safe for inline styles. */
 export function themeCssVars(theme: Theme): Record<string, string> {
   const ink = readableOn(theme.sidebarColor);
   return {
-    ...SURFACES[theme.appearance],
+    ...(theme.backgroundColor ? surfacesFrom(theme.backgroundColor) : SURFACES[theme.appearance]),
     "--color-brand": theme.primaryColor,
     "--color-brand-2": theme.secondaryColor,
     "--color-on-brand": readableOn(theme.primaryColor),

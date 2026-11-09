@@ -1,20 +1,29 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { createOrganizationAction, type PlatformFormState } from "@/app/plataforma/actions";
 import { slugify } from "@/lib/permissions";
 
 const INITIAL: PlatformFormState = { ok: false, message: "" };
 const INPUT = "w-full rounded-lg border border-line bg-bg px-3 py-2 text-sm outline-none focus:border-brand";
 
-export function CreateOrgForm() {
+interface CreateOrgFormProps {
+  /** Called after the organization is created (e.g. to close a modal). */
+  onCreated?: () => void;
+}
+
+export function CreateOrgForm({ onCreated }: CreateOrgFormProps = {}) {
   const [state, action, pending] = useActionState(createOrganizationAction, INITIAL);
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
+  const onCreatedRef = useRef(onCreated);
+  onCreatedRef.current = onCreated;
+  // Runs once per server response (state is a new object each submit).
   useEffect(() => {
     if (state.ok) {
       setName("");
       setSlug("");
+      onCreatedRef.current?.();
     }
   }, [state]);
 

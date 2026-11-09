@@ -51,6 +51,16 @@ async function userByEmail(email: string): Promise<CurrentUser | null> {
  */
 async function supabaseUser(): Promise<CurrentUser> {
   const supabase = await supabaseServer();
+  // Fast path: verifies the session JWT locally against the project's signing keys (no round
+  // trip to Supabase Auth). Middleware already refreshed the session for this request.
+  const claims = await supabase.auth.getClaims();
+  const claimedEmail = claims.data?.claims.email;
+  if (claims.error || typeof claimedEmail !== "string" || !claimedEmail) throw NOT_SIGNED_IN();
+  const known = await userByEmail(claimedEmail);
+  if (known) return known;
+
+  // Not provisioned yet (first visit after a self-service signup): ask Supabase Auth for the
+  // full user, which carries the signup metadata and the e-mail confirmation date.
   const { data, error } = await supabase.auth.getUser();
   if (error || !data.user?.email) throw NOT_SIGNED_IN();
   const user = await userByEmail(data.user.email);

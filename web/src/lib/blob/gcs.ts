@@ -51,6 +51,33 @@ export function gcsBucket(cfg: GcsConfig): RemoteBucket {
   const bucket = new Storage(options(cfg)).bucket(cfg.bucket);
 
   return {
+    async list(prefix, limit) {
+      try {
+        const [files, nextQuery, response] = await bucket.getFiles({
+          prefix,
+          delimiter: "/",
+          autoPaginate: false,
+          maxResults: limit,
+        });
+        const prefixes = ((response as { prefixes?: string[] } | undefined)?.prefixes ?? []).map((p) =>
+          p.slice(prefix.length).replace(/\/$/, ""),
+        );
+        return {
+          folders: prefixes.filter((p) => p !== ""),
+          files: files
+            .filter((f) => f.name !== prefix) // the folder's own marker object
+            .map((f) => ({
+              key: f.name,
+              name: f.name.slice(prefix.length),
+              sizeBytes: Number(f.metadata.size ?? 0),
+              updatedAt: f.metadata.updated ? new Date(f.metadata.updated) : null,
+            })),
+          truncated: Boolean(nextQuery),
+        };
+      } catch (e) {
+        throw new Error(`storage list failed for ${prefix}: ${errMsg(e)}`);
+      }
+    },
     async upload(key, body, contentType) {
       try {
         // ifGenerationMatch 0 = only create, never overwrite (keys are immutable).

@@ -11,7 +11,7 @@ export interface ClientSummary extends ClientRef {
 export async function listClients(orgId: string): Promise<ClientSummary[]> {
   return sql<ClientSummary[]>`
     SELECT c.id, c.slug, c.name,
-      (SELECT COUNT(*)::int FROM dashboard_instances i WHERE i.client_id = c.id) AS dashboards,
+      (SELECT COUNT(*)::int FROM dashboard_instances i WHERE i.client_id = c.id AND i.archived_at IS NULL) AS dashboards,
       (SELECT COUNT(*)::int FROM client_members m WHERE m.client_id = c.id) AS users
     FROM org_clients c WHERE c.organization_id = ${orgId} ORDER BY c.name`;
 }

@@ -1,4 +1,4 @@
-import { themeCssVars, type Theme } from "@/lib/theme/theme";
+import { effectiveAppearance, themeCssVars, type Theme } from "@/lib/theme/theme";
 
 interface ThemeScopeProps {
   theme: Theme;
@@ -11,7 +11,7 @@ interface ThemeScopeProps {
  * Values come from themeCssVars (validated hex only), so inline styles are safe.
  */
 export function ThemeScope({ theme, className = "", children }: ThemeScopeProps) {
-  const style = { ...themeCssVars(theme), colorScheme: theme.appearance } as React.CSSProperties;
+  const style = { ...themeCssVars(theme), colorScheme: effectiveAppearance(theme) } as React.CSSProperties;
   return (
     <div style={style} className={`min-h-screen bg-bg text-text ${className}`}>
       {children}

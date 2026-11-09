@@ -6,6 +6,7 @@ import { VitrineFrame } from "@/components/vitrine/VitrineFrame";
 import { ORIGIN_LABEL } from "@/lib/templates/labels";
 import { getCatalogEntry } from "@/lib/templates/registry";
 import type { Template } from "@/lib/templates/schema";
+import { isVitrineTemplate } from "@/lib/vitrine";
 import { getVitrineViewer } from "@/lib/vitrine-server";
 
 export const dynamic = "force-dynamic";
@@ -16,14 +17,16 @@ interface Props {
 
 const VALID_ID = /^[a-z0-9-]{1,80}$/;
 
-const VISUAL_LABEL = { kpi: "Indicador", bar: "Barras", line: "Linha", donut: "Rosca", table: "Tabela" } as const;
+const VISUAL_LABEL = {
+  kpi: "Indicador", bar: "Barras", line: "Linha", donut: "Rosca", table: "Tabela", map: "Mapa", text: "Texto",
+} as const;
 const TYPE_LABEL = { integer: "inteiro", decimal: "decimal", text: "texto", date: "data", timestamp: "data e hora", boolean: "sim/não" } as const;
 
 /** Only published templates are shown publicly — drafts and archived ones 404. */
 async function loadPublished(id: string): Promise<Template> {
   if (!VALID_ID.test(id)) notFound();
   const entry = await getCatalogEntry(id);
-  if (!entry || entry.status !== "published") notFound();
+  if (!entry || entry.status !== "published" || !isVitrineTemplate(entry.template)) notFound();
   return entry.template;
 }
 
@@ -40,7 +43,7 @@ export default async function VitrineDetailPage({ params }: Props) {
   return (
     <VitrineFrame viewer={viewer}>
       <PageHeader
-        crumbs={[{ label: "Vitrine", href: "/vitrine" }, { label: template.area }]}
+        crumbs={[{ label: "Vitrine", href: "/#vitrine" }, { label: template.area }]}
         eyebrow={`${ORIGIN_LABEL[template.origin]} · ${template.area}`}
         title={template.name}
         subtitle={template.description}
@@ -62,7 +65,7 @@ export default async function VitrineDetailPage({ params }: Props) {
           <Section title="Indicadores calculados">
             <div className="flex flex-wrap gap-1.5">
               {template.measures.map((m) => (
-                <span key={m.id} className="rounded-md bg-white/5 px-2 py-1 text-xs">{m.label}</span>
+                <span key={m.id} className="rounded-md bg-text/5 px-2 py-1 text-xs">{m.label}</span>
               ))}
             </div>
           </Section>

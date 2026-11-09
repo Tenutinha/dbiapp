@@ -45,7 +45,6 @@ export async function createOrganizationAction(_prev: PlatformFormState, formDat
       slug,
       admin: input.adminEmail && input.adminName ? { email: input.adminEmail, name: input.adminName } : null,
     });
-    revalidatePath("/plataforma");
     revalidatePath("/");
     return { ok: true, message: `Organização criada: /${slug}` };
   } catch (err) {

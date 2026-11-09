@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { supabaseAuthEnabled } from "@/lib/auth";
 import { SignOutButton } from "./SignOutButton";
+import { ThemeToggle } from "./ThemeToggle";
 
 export function Logo() {
   return (
@@ -40,19 +41,20 @@ export function AppHeader({ org, isAdmin, userName }: AppHeaderProps) {
         </div>
         <nav className="flex shrink-0 items-center gap-1 text-sm">
           {org && isAdmin && (
-            <Link href={`/${org.slug}/admin`} className="rounded-lg px-3 py-1.5 text-muted hover:bg-white/5 hover:text-text">
+            <Link href={`/${org.slug}/admin`} className="rounded-lg px-3 py-1.5 text-muted hover:bg-text/5 hover:text-text">
               Administração
             </Link>
           )}
+          <ThemeToggle className="grid size-8 place-items-center rounded-lg text-muted hover:bg-text/5 hover:text-text" />
           {userName && (
             <span className="hidden rounded-full border border-line px-3 py-1 text-xs text-muted sm:inline">{userName}</span>
           )}
           {userName && supabaseAuthEnabled() && (
-            <Link href="/entrar/nova-senha" className="rounded-lg px-3 py-1.5 text-muted hover:bg-white/5 hover:text-text">
+            <Link href="/entrar/nova-senha" className="rounded-lg px-3 py-1.5 text-muted hover:bg-text/5 hover:text-text">
               Trocar senha
             </Link>
           )}
-          {userName && <SignOutButton className="rounded-lg px-3 py-1.5 text-muted hover:bg-white/5 hover:text-text" />}
+          {userName && <SignOutButton className="rounded-lg px-3 py-1.5 text-muted hover:bg-text/5 hover:text-text" />}
         </nav>
       </div>
     </header>

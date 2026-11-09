@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { Logo } from "@/components/AppShell";
+import { VitrineSection } from "@/components/vitrine/VitrineSection";
+import type { VitrineItem } from "@/lib/vitrine";
 import { CONTACT_EMAIL, CONTACT_HREF, FAQ, NAV_LINKS } from "./content";
 import { Hero } from "./Hero";
 import { Engine, ForClients, HowItWorks, SectionHead, Strip } from "./Sections";
@@ -86,13 +88,19 @@ function FinalCta() {
   );
 }
 
-export function LandingPage() {
+interface LandingPageProps {
+  /** Published showcase dashboards, shown right after the hero. */
+  vitrine: VitrineItem[];
+}
+
+export function LandingPage({ vitrine }: LandingPageProps) {
   return (
     <div id="topo" className="landing overflow-x-clip">
       <Nav />
       <main>
         <Hero />
         <Strip />
+        <VitrineSection items={vitrine} className="mx-auto max-w-6xl px-4 py-24 sm:px-6" />
         <HowItWorks />
         <ForClients />
         <Engine />

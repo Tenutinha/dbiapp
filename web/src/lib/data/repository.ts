@@ -199,6 +199,7 @@ export async function resolveShareToken(token: string): Promise<SharedInstance |
     JOIN dashboard_instances i ON i.id = s.instance_id
     JOIN organizations o ON o.id = i.organization_id
     LEFT JOIN dataset_versions v ON v.id = i.active_version_id
-    WHERE s.token = ${token} AND s.revoked_at IS NULL AND (s.expires_at IS NULL OR s.expires_at > now())`;
+    WHERE s.token = ${token} AND s.revoked_at IS NULL AND (s.expires_at IS NULL OR s.expires_at > now())
+      AND i.archived_at IS NULL`;
   return row ?? null;
 }

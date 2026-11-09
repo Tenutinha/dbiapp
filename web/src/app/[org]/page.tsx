@@ -12,18 +12,21 @@ export const dynamic = "force-dynamic";
 
 interface Props {
   params: Promise<{ org: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return { title: (await params).org };
 }
 
-export default async function OrgHomePage({ params }: Props) {
+export default async function OrgHomePage({ params, searchParams }: Props) {
   const ctx = await guard(getOrgContext((await params).org));
   if (ctx === "forbidden") return <Forbidden />;
 
   if (orgActions(ctx).has("view")) {
-    return <SpaceHome org={ctx.org} client={null} membership={ctx.membership} user={ctx.user} />;
+    return (
+      <SpaceHome org={ctx.org} client={null} membership={ctx.membership} user={ctx.user} searchParams={await searchParams} />
+    );
   }
 
   // Client-only users: straight to their client, or a chooser when they have several.

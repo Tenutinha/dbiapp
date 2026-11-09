@@ -7,7 +7,7 @@ import { mkdir, rename, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import type { DuckDBConnection } from "@duckdb/node-api";
 import { queryRows, quotePath, withConnection } from "../duck/engine";
-import type { TemplateTable } from "../templates/schema";
+import { sortColumns, type TemplateTable } from "../templates/schema";
 import { castExpr, castSelect, matchColumns, quoteIdent, type ColumnMapping, type SourceColumn } from "./contract";
 
 export type SourceFormat = "parquet" | "csv";
@@ -82,6 +82,11 @@ async function integrity(conn: DuckDBConnection, file: string, table: TemplateTa
  * `targetPath` must be unique per upload (the caller adds a random suffix), so concurrent
  * uploads never write the same file and a published version's file is never overwritten.
  */
+/** Only reads a file's columns (name + DuckDB type) — nothing is converted or written. */
+export async function describeSource(storageRoot: string, sourcePath: string, format: SourceFormat): Promise<SourceColumn[]> {
+  return withConnection(storageRoot, (conn) => describe(conn, reader(format, sourcePath)));
+}
+
 export async function ingestTable(input: IngestInput): Promise<TableReport> {
   const { table, targetPath } = input;
   const fail = (errors: string[], warnings: string[] = []): TableReport => ({
@@ -106,7 +111,8 @@ export async function ingestTable(input: IngestInput): Promise<TableReport> {
       if (castErrors.length > 0) return fail(castErrors, match.warnings);
 
       await mkdir(path.dirname(targetPath), { recursive: true });
-      const order = table.sortBy ? ` ORDER BY ${table.sortBy}` : "";
+      const sortBy = sortColumns(table);
+      const order = sortBy.length > 0 ? ` ORDER BY ${sortBy.join(", ")}` : "";
       await conn.run(
         `COPY (SELECT ${castSelect(match.mapping)} FROM ${src}${order}) TO ${quotePath(tmpPath)} ` +
           `(FORMAT parquet, COMPRESSION zstd, ROW_GROUP_SIZE 122880)`,
@@ -139,7 +145,10 @@ export interface OrphanReport {
   orphans: number;
 }
 
-/** Fact rows whose foreign key has no match in the dimension (shown as "(sem cadastro)"). */
+/**
+ * Fact rows whose foreign key has no match in the dimension (shown as "(sem cadastro)").
+ * Empty keys are not orphans: an optional key column means "not related" (e.g. blank votes).
+ */
 export async function checkRelationships(
   storageRoot: string,
   relationships: readonly { from: { table: string; column: string }; to: { table: string; column: string } }[],
@@ -151,7 +160,8 @@ export async function checkRelationships(
       const [{ n }] = await queryRows(
         conn,
         `SELECT COUNT(*) AS n FROM read_parquet(${quotePath(files[r.from.table])}) f
-         ANTI JOIN read_parquet(${quotePath(files[r.to.table])}) d ON f.${r.from.column} = d.${r.to.column}`,
+         ANTI JOIN read_parquet(${quotePath(files[r.to.table])}) d ON f.${r.from.column} = d.${r.to.column}
+         WHERE f.${r.from.column} IS NOT NULL`,
       );
       reports.push({ relationship: `${r.from.table}.${r.from.column} → ${r.to.table}`, orphans: Number(n) });
     }

@@ -63,7 +63,7 @@ export default async function PlatformTemplatePage({ params }: { params: Promise
   return (
     <AppShell userName={user.name}>
       <PageHeader
-        crumbs={[{ label: "Plataforma", href: "/plataforma" }, { label: "Catálogo", href: "/plataforma/catalogo" }]}
+        crumbs={[{ label: "Início", href: "/" }, { label: "Vitrine", href: "/#vitrine" }]}
         eyebrow={`${template.area} · ${ORIGIN_LABEL[template.origin]} · v${template.version}${builtIn ? " · embutido" : ""}`}
         title={template.name}
         subtitle={template.description}
@@ -111,7 +111,7 @@ export default async function PlatformTemplatePage({ params }: { params: Promise
         )}
       </div>
       <p className="mt-6 text-xs text-muted">
-        <Link href="/plataforma/catalogo" className="hover:text-text">← Voltar ao catálogo</Link>
+        <Link href="/#vitrine" className="hover:text-text">← Voltar à vitrine</Link>
       </p>
     </AppShell>
   );

@@ -26,12 +26,15 @@ const toInput = (r: BrandingRow | undefined): BrandingInput => ({
   secondaryColor: r?.secondaryColor ?? null,
   sidebarColor: r?.sidebarColor ?? null,
   appearance: (r?.appearance ?? null) as Appearance | null,
+  backgroundColor: r?.backgroundColor ?? null,
 });
 
 async function rowsFor(orgId: string, clientId: string | null): Promise<BrandingRow[]> {
+  // background_color is read through to_jsonb so this still works before migration 011 (then: null).
   return sql<BrandingRow[]>`
     SELECT client_id AS "clientId", primary_color AS "primaryColor", secondary_color AS "secondaryColor",
-           sidebar_color AS "sidebarColor", appearance, logo_key AS "logoKey"
+           sidebar_color AS "sidebarColor", appearance, logo_key AS "logoKey",
+           to_jsonb(space_branding) ->> 'background_color' AS "backgroundColor"
     FROM space_branding
     WHERE organization_id = ${orgId}
       AND (client_id IS NULL ${clientId ? sql`OR client_id = ${clientId}` : sql``})`;
@@ -54,13 +57,29 @@ export async function getEffectiveBranding(orgId: string, clientId: string | nul
   };
 }
 
+/** The database has no background_color column yet (migration 011 missing). */
+export class BackgroundColorUnavailableError extends Error {}
+
 export async function saveSpaceColors(orgId: string, clientId: string | null, input: BrandingInput): Promise<void> {
-  await sql`
-    INSERT INTO space_branding (organization_id, client_id, primary_color, secondary_color, sidebar_color, appearance)
-    VALUES (${orgId}, ${clientId}, ${input.primaryColor}, ${input.secondaryColor}, ${input.sidebarColor}, ${input.appearance})
-    ON CONFLICT (organization_id, COALESCE(client_id, ${NIL}::uuid)) DO UPDATE SET
-      primary_color = EXCLUDED.primary_color, secondary_color = EXCLUDED.secondary_color,
-      sidebar_color = EXCLUDED.sidebar_color, appearance = EXCLUDED.appearance, updated_at = now()`;
+  try {
+    await sql`
+      INSERT INTO space_branding (organization_id, client_id, primary_color, secondary_color, sidebar_color, appearance, background_color)
+      VALUES (${orgId}, ${clientId}, ${input.primaryColor}, ${input.secondaryColor}, ${input.sidebarColor}, ${input.appearance}, ${input.backgroundColor})
+      ON CONFLICT (organization_id, COALESCE(client_id, ${NIL}::uuid)) DO UPDATE SET
+        primary_color = EXCLUDED.primary_color, secondary_color = EXCLUDED.secondary_color,
+        sidebar_color = EXCLUDED.sidebar_color, appearance = EXCLUDED.appearance,
+        background_color = EXCLUDED.background_color, updated_at = now()`;
+  } catch (err) {
+    // 42703 = undefined column: before migration 011, save the other colours and only refuse a background.
+    if ((err as { code?: string }).code !== "42703") throw err;
+    if (input.backgroundColor) throw new BackgroundColorUnavailableError();
+    await sql`
+      INSERT INTO space_branding (organization_id, client_id, primary_color, secondary_color, sidebar_color, appearance)
+      VALUES (${orgId}, ${clientId}, ${input.primaryColor}, ${input.secondaryColor}, ${input.sidebarColor}, ${input.appearance})
+      ON CONFLICT (organization_id, COALESCE(client_id, ${NIL}::uuid)) DO UPDATE SET
+        primary_color = EXCLUDED.primary_color, secondary_color = EXCLUDED.secondary_color,
+        sidebar_color = EXCLUDED.sidebar_color, appearance = EXCLUDED.appearance, updated_at = now()`;
+  }
 }
 
 /** Sets (or clears, with null) the space's logo. Returns the previous file path so it can be deleted. */

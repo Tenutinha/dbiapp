@@ -24,7 +24,7 @@ export default async function GuestPage({ params, searchParams }: Props) {
   if (!shared?.activeVersionId) notFound();
 
   const [{ template, data, totalRows }, branding] = await Promise.all([
-    loadDashboard(shared.templateId, shared.activeVersionId, await searchParams),
+    loadDashboard(shared.instanceId, shared.templateId, shared.activeVersionId, await searchParams),
     getEffectiveBranding(shared.orgId, shared.clientId),
   ]);
 

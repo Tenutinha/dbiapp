@@ -12,7 +12,9 @@ import {
   setStatus,
   TEMPLATE_STATUSES,
   updateDefinition,
+  type TemplateStatus,
 } from "@/lib/data/catalog";
+import type { Template } from "@/lib/templates/schema";
 import { breakingChanges, checkUpdate, MAX_TEMPLATE_BYTES, parseTemplateJson } from "@/lib/templates/catalog-rules";
 import { catalogReady, getCatalogEntry } from "@/lib/templates/registry";
 
@@ -53,31 +55,49 @@ function failure(err: unknown, json?: string): TemplateFormState {
 }
 
 function revalidateCatalog(id?: string): void {
-  revalidatePath("/plataforma/catalogo");
   if (id) revalidatePath(`/plataforma/catalogo/${id}`);
   revalidatePath("/", "layout");
 }
 
 export async function registerTemplateAction(_prev: TemplateFormState, formData: FormData): Promise<TemplateFormState> {
   let json = "";
-  let id: string;
   try {
     const user = await requirePlatformAdmin();
     json = await readSubmittedJson(formData);
     const parsed = parseTemplateJson(json);
-    if (!parsed.ok) return { ok: false, message: "O template tem problemas:", errors: parsed.errors, json };
+    if (!parsed.ok) return { ok: false, message: "O dashboard tem problemas:", errors: parsed.errors, json };
     const status = statusSchema.parse(formData.get("status") ?? "draft");
     await insertTemplate(parsed.template, status, user.id);
     console.info(`[catalog] template registered: ${parsed.template.id} v${parsed.template.version} (${status})`);
-    id = parsed.template.id;
+    revalidateCatalog(parsed.template.id);
+    return { ok: true, message: `Dashboard "${parsed.template.name}" cadastrado.` };
   } catch (err) {
     if (err instanceof DuplicateTemplateError) {
-      return { ok: false, message: `Já existe um dashboard com o id "${err.message}". Abra-o no catálogo para atualizar.`, json };
+      return { ok: false, message: `Já existe um dashboard com o id "${err.message}". Edite o existente pela vitrine.`, json };
     }
     return failure(err, json);
   }
-  revalidateCatalog(id);
-  redirect(`/plataforma/catalogo/${id}`);
+}
+
+/** What the edit form needs to open an existing dashboard. */
+export type TemplateForEdit =
+  | { ok: true; template: Template; builtIn: boolean; status: TemplateStatus; usage: number }
+  | { ok: false; message: string };
+
+export async function loadTemplateForEditAction(rawId: string): Promise<TemplateForEdit> {
+  try {
+    await requirePlatformAdmin();
+    const id = templateId.parse(rawId);
+    const entry = await getCatalogEntry(id);
+    if (!entry) return { ok: false, message: "Dashboard não encontrado." };
+    const usage = (await listCatalog()).find((r) => r.id === id)?.usage ?? 0;
+    return { ok: true, template: entry.template, builtIn: entry.builtIn, status: entry.status, usage };
+  } catch (err) {
+    if (err instanceof AccessError) return { ok: false, message: err.message };
+    if (err instanceof z.ZodError) return { ok: false, message: "Identificador inválido." };
+    console.error("[catalog] load for edit failed", err);
+    return { ok: false, message: "Não foi possível abrir o dashboard." };
+  }
 }
 
 export async function updateTemplateAction(_prev: TemplateFormState, formData: FormData): Promise<TemplateFormState> {
@@ -88,7 +108,6 @@ export async function updateTemplateAction(_prev: TemplateFormState, formData: F
     json = await readSubmittedJson(formData);
     const current = await getCatalogEntry(id);
     if (!current) return { ok: false, message: "Dashboard não encontrado.", json };
-    if (current.builtIn) return { ok: false, message: "Dashboards embutidos são atualizados pelo código (web/templates).", json };
 
     const parsed = parseTemplateJson(json);
     if (!parsed.ok) return { ok: false, message: "O template tem problemas:", errors: parsed.errors, json };
@@ -130,5 +149,5 @@ export async function deleteTemplateAction(formData: FormData): Promise<void> {
   if (!deleted) throw new AccessError(403, "Este dashboard está em uso ou é embutido — arquive em vez de excluir.");
   console.info(`[catalog] template deleted: ${id}`);
   revalidateCatalog();
-  redirect("/plataforma/catalogo");
+  redirect("/#vitrine");
 }
