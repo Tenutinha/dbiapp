@@ -90,6 +90,8 @@ export function defaultVisual(type: VisualType, id: string, title: string): Visu
       return { ...base, type, fields: [], measures: [], limit: 20 };
     case "map":
       return { ...base, type, geo: "uf", field: "", color: { mode: "scale", measure: "", scheme: "sequential" }, tooltip: [] };
+    case "rows":
+      return { ...base, type, columns: [], limit: 100 };
     case "text":
       return { ...base, type, body: "" };
   }
@@ -161,6 +163,7 @@ export function usedIds(t: Template): UsedIds {
         }
         v.tooltip.forEach((m) => measures.add(m));
         break;
+      case "rows":
       case "text":
         break;
     }

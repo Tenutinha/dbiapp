@@ -73,7 +73,17 @@ const measureSchema = z.object({
 });
 
 const span = z.number().int().min(1).max(12).default(12);
-const base = { id: ident, title: z.string(), span };
+const base = {
+  id: ident,
+  title: z.string(),
+  span,
+  /** Extra condition of this visual alone (e.g. "registros.registro = 'C100'"), on top of the screen filters. */
+  where: sqlExpr.optional(),
+  /** Screen filters this visual does not follow (e.g. reference records that have no month of their own). */
+  skipFilters: z.array(ident).optional(),
+  /** Leave the visual out of the page when it has no rows (e.g. a record type the files do not bring). */
+  hideEmpty: z.boolean().optional(),
+};
 
 const visualSchema = z.discriminatedUnion("type", [
   z.object({ ...base, type: z.literal("kpi"), measure: ident }),
@@ -130,6 +140,20 @@ const visualSchema = z.discriminatedUnion("type", [
     ]),
     /** Extra measures shown in the tooltip. */
     tooltip: z.array(ident).default([]),
+  }),
+  /**
+   * Plain listing of rows, not aggregated: the original data as it came (e.g. every field of a SPED
+   * record type). Columns carry their own label and expression instead of pointing to fields.
+   */
+  z.object({
+    ...base,
+    type: z.literal("rows"),
+    columns: z.array(z.object({ label: z.string().min(1).max(80), sql: sqlExpr })).min(1).max(80),
+    /** Expression the rows are ordered by, ascending (e.g. the line number in the file). */
+    orderBy: sqlExpr.optional(),
+    limit: z.number().int().min(1).max(1000).default(100),
+    /** More rows while a screen filter is in use (e.g. a short sample of every record; many rows of the chosen one). */
+    expand: z.object({ filter: ident, limit: z.number().int().min(1).max(5000) }).optional(),
   }),
   /** Static explanatory text (paragraphs separated by a blank line). No query. */
   z.object({

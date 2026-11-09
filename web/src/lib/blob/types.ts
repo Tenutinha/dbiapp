@@ -6,6 +6,8 @@ export interface RemoteBucket {
   list(prefix: string, limit: number): Promise<FolderListing>;
   upload(key: string, body: Uint8Array, contentType: string): Promise<void>;
   download(key: string): Promise<Uint8Array>;
+  /** The first `bytes` of an object (to identify a big file without fetching it whole). */
+  downloadHead(key: string, bytes: number): Promise<Uint8Array>;
   /** Best effort: logs and swallows errors (cleanup must not break the request). */
   remove(keys: readonly string[]): Promise<void>;
   /** URL the browser PUTs the file to, valid for a short time. */

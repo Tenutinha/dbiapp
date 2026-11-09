@@ -136,7 +136,7 @@ describe("ingest + dashboard pipeline", () => {
 
   it("cannot read files outside the storage root", async () => {
     const files = Object.fromEntries(t.tables.map((tb) => [tb.name, target(tb.name)]));
-    const outside = { ...files, dim_loja: path.join(os.tmpdir(), "elsewhere.parquet") };
+    const outside = { ...files, fato_vendas: path.join(os.tmpdir(), "elsewhere.parquet") };
     const result = await runDashboard(root, t, outside, {}).catch((e: Error) => e);
     const failed = result instanceof Error || result.visuals.every((v) => v.error);
     expect(failed).toBe(true);

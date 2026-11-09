@@ -59,6 +59,37 @@ function VisualBody({ template, result }: { template: Template; result: VisualRe
     }
     case "donut":
       return <Chart type="donut" fieldId={visual.field} measures={[measure(visual.measure)]} rows={rows} />;
+    case "rows":
+      return (
+        <div className="-mx-1 max-h-[28rem] overflow-auto">
+          <table className="w-full text-xs">
+            <thead className="sticky top-0 bg-card">
+              <tr className="border-b border-line text-left text-muted">
+                {visual.columns.map((c, i) => <th key={i} className="whitespace-nowrap px-1.5 py-2 font-medium">{c.label}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => (
+                <tr key={i} className="border-b border-line/50 last:border-0">
+                  {visual.columns.map((_, j) => (
+                    <td key={j} className="max-w-64 truncate whitespace-nowrap px-1.5 py-1.5 font-mono" title={String(r[`c${j}`] ?? "")}>
+                      {String(r[`c${j}`] ?? "")}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {rows.length >= visual.limit && (
+            <p className="px-1.5 py-2 text-[11px] text-muted">
+              Mostrando as primeiras {rows.length.toLocaleString("pt-BR")} linhas.{" "}
+              {visual.expand && rows.length < visual.expand.limit
+                ? `Escolha no filtro "${fieldLabel(visual.expand.filter)}" para ver até ${visual.expand.limit.toLocaleString("pt-BR")}.`
+                : "Use os filtros para chegar às demais."}
+            </p>
+          )}
+        </div>
+      );
     case "table": {
       const ms = visual.measures.map(measure);
       return (
@@ -96,7 +127,13 @@ interface VisualGridProps {
   results: VisualResult[];
 }
 
-function VisualGrid({ template, results }: VisualGridProps) {
+/** Visuals marked `hideEmpty` leave the page when they have no rows (and did not fail). */
+export function visibleResults(results: readonly VisualResult[]): VisualResult[] {
+  return results.filter((r) => !(r.visual.hideEmpty && r.rows.length === 0 && !r.error));
+}
+
+function VisualGrid({ template, results: all }: VisualGridProps) {
+  const results = visibleResults(all);
   if (results.length === 0) return null;
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-12">
@@ -119,7 +156,7 @@ export function DashboardView({ template, data, totalRows }: DashboardViewProps)
     <>
       <FilterBar filters={data.filters} />
       <VisualGrid template={template} results={loose} />
-      {sections.map((s) => (
+      {sections.filter((s) => s.results.length === 0 || visibleResults(s.results).length > 0).map((s) => (
         <section key={s.analysis.id} id={s.anchor} aria-labelledby={`${s.anchor}-titulo`} className="mt-14 scroll-mt-24 first:mt-0">
           <header className="mb-5 border-t border-line pt-6">
             {s.number !== null && <p className="font-mono text-xs tabular-nums text-muted">{String(s.number).padStart(2, "0")}</p>}

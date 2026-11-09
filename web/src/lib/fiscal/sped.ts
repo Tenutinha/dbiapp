@@ -12,17 +12,23 @@ export type SpedRecord = readonly string[];
 export type Cell = string | null;
 export type Row = Record<string, Cell>;
 
+/** One line of the file as a record, or null when it is not one (blank, signature block …). */
+export function parseLine(raw: string): SpedRecord | null {
+  const line = raw.trim();
+  if (!line.startsWith("|")) return null;
+  const fields = line.split("|").slice(1, line.endsWith("|") ? -1 : undefined);
+  return fields.length === 0 || fields[0] === "" ? null : fields;
+}
+
 /** Decodes the file (ISO-8859-1, as the SPED layouts require) and splits it into records. */
 export function readSped(bytes: Uint8Array): SpedRecord[] {
   const text = new TextDecoder("latin1").decode(bytes);
   const records: SpedRecord[] = [];
   for (const raw of text.split(/\r?\n/)) {
-    const line = raw.trim();
-    if (!line.startsWith("|")) continue;
-    // Signature block (after |9999|) is binary noise: stop there.
-    const fields = line.split("|").slice(1, -1);
-    if (fields.length === 0) continue;
+    const fields = parseLine(raw);
+    if (!fields) continue;
     records.push(fields);
+    // Signature block (after |9999|) is binary noise: stop there.
     if (fields[0] === "9999") break;
   }
   return records;

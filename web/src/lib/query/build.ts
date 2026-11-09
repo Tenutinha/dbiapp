@@ -38,7 +38,11 @@ function factTable(t: Template): string {
  * the same alias), so every measure, join and filter option only sees the kept rows. Filter values are
  * appended to `params`.
  */
-export function buildFrom(t: Template, files: TableFiles, factFilter: FactFilter = [], params: string[] = []): string {
+export function buildFrom(
+  t: Template, files: TableFiles, factFilter: FactFilter = [], params: string[] = [],
+  /** Which dimensions the query uses; the others are not joined (a LEFT JOIN on a unique key changes nothing). */
+  uses: (table: string) => boolean = () => true,
+): string {
   const fileFor = (table: string): string => {
     const file = files[table];
     if (!file) throw new Error(`missing file for table ${table}`);
@@ -47,7 +51,9 @@ export function buildFrom(t: Template, files: TableFiles, factFilter: FactFilter
   const fact = factTable(t);
   const where = factFilterSql(factFilter, params);
   const factSource = where ? `(SELECT * FROM ${fileFor(fact)} ${where})` : fileFor(fact);
-  const joins = t.relationships.map(
+  // Every table must have its file, used by this query or not: a dashboard is published whole.
+  for (const r of t.relationships) fileFor(r.to.table);
+  const joins = t.relationships.filter((r) => uses(r.to.table)).map(
     (r) =>
       `LEFT JOIN ${fileFor(r.to.table)} AS ${r.to.table} ON ${r.from.table}.${r.from.column} = ${r.to.table}.${r.to.column}`,
   );
@@ -61,10 +67,13 @@ function lookup<T extends { id: string }>(items: readonly T[], id: string, kind:
 }
 
 /** WHERE of the on-screen filters; `params` may already hold values ($n continues after them). */
-export function buildWhere(t: Template, filters: FilterSelection, excludeField?: string, params: string[] = []): BuiltQuery {
+export function buildWhere(
+  t: Template, filters: FilterSelection, excludeField?: string | readonly string[], params: string[] = [],
+): BuiltQuery {
   const clauses: string[] = [];
+  const excluded = excludeField === undefined ? [] : typeof excludeField === "string" ? [excludeField] : excludeField;
   for (const fieldId of t.filters) {
-    if (fieldId === excludeField) continue;
+    if (excluded.includes(fieldId)) continue;
     const values = (filters[fieldId] ?? []).slice(0, MAX_FILTER_VALUES);
     if (values.length === 0) continue;
     const field = lookup(t.fields, fieldId, "field");
@@ -96,7 +105,13 @@ function mapMeasures(visual: Extract<Visual, { type: "map" }>): string[] {
   return [...new Set([...ids, ...visual.tooltip])];
 }
 
-function selectFor(t: Template, visual: QueryVisual): { select: string[]; groupBy: string[]; tail: string } {
+/** Rows a listing shows: its limit, or the expanded one while its filter has a selection. */
+export function rowsLimit(visual: Extract<Visual, { type: "rows" }>, filters: FilterSelection): number {
+  const expanded = visual.expand && (filters[visual.expand.filter]?.length ?? 0) > 0;
+  return expanded && visual.expand ? visual.expand.limit : visual.limit;
+}
+
+function selectFor(t: Template, visual: QueryVisual, filters: FilterSelection): { select: string[]; groupBy: string[]; tail: string } {
   const field = (id: string): Field => lookup(t.fields, id, "field");
   const measure = (id: string): Measure => lookup(t.measures, id, "measure");
 
@@ -129,6 +144,13 @@ function selectFor(t: Template, visual: QueryVisual): { select: string[]; groupB
         tail: `ORDER BY ${visual.orderBy ?? visual.measures[0]} DESC NULLS LAST LIMIT ${visual.limit}`,
       };
     }
+    case "rows":
+      return {
+        // Listed as text, exactly as stored; columns are named by position (labels live in the template).
+        select: visual.columns.map((c, i) => `CAST((${c.sql}) AS VARCHAR) AS c${i}`),
+        groupBy: [],
+        tail: `${visual.orderBy ? `ORDER BY ${visual.orderBy} ASC ` : ""}LIMIT ${rowsLimit(visual, filters)}`,
+      };
     case "map": {
       const fs = [field(visual.field), ...(visual.labelField ? [field(visual.labelField)] : [])];
       return {
@@ -143,20 +165,27 @@ function selectFor(t: Template, visual: QueryVisual): { select: string[]; groupB
 export function buildVisualQuery(
   t: Template, files: TableFiles, visual: QueryVisual, filters: FilterSelection, factFilter: FactFilter = [],
 ): BuiltQuery {
-  const { select, groupBy, tail } = selectFor(t, visual);
+  const { select, groupBy, tail } = selectFor(t, visual, filters);
+  // Built apart first: the FROM only joins the dimensions the query mentions, and its parameters come first.
+  const where = buildWhere(t, filters, visual.skipFilters, []);
+  // The visual's own condition narrows the screen filters, never replaces them.
+  const whereSql = visual.where ? (where.sql ? `${where.sql} AND (${visual.where})` : `WHERE (${visual.where})`) : where.sql;
+  const mentioned = [...select, whereSql, tail].join("\n");
   const params: string[] = [];
-  const from = buildFrom(t, files, factFilter, params);
-  const where = buildWhere(t, filters, undefined, params);
+  const from = buildFrom(t, files, factFilter, params, (table) => new RegExp(`\\b${table}\\.`).test(mentioned));
+  const shift = params.length;
+  const shiftedWhere = shift === 0 ? whereSql : whereSql.replace(/\$(\d+)/g, (_, n: string) => `$${Number(n) + shift}`);
+  params.push(...where.params);
   const sql = [
     `SELECT ${select.join(", ")}`,
     from,
-    where.sql,
+    shiftedWhere,
     groupBy.length ? `GROUP BY ${groupBy.join(", ")}` : "",
     tail,
   ]
     .filter(Boolean)
     .join("\n");
-  return { sql, params: where.params };
+  return { sql, params };
 }
 
 /** Distinct values for a filter, honouring the *other* active filters (cross-filtering). */

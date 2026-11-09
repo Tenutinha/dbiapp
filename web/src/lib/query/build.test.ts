@@ -19,11 +19,42 @@ describe("buildWhere", () => {
 });
 
 describe("buildVisualQuery", () => {
-  it("joins every dimension to the fact table", () => {
-    const q = buildVisualQuery(t, files, visual("k_receita"), {});
-    expect(q.sql).toContain("FROM read_parquet('/data/fato_vendas.parquet') AS fato_vendas");
-    expect(q.sql).toContain("LEFT JOIN read_parquet('/data/dim_loja.parquet') AS dim_loja ON fato_vendas.id_loja = dim_loja.id_loja");
+  it("joins only the dimensions the query uses", () => {
+    const kpi = buildVisualQuery(t, files, visual("k_receita"), {});
+    expect(kpi.sql).toContain("FROM read_parquet('/data/fato_vendas.parquet') AS fato_vendas");
+    expect(kpi.sql).not.toContain("LEFT JOIN");
+    expect(kpi.sql).not.toContain("GROUP BY");
+
+    const byRegion = buildVisualQuery(t, files, visual("receita_regiao"), {});
+    expect(byRegion.sql).toContain("LEFT JOIN read_parquet('/data/dim_loja.parquet') AS dim_loja ON fato_vendas.id_loja = dim_loja.id_loja");
+    expect(byRegion.sql).not.toContain("dim_produto");
+
+    // A screen filter on a dimension brings its join in, even when the visual itself does not use it.
+    const filtered = buildVisualQuery(t, files, visual("k_receita"), { regiao: ["Sul"] });
+    expect(filtered.sql).toContain("AS dim_loja ON");
+    expect(filtered.params).toEqual(["Sul"]);
+  });
+
+  it("adds the visual's own condition to the screen filters, and can skip some of them", () => {
+    const own = { ...visual("k_receita"), where: "fato_vendas.quantidade > 1" };
+    expect(buildVisualQuery(t, files, own, {}).sql).toContain("WHERE (fato_vendas.quantidade > 1)");
+    const both = buildVisualQuery(t, files, own, { ano: ["2025"] });
+    expect(both.sql).toMatch(/WHERE .* IN \(\$1\) AND \(fato_vendas\.quantidade > 1\)/);
+    const skipped = buildVisualQuery(t, files, { ...own, skipFilters: ["ano"] }, { ano: ["2025"] });
+    expect(skipped.params).toEqual([]);
+    expect(skipped.sql).not.toContain("$1");
+  });
+
+  it("lists rows as they are, without grouping", () => {
+    const rows: QueryVisual = {
+      id: "r", type: "rows", title: "Linhas", span: 12, limit: 50, orderBy: "fato_vendas.id_venda",
+      columns: [{ label: "Pedido", sql: "fato_vendas.id_venda" }, { label: "Loja", sql: "dim_loja.loja" }],
+    };
+    const q = buildVisualQuery(t, files, rows, {});
+    expect(q.sql).toContain("SELECT CAST((fato_vendas.id_venda) AS VARCHAR) AS c0, CAST((dim_loja.loja) AS VARCHAR) AS c1");
+    expect(q.sql).toMatch(/ORDER BY fato_vendas\.id_venda ASC LIMIT 50$/);
     expect(q.sql).not.toContain("GROUP BY");
+    expect(q.sql).toContain("AS dim_loja ON");
   });
 
   it("groups and orders bar charts by the first measure", () => {

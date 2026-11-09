@@ -10,7 +10,7 @@
  */
 import "server-only";
 import { randomUUID } from "node:crypto";
-import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, open, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { gcsBucket } from "./blob/gcs";
 import { supabaseBucket } from "./blob/supabase";
@@ -186,6 +186,35 @@ export const storage = {
 
   async read(key: string): Promise<Uint8Array> {
     return new Uint8Array(await readFile(await this.localPath(key)));
+  },
+
+  /** The first `bytes` of an object, without downloading it whole. */
+  async readHead(key: string, bytes: number): Promise<Uint8Array> {
+    const file = workPath(key);
+    if (isRemote() && !(await exists(file))) return bucket().downloadHead(key, bytes);
+    const handle = await open(file, "r");
+    try {
+      const buffer = new Uint8Array(bytes);
+      const { bytesRead } = await handle.read(buffer, 0, bytes, 0);
+      return buffer.subarray(0, bytesRead);
+    } finally {
+      await handle.close();
+    }
+  },
+
+  /** Moves one object to a new key (copy, then delete); the target must not exist. */
+  async move(fromKey: string, toKey: string): Promise<void> {
+    assertKey(fromKey);
+    assertKey(toKey);
+    if (isRemote()) {
+      await bucket().copy(fromKey, toKey);
+      await bucket().remove([fromKey]);
+      await rm(workPath(fromKey), { force: true }).catch(() => undefined);
+      return;
+    }
+    if (await exists(workPath(toKey))) throw new Error(`storage move: ${toKey} already exists`);
+    await mkdir(path.dirname(workPath(toKey)), { recursive: true });
+    await rename(workPath(fromKey), workPath(toKey));
   },
 
   /** Deletes objects (remote + local copy). Never throws: cleanup must not break the request. */

@@ -11,17 +11,24 @@
  */
 import "server-only";
 import { randomUUID } from "node:crypto";
+import { once } from "node:events";
+import { createWriteStream } from "node:fs";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { InstanceAccess } from "../access";
-import { toCsv } from "../fiscal/csv";
-import { checkExtension, fiscalImporterFor, mergeTables, type FiscalImporter, type FiscalTables } from "../fiscal/importers";
+import { csvLine, toCsv } from "../fiscal/csv";
+import {
+  checkExtension, fiscalImporterFor, mergeByKey, mergeTables, SPED_DIMENSION_KEYS, SPED_HEAD_BYTES,
+  type FiscalIdentity, type FiscalImporter, type FiscalTables,
+} from "../fiscal/importers";
 import { FiscalFileError, type Row } from "../fiscal/sped";
+import { factColumns } from "../fiscal/sped-kinds";
+import { appendSpedFile, writeChunk } from "../fiscal/sped-stream";
 import type { TableReport } from "../ingest/ingest";
-import type { TemplateTable } from "../templates/schema";
+import type { Template, TemplateTable } from "../templates/schema";
 import { storage } from "../storage";
 import { relativeToOrg } from "../storage-browse";
-import { fiscalDocumentId, fiscalFileKey, fiscalFolder, isIssuedFiscalUploadKey } from "../storage-keys";
+import { fiscalDocumentId, fiscalFileKey, fiscalFolder, isIssuedFiscalUploadKey, spaceFolder } from "../storage-keys";
 import { checkSize, ingestIntoDraft, requireTemplate, UserFacingError, type UploadPlan } from "./datasets";
 
 /** Files listed per period folder (one month of NF-e can hold thousands of documents). */
@@ -150,14 +157,50 @@ export async function listFiscalPeriods(access: InstanceAccess): Promise<FiscalP
     .sort((a, b) => a.cnpj.localeCompare(b.cnpj) || b.periodo.localeCompare(a.periodo));
 }
 
+/**
+ * Files sent through the connector's Upload step land loose in the space's folder. The ones this
+ * dashboard's importer recognizes are moved to their company/period folder (replacing an older copy of
+ * the same document); the others stay where they are. Returns how many were filed.
+ */
+export async function adoptLooseFiles(access: InstanceAccess): Promise<number> {
+  const importer = requireImporter(access);
+  const spaceRoot = relativeToOrg(access.org.slug, spaceFolder(access.org.slug, access.client?.slug || null)).replace(/\/$/, "");
+  const loose = (await storage.listOrgFolder(access.org.slug, spaceRoot, MAX_FILES_PER_FOLDER)).files
+    .filter((f) => importer.extensions.some((ext) => f.name.toLowerCase().endsWith(ext)));
+  const folder = folderOf(access);
+  let adopted = 0;
+  for (const file of loose) {
+    let id: FiscalIdentity;
+    try {
+      const bytes = importer.mode === "sped" ? await storage.readHead(file.key, SPED_HEAD_BYTES) : await storage.read(file.key);
+      id = importer.identify(bytes);
+    } catch (err) {
+      if (!(err instanceof FiscalFileError)) console.error("[fiscal] could not identify", file.key, err);
+      continue; // another dashboard's file (or not a fiscal file at all)
+    }
+    const ext = file.name.toLowerCase().endsWith(".xml") ? "xml" : "txt";
+    const periodFolder = relativeToOrg(access.org.slug, `${folder}${id.cnpj}/${id.periodo}`);
+    const existing = await storage.listOrgFolder(access.org.slug, periodFolder, MAX_FILES_PER_FOLDER);
+    const older = existing.files.filter((f) => fiscalDocumentId(f.name) === id.documentId).map((f) => f.key);
+    await storage.move(file.key, fiscalFileKey(folder, id.cnpj, id.periodo, id.documentId, ext));
+    await storage.remove(older);
+    adopted += 1;
+  }
+  return adopted;
+}
+
 export interface RebuildResult {
   ok: boolean;
   files: number;
+  /** Loose files of the space's folder that were filed before reading. */
+  adopted: number;
   /** Files that could not be read (name → reason); the others still enter the draft. */
   skipped: { path: string; error: string }[];
   tables: TableReport[];
 }
 
+/** Raw bytes one serverless request can turn into tables (disk and time are limited there). */
+const MAX_HOSTED_REBUILD_BYTES = 250 * 1024 ** 2;
 function placeholderRow(table: TemplateTable): Row {
   const row: Row = {};
   for (const c of table.columns) {
@@ -170,43 +213,100 @@ function placeholderRow(table: TemplateTable): Row {
   return row;
 }
 
-/** Reads every stored file into the template's tables and puts them in the draft. */
+interface Gathered {
+  files: number;
+  skipped: RebuildResult["skipped"];
+  /** Tables kept in memory (dimensions; and the facts of document importers). */
+  tables: FiscalTables;
+  /** Fact CSV already on disk (SPED), by table name. */
+  written: Record<string, string>;
+}
+
+/** Reads every stored file: SPED facts go straight to a CSV on disk, the rest is gathered in memory. */
+async function gather(access: InstanceAccess, importer: FiscalImporter, template: Template, dir: string): Promise<Gathered> {
+  const stored = (await walk(access)).flatMap((f) => f.keys);
+  const total = stored.reduce((s, f) => s + f.sizeBytes, 0);
+  if (process.env.VERCEL && total > MAX_HOSTED_REBUILD_BYTES) {
+    throw new UserFacingError(
+      `Os arquivos guardados somam ${Math.round(total / 1024 ** 2)} MB, mais do que dá para montar por aqui. Peça à equipe da DBI para processar este volume.`,
+    );
+  }
+  const skipped: RebuildResult["skipped"] = [];
+  const parts: FiscalTables[] = [];
+  const written: Record<string, string> = {};
+  let files = 0;
+  const skip = (key: string, err: unknown): void => {
+    if (!(err instanceof FiscalFileError)) console.error("[fiscal] could not read", key, err);
+    skipped.push({ path: relativeToOrg(access.org.slug, key), error: err instanceof FiscalFileError ? err.message : "não foi possível ler o arquivo" });
+  };
+
+  if (importer.mode === "documents") {
+    for (const f of stored) {
+      try {
+        parts.push(importer.parse(await storage.read(f.key)));
+        files += 1;
+      } catch (err) {
+        skip(f.key, err);
+      }
+    }
+    return { files, skipped, tables: mergeTables(importer, parts), written };
+  }
+
+  const fact = template.tables.find((t) => t.kind === "fact");
+  if (!fact) throw new UserFacingError("O dashboard não tem tabela fato.");
+  const factFile = path.join(dir, `${fact.name}.csv`);
+  const out = createWriteStream(factFile, { encoding: "utf8" });
+  try {
+    await writeChunk(out, csvLine(factColumns(importer.kind)));
+    for (const f of stored) {
+      try {
+        const local = await storage.localPath(f.key);
+        try {
+          parts.push((await appendSpedFile(importer.kind, local, out)).dimensions);
+          files += 1;
+        } finally {
+          // The cached copy of a remote object is only needed while it is read.
+          if (storage.remote()) await rm(local, { force: true }).catch(() => undefined);
+        }
+      } catch (err) {
+        skip(f.key, err);
+      }
+    }
+  } finally {
+    out.end();
+    await once(out, "close");
+  }
+  written[fact.name] = factFile;
+  return { files, skipped, tables: mergeByKey(SPED_DIMENSION_KEYS, parts), written };
+}
+
+/** Files what was uploaded loose, reads every stored file into the template's tables and puts them in the draft. */
 export async function rebuildFiscal(access: InstanceAccess): Promise<RebuildResult> {
   const importer = requireImporter(access);
   const template = await requireTemplate(access.templateId);
-  const folders = await walk(access);
-  const parts: FiscalTables[] = [];
-  const skipped: RebuildResult["skipped"] = [];
-  for (const { keys } of folders) {
-    for (const f of keys) {
-      try {
-        parts.push(importer.parse(await storage.read(f.key)));
-      } catch (err) {
-        const reason = err instanceof FiscalFileError ? err.message : "não foi possível ler o arquivo";
-        if (!(err instanceof FiscalFileError)) console.error("[fiscal] could not read", f.key, err);
-        skipped.push({ path: relativeToOrg(access.org.slug, f.key), error: reason });
-      }
-    }
-  }
-  if (parts.length === 0) {
-    throw new UserFacingError(skipped.length ? "Nenhum arquivo pôde ser lido." : "Nenhum arquivo enviado ainda.");
-  }
-
-  const merged = mergeTables(importer, parts);
+  const adopted = await adoptLooseFiles(access);
   const dir = path.join(storage.workRoot, "_fiscal", randomUUID());
   await mkdir(dir, { recursive: true });
   const tables: TableReport[] = [];
   try {
+    const gathered = await gather(access, importer, template, dir);
+    if (gathered.files === 0) {
+      throw new UserFacingError(gathered.skipped.length ? "Nenhum arquivo pôde ser lido." : "Nenhum arquivo enviado ainda.");
+    }
     for (const table of template.tables) {
-      const file = path.join(dir, `${table.name}.csv`);
-      let rows = merged[table.name] ?? [];
-      // The ingest refuses empty files; a dimension nobody references (e.g. NFC-e without recipients) gets one placeholder row.
-      if (rows.length === 0 && table.kind === "dimension") rows = [placeholderRow(table)];
-      await writeFile(file, toCsv(table.columns.map((c) => c.name), rows), "utf8");
+      let file = gathered.written[table.name];
+      if (!file) {
+        file = path.join(dir, `${table.name}.csv`);
+        let rows = gathered.tables[table.name] ?? [];
+        // The ingest refuses empty files; a dimension nobody references (e.g. NFC-e without recipients) gets one placeholder row.
+        if (rows.length === 0 && table.kind === "dimension") rows = [placeholderRow(table)];
+        await writeFile(file, toCsv(table.columns.map((c) => c.name), rows), "utf8");
+      }
       tables.push(await ingestIntoDraft(access, table, file, `${table.name}.csv`));
     }
+    return { ok: tables.every((t) => t.ok), files: gathered.files, adopted, skipped: gathered.skipped, tables };
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
-  return { ok: tables.every((t) => t.ok), files: parts.length, skipped, tables };
 }
+

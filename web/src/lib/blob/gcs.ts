@@ -98,6 +98,14 @@ export function gcsBucket(cfg: GcsConfig): RemoteBucket {
         throw new Error(`storage download failed for ${key}: ${errMsg(e)}`);
       }
     },
+    async downloadHead(key, bytes) {
+      try {
+        const [buf] = await bucket.file(key).download({ start: 0, end: bytes - 1 });
+        return new Uint8Array(buf);
+      } catch (e) {
+        throw new Error(`storage download failed for ${key}: ${errMsg(e)}`);
+      }
+    },
     async remove(keys) {
       const results = await Promise.allSettled(keys.map((k) => bucket.file(k).delete({ ignoreNotFound: true })));
       for (const r of results) if (r.status === "rejected") console.error("[storage] remove failed", errMsg(r.reason));
