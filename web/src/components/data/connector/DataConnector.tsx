@@ -5,6 +5,7 @@ import { formatBytes } from "@/lib/format";
 import { DataFilterPanel } from "../DataFilterPanel";
 import { TableNode } from "./TableNode";
 import type { ConnectorTable, Link, LinkPhase } from "./types";
+import { UploadStep } from "./UploadStep";
 import { useConnector } from "./useConnector";
 
 interface Point { x: number; y: number }
@@ -24,35 +25,6 @@ const curve = (a: Point, b: Point): string => {
   const dx = Math.max(40, (b.x - a.x) / 2);
   return `M ${a.x} ${a.y} C ${a.x + dx} ${a.y}, ${b.x - dx} ${b.y}, ${b.x} ${b.y}`;
 };
-
-/** Stores files from the computer in the open folder of the bucket. */
-function StoreFiles({ folder, busy, onStore }: { folder: string; busy: string | null; onStore: (files: File[]) => Promise<{ name: string; error: string }[]> }) {
-  const input = useRef<HTMLInputElement>(null);
-  const [result, setResult] = useState<{ sent: number; failures: { name: string; error: string }[] } | null>(null);
-  return (
-    <div className="mb-3 flex flex-col gap-1">
-      <input
-        ref={input}
-        type="file"
-        multiple
-        className="sr-only"
-        onChange={(e) => {
-          const files = [...(e.target.files ?? [])];
-          e.target.value = "";
-          if (!files.length) return;
-          setResult(null);
-          void onStore(files).then((failures) => setResult({ sent: files.length - failures.length, failures }));
-        }}
-      />
-      <button type="button" disabled={busy !== null} onClick={() => input.current?.click()} className="btn btn-ghost self-start px-3 py-1.5 text-xs">
-        ⤒ Enviar arquivos para {folder ? <span className="font-mono">{folder.split("/").pop()}</span> : "esta pasta"}
-      </button>
-      {busy && <p className="text-[11px] text-muted">{busy}</p>}
-      {result && result.sent > 0 && <p className="text-[11px] text-ok">✓ {result.sent} arquivo(s) guardado(s) nesta pasta.</p>}
-      {result?.failures.map((f) => <p key={f.name} className="text-[11px] text-danger">✕ {f.name}: {f.error}</p>)}
-    </div>
-  );
-}
 
 function FolderBar({ folder, folders, onOpen }: { folder: string; folders: string[]; onOpen: (f: string) => void }) {
   const parts = folder.split("/").filter(Boolean);
@@ -105,6 +77,9 @@ export function DataConnector({ instanceId, tables, initialFolder, canUpload }: 
   const [filterRules, setFilterRules] = useState(0);
   const [picked, setPicked] = useState<string | null>(null);
   const [drag, setDrag] = useState<{ file: string; at: Point } | null>(null);
+  /** Names stored by the Upload step in this session (highlighted in the folder). */
+  const [fresh, setFresh] = useState<ReadonlySet<string>>(new Set());
+  const reloadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const center = useCallback((el: HTMLElement): Point => {
     const o = box.current!.getBoundingClientRect();
@@ -143,6 +118,13 @@ export function DataConnector({ instanceId, tables, initialFolder, canUpload }: 
     if (table) connect(drag.file, table);
   }
 
+  /** A file stored by the Upload step: highlight it and list the folder again (once for a burst of files). */
+  function stored(name: string): void {
+    setFresh((prev) => new Set(prev).add(name));
+    if (reloadTimer.current) clearTimeout(reloadTimer.current);
+    reloadTimer.current = setTimeout(c.reload, 500);
+  }
+
   const factTable = tables.find((t) => t.kind === "fact");
   const files = c.data?.files ?? [];
   const linkOf = (table: string): Link | undefined => c.links.find((l) => l.table === table);
@@ -162,8 +144,8 @@ export function DataConnector({ instanceId, tables, initialFolder, canUpload }: 
           <h3 className="font-semibold">Engate dos dados</h3>
           <p className="text-xs text-muted">
             Arraste um arquivo até a tabela que ele alimenta (ou clique no arquivo e depois na tabela). Conferimos as
-            colunas antes de engatar. A tomada de cada tabela envia um arquivo do seu computador; “Enviar arquivos”
-            guarda arquivos na pasta aberta do armazenamento.
+            colunas antes de engatar. Comece pelo upload: os arquivos do seu computador ficam guardados na pasta aberta do
+            armazenamento. A tomada de cada tabela envia um arquivo direto para ela.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -179,14 +161,16 @@ export function DataConnector({ instanceId, tables, initialFolder, canUpload }: 
         </div>
       </header>
 
-      {/* Three columns (files → tables → data filter); scrolls sideways when the space is narrow. */}
+      {/* Steps (upload → files → tables → data filter); scrolls sideways when the space is narrow. */}
       <div className="-mx-5 overflow-x-auto px-5 pb-2">
       <div
         ref={box}
         onPointerMove={(e) => drag && setDrag({ file: drag.file, at: { x: e.clientX - box.current!.getBoundingClientRect().left, y: e.clientY - box.current!.getBoundingClientRect().top } })}
         onPointerUp={onPointerUp}
         onPointerLeave={() => setDrag(null)}
-        className={`relative grid min-w-[1120px] grid-cols-[minmax(220px,1fr)_80px_minmax(300px,1.2fr)_64px_minmax(330px,1.2fr)] ${drag ? "cursor-grabbing select-none" : ""}`}
+        className={`relative grid ${canUpload
+          ? "min-w-[1400px] grid-cols-[minmax(230px,1fr)_40px_minmax(220px,1fr)_80px_minmax(300px,1.2fr)_64px_minmax(330px,1.2fr)]"
+          : "min-w-[1120px] grid-cols-[minmax(220px,1fr)_80px_minmax(300px,1.2fr)_64px_minmax(330px,1.2fr)]"} ${drag ? "cursor-grabbing select-none" : ""}`}
       >
         <svg className="pointer-events-none absolute inset-0 z-10 h-full w-full overflow-visible" aria-hidden>
           {points.factOut && points.filterIn && (
@@ -209,14 +193,21 @@ export function DataConnector({ instanceId, tables, initialFolder, canUpload }: 
           )}
         </svg>
 
-        {/* Left: files of the folder */}
+        {/* Step 1: send files from the computer to the open folder */}
+        {canUpload && (
+          <>
+            <UploadStep instanceId={instanceId} folder={c.folder} onStored={stored} />
+            <div aria-hidden className="flex items-start justify-center pt-16 text-xl text-muted">→</div>
+          </>
+        )}
+
+        {/* Files of the folder */}
         <div className="min-w-0">
-          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">Arquivos no armazenamento</p>
+          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">{canUpload ? "2 · " : ""}Arquivos no armazenamento</p>
           <FolderBar folder={c.folder} folders={c.data?.folders ?? []} onOpen={(f) => { setPicked(null); c.setFolder(f); }} />
-          {canUpload && <StoreFiles folder={c.folder} busy={c.storing} onStore={c.store} />}
           {c.loading && <p className="animate-pulse text-xs text-muted">Lendo a pasta…</p>}
           {c.error && <p className="text-xs text-danger">{c.error}</p>}
-          {!c.loading && !c.error && files.length === 0 && <p className="text-xs text-muted">Pasta vazia. Envie arquivos para ela, abra uma subpasta ou use a tomada de cada tabela.</p>}
+          {!c.loading && !c.error && files.length === 0 && <p className="text-xs text-muted">Pasta vazia. Faça o upload dos arquivos, abra uma subpasta ou use a tomada de cada tabela.</p>}
           <ul className="flex flex-col gap-2">
             {files.filter((f) => f.engageable).map((f) => {
               const wired = c.links.filter((l) => l.file === f.name && !l.uploaded);
@@ -226,12 +217,12 @@ export function DataConnector({ instanceId, tables, initialFolder, canUpload }: 
                   <button
                     type="button"
                     onClick={() => setPicked(picked === f.name ? null : f.name)}
-                    className={`relative flex w-full items-center gap-2 rounded-lg border bg-card px-3 py-2 text-left transition ${active ? "border-brand ring-2 ring-brand/30" : wired.length ? "border-ok/50" : "border-line hover:border-brand/50"}`}
+                    className={`relative flex w-full items-center gap-2 rounded-lg border bg-card px-3 py-2 text-left transition ${active ? "border-brand ring-2 ring-brand/30" : wired.length ? "border-ok/50" : fresh.has(f.name) ? "border-brand/60 bg-brand/5" : "border-line hover:border-brand/50"}`}
                   >
                     <span className="text-base" aria-hidden>{f.name.toLowerCase().endsWith(".parquet") ? "🧊" : "📄"}</span>
                     <span className="min-w-0 flex-1">
                       <span className="block truncate font-mono text-xs font-medium" title={f.name}>{f.name}</span>
-                      <span className="block text-[10px] text-muted">{formatBytes(f.sizeBytes)}{wired.length ? ` · → ${wired.map((w) => w.table).join(", ")}` : ""}</span>
+                      <span className="block text-[10px] text-muted">{formatBytes(f.sizeBytes)}{fresh.has(f.name) ? " · novo" : ""}{wired.length ? ` · → ${wired.map((w) => w.table).join(", ")}` : ""}</span>
                     </span>
                     <span
                       ref={(el) => { if (el) filePorts.current.set(f.name, el); else filePorts.current.delete(f.name); }}
@@ -252,7 +243,7 @@ export function DataConnector({ instanceId, tables, initialFolder, canUpload }: 
               <li className="mt-1 text-[11px] text-muted">Guardados (só .parquet, .csv e .txt podem ser engatados):</li>
             )}
             {files.filter((f) => !f.engageable).map((f) => (
-              <li key={f.name} className="flex items-center gap-2 rounded-lg border border-dashed border-line px-3 py-1.5 text-muted">
+              <li key={f.name} className={`flex items-center gap-2 rounded-lg border border-dashed px-3 py-1.5 text-muted ${fresh.has(f.name) ? "border-brand/60 bg-brand/5" : "border-line"}`}>
                 <span aria-hidden>🗂</span>
                 <span className="min-w-0 flex-1 truncate font-mono text-[11px]" title={f.name}>{f.name}</span>
                 <span className="text-[10px]">{formatBytes(f.sizeBytes)}</span>
@@ -265,7 +256,7 @@ export function DataConnector({ instanceId, tables, initialFolder, canUpload }: 
 
         {/* Right: what the dashboard needs */}
         <div className="min-w-0">
-          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">O que o dashboard precisa</p>
+          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">{canUpload ? "3 · " : ""}O que o dashboard precisa</p>
           <p className="mb-3 text-[11px] text-muted">
             {picked ? <>Agora clique na tabela que <b className="font-mono">{picked}</b> alimenta.</> : `${tables.filter((t) => t.kind === "fact").length} fato(s) · ${tables.filter((t) => t.kind === "dimension").length} dimensão(ões)`}
           </p>
@@ -294,7 +285,7 @@ export function DataConnector({ instanceId, tables, initialFolder, canUpload }: 
 
         {/* Far right: the data filter, wired to the fact table */}
         <div className="relative min-w-0">
-          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">Filtro da tabela fato</p>
+          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">{canUpload ? "4 · " : ""}Filtro da tabela fato</p>
           <p className="mb-3 text-[11px] text-muted">
             {filterRules > 0 ? `${filterRules} regra(s) ativa(s) sobre ${factTable?.name ?? "a fato"}` : `Opcional: recorte quais linhas de ${factTable?.name ?? "a fato"} o dashboard mostra`}
           </p>

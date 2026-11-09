@@ -42,7 +42,6 @@ export function useConnector(instanceId: string, initialFolder: string) {
   const [links, setLinks] = useState<Link[]>([]);
   /** Bumped to list the folder again (after storing files in it). */
   const [version, setVersion] = useState(0);
-  const [storing, setStoring] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -70,21 +69,8 @@ export function useConnector(instanceId: string, initialFolder: string) {
     };
   }, [instanceId, folder, version]);
 
-  /**
-   * Stores files from the computer in the open folder of the bucket (kept as they are; engaging is a
-   * separate step). Returns the failures, by file name.
-   */
-  const store = useCallback(async (files: File[]): Promise<{ name: string; error: string }[]> => {
-    const failures: { name: string; error: string }[] = [];
-    for (const [i, file] of files.entries()) {
-      setStoring(`Enviando ${i + 1} de ${files.length}…`);
-      const error = await storeOne(instanceId, folder, file).catch(() => "Falha de rede.");
-      if (error) failures.push({ name: file.name, error });
-    }
-    setStoring(null);
-    setVersion((v) => v + 1);
-    return failures;
-  }, [instanceId, folder]);
+  /** Lists the open folder again (after the Upload step stored files in it). */
+  const reload = useCallback(() => setVersion((v) => v + 1), []);
 
   /** Wires a storage file to a table and checks its columns right away. */
   const connect = useCallback(async (file: string, table: string) => {
@@ -131,26 +117,5 @@ export function useConnector(instanceId: string, initialFolder: string) {
     finish(link, res);
   }, [instanceId, finish]);
 
-  return { folder, setFolder, data, loading, error, links, connect, disconnect, engage, upload, store, storing };
-}
-
-type StorePlan = { mode: "direct"; name: string } | { mode: "signed"; name: string; signedUrl: string };
-
-/** One file to the folder: a signed URL straight to the bucket, or the request body on local storage. */
-async function storeOne(instanceId: string, folder: string, file: File): Promise<string | null> {
-  const plan = await post<StorePlan>(instanceId, { action: "uploadPlan", folder, file: file.name, size: file.size });
-  if (!plan.success || !plan.data) return plan.error ?? "Falha no envio.";
-  if (plan.data.mode === "direct") {
-    const body = new FormData();
-    body.set("folder", folder);
-    body.set("file", file);
-    const res = (await (await fetch(`/api/instances/${instanceId}/connector/store`, { method: "POST", body })).json()) as Envelope<unknown>;
-    return res.success ? null : (res.error ?? "Falha no envio.");
-  }
-  const put = await fetch(plan.data.signedUrl, {
-    method: "PUT",
-    headers: { "Content-Type": file.type || "application/octet-stream", "x-upsert": "false" },
-    body: file,
-  });
-  return put.ok ? null : "Não foi possível enviar o arquivo para o armazenamento.";
+  return { folder, setFolder, data, loading, error, links, connect, disconnect, engage, upload, reload };
 }
