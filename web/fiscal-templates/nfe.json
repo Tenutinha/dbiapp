@@ -1,0 +1,133 @@
+{
+  "id": "nfe",
+  "version": 1,
+  "name": "NF-e",
+  "area": "Fiscal",
+  "origin": "web",
+  "description": "Notas fiscais eletrônicas item a item: valores, impostos destacados (ICMS, ICMS-ST, IPI, PIS, COFINS), CFOP, NCM, produtos, emitentes e destinatários por mês.",
+  "tables": [
+    {
+      "name": "nfe_itens",
+      "kind": "fact",
+      "description": "Uma linha por item (det) de cada NF-e autorizada, com os dados do cabeçalho (ide, emit, dest).",
+      "sortBy": "dt_emissao",
+      "columns": [
+        { "name": "chave", "type": "text", "description": "Chave de acesso (44 dígitos)" },
+        { "name": "n_item", "type": "integer" },
+        { "name": "numero", "type": "text" },
+        { "name": "serie", "type": "text", "required": false },
+        { "name": "modelo", "type": "text", "required": false, "description": "55 = NF-e, 65 = NFC-e" },
+        { "name": "dt_emissao", "type": "date" },
+        { "name": "tp_nf", "type": "text", "description": "0 = entrada, 1 = saída" },
+        { "name": "fin_nfe", "type": "text", "required": false, "description": "1 normal, 2 complementar, 3 ajuste, 4 devolução" },
+        { "name": "cnpj_emit", "type": "text" },
+        { "name": "doc_dest", "type": "text", "required": false, "description": "CNPJ ou CPF do destinatário" },
+        { "name": "cfop", "type": "text" },
+        { "name": "ncm", "type": "text", "required": false },
+        { "name": "cod_prod", "type": "text", "required": false },
+        { "name": "x_prod", "type": "text" },
+        { "name": "u_com", "type": "text", "required": false },
+        { "name": "q_com", "type": "decimal", "required": false },
+        { "name": "v_prod", "type": "decimal" },
+        { "name": "v_desc", "type": "decimal", "required": false },
+        { "name": "v_frete", "type": "decimal", "required": false },
+        { "name": "cst_icms", "type": "text", "required": false, "description": "CST ou CSOSN do ICMS" },
+        { "name": "v_bc_icms", "type": "decimal", "required": false },
+        { "name": "v_icms", "type": "decimal", "required": false },
+        { "name": "v_icms_st", "type": "decimal", "required": false },
+        { "name": "v_ipi", "type": "decimal", "required": false },
+        { "name": "v_pis", "type": "decimal", "required": false },
+        { "name": "v_cofins", "type": "decimal", "required": false }
+      ]
+    },
+    {
+      "name": "emitentes", "kind": "dimension", "description": "Emitentes das notas (emit).", "key": "cnpj_emit",
+      "columns": [
+        { "name": "cnpj_emit", "type": "text" },
+        { "name": "nome", "type": "text" },
+        { "name": "uf", "type": "text", "required": false },
+        { "name": "municipio", "type": "text", "required": false }
+      ]
+    },
+    {
+      "name": "destinatarios", "kind": "dimension", "description": "Destinatários das notas (dest).", "key": "doc_dest",
+      "columns": [
+        { "name": "doc_dest", "type": "text" },
+        { "name": "nome", "type": "text" },
+        { "name": "uf", "type": "text", "required": false },
+        { "name": "municipio", "type": "text", "required": false }
+      ]
+    }
+  ],
+  "relationships": [
+    { "from": { "table": "nfe_itens", "column": "cnpj_emit" }, "to": { "table": "emitentes", "column": "cnpj_emit" } },
+    { "from": { "table": "nfe_itens", "column": "doc_dest" }, "to": { "table": "destinatarios", "column": "doc_dest" } }
+  ],
+  "fields": [
+    { "id": "ano", "label": "Ano", "sql": "CAST(year(nfe_itens.dt_emissao) AS VARCHAR)" },
+    { "id": "mes", "label": "Mês", "sql": "strftime(nfe_itens.dt_emissao, '%Y-%m')" },
+    { "id": "tipo", "label": "Tipo", "sql": "CASE nfe_itens.tp_nf WHEN '0' THEN 'Entrada' WHEN '1' THEN 'Saída' ELSE nfe_itens.tp_nf END" },
+    { "id": "finalidade", "label": "Finalidade", "sql": "CASE nfe_itens.fin_nfe WHEN '1' THEN 'Normal' WHEN '2' THEN 'Complementar' WHEN '3' THEN 'Ajuste' WHEN '4' THEN 'Devolução' ELSE nfe_itens.fin_nfe END" },
+    { "id": "modelo", "label": "Modelo", "sql": "nfe_itens.modelo" },
+    { "id": "emitente", "label": "Emitente", "sql": "emitentes.nome" },
+    { "id": "uf_emitente", "label": "UF do emitente", "sql": "emitentes.uf" },
+    { "id": "destinatario", "label": "Destinatário", "sql": "destinatarios.nome" },
+    { "id": "uf_destinatario", "label": "UF do destinatário", "sql": "destinatarios.uf" },
+    { "id": "cfop", "label": "CFOP", "sql": "nfe_itens.cfop" },
+    { "id": "ncm", "label": "NCM", "sql": "nfe_itens.ncm" },
+    { "id": "capitulo_ncm", "label": "Capítulo do NCM", "sql": "left(nfe_itens.ncm, 2)" },
+    { "id": "produto", "label": "Produto", "sql": "nfe_itens.x_prod" },
+    { "id": "cst_icms", "label": "CST/CSOSN ICMS", "sql": "nfe_itens.cst_icms" },
+    { "id": "nota", "label": "Nota", "sql": "concat(nfe_itens.serie, '-', nfe_itens.numero)" }
+  ],
+  "measures": [
+    { "id": "valor_produtos", "label": "Valor dos produtos", "sql": "SUM(nfe_itens.v_prod)", "format": "currency" },
+    { "id": "descontos", "label": "Descontos", "sql": "SUM(nfe_itens.v_desc)", "format": "currency" },
+    { "id": "valor_liquido", "label": "Valor líquido", "sql": "SUM(nfe_itens.v_prod) - COALESCE(SUM(nfe_itens.v_desc), 0)", "format": "currency" },
+    { "id": "icms", "label": "ICMS", "sql": "SUM(nfe_itens.v_icms)", "format": "currency" },
+    { "id": "icms_st", "label": "ICMS-ST", "sql": "SUM(nfe_itens.v_icms_st)", "format": "currency" },
+    { "id": "ipi", "label": "IPI", "sql": "SUM(nfe_itens.v_ipi)", "format": "currency" },
+    { "id": "pis", "label": "PIS", "sql": "SUM(nfe_itens.v_pis)", "format": "currency" },
+    { "id": "cofins", "label": "COFINS", "sql": "SUM(nfe_itens.v_cofins)", "format": "currency" },
+    { "id": "tributos", "label": "Tributos destacados", "sql": "COALESCE(SUM(nfe_itens.v_icms), 0) + COALESCE(SUM(nfe_itens.v_icms_st), 0) + COALESCE(SUM(nfe_itens.v_ipi), 0) + COALESCE(SUM(nfe_itens.v_pis), 0) + COALESCE(SUM(nfe_itens.v_cofins), 0)", "format": "currency" },
+    { "id": "carga_tributaria", "label": "Carga tributária destacada", "sql": "(COALESCE(SUM(nfe_itens.v_icms), 0) + COALESCE(SUM(nfe_itens.v_icms_st), 0) + COALESCE(SUM(nfe_itens.v_ipi), 0) + COALESCE(SUM(nfe_itens.v_pis), 0) + COALESCE(SUM(nfe_itens.v_cofins), 0)) / NULLIF(SUM(nfe_itens.v_prod), 0)", "format": "percent" },
+    { "id": "notas", "label": "Notas", "sql": "COUNT(DISTINCT nfe_itens.chave)", "format": "integer" },
+    { "id": "itens", "label": "Itens", "sql": "COUNT(*)", "format": "integer" },
+    { "id": "valor_medio_nota", "label": "Valor médio por nota", "sql": "SUM(nfe_itens.v_prod) / NULLIF(COUNT(DISTINCT nfe_itens.chave), 0)", "format": "currency" },
+    { "id": "quantidade", "label": "Quantidade", "sql": "SUM(nfe_itens.q_com)", "format": "number" }
+  ],
+  "filters": ["ano", "mes", "tipo", "finalidade", "modelo", "emitente", "destinatario", "uf_destinatario", "cfop", "capitulo_ncm"],
+  "visuals": [
+    { "id": "k_valor", "type": "kpi", "title": "Valor dos produtos", "measure": "valor_produtos", "span": 3 },
+    { "id": "k_notas", "type": "kpi", "title": "Notas", "measure": "notas", "span": 3 },
+    { "id": "k_medio", "type": "kpi", "title": "Valor médio por nota", "measure": "valor_medio_nota", "span": 3 },
+    { "id": "k_tributos", "type": "kpi", "title": "Tributos destacados", "measure": "tributos", "span": 3 },
+    { "id": "k_icms", "type": "kpi", "title": "ICMS", "measure": "icms", "span": 2 },
+    { "id": "k_icms_st", "type": "kpi", "title": "ICMS-ST", "measure": "icms_st", "span": 2 },
+    { "id": "k_ipi", "type": "kpi", "title": "IPI", "measure": "ipi", "span": 2 },
+    { "id": "k_pis", "type": "kpi", "title": "PIS", "measure": "pis", "span": 2 },
+    { "id": "k_cofins", "type": "kpi", "title": "COFINS", "measure": "cofins", "span": 2 },
+    { "id": "k_carga", "type": "kpi", "title": "Carga destacada", "measure": "carga_tributaria", "span": 2 },
+    { "id": "l_mes", "type": "line", "title": "Valor e tributos por mês", "field": "mes", "measures": ["valor_produtos", "tributos"], "sort": "field", "span": 8 },
+    { "id": "d_tipo", "type": "donut", "title": "Entradas e saídas", "field": "tipo", "measure": "valor_produtos", "span": 4 },
+
+    { "id": "b_cfop", "type": "bar", "title": "Valor por CFOP", "field": "cfop", "measures": ["valor_produtos"], "sort": "measure_desc", "horizontal": true, "limit": 15, "span": 6 },
+    { "id": "b_ncm", "type": "bar", "title": "Valor por capítulo do NCM", "field": "capitulo_ncm", "measures": ["valor_produtos"], "sort": "measure_desc", "horizontal": true, "limit": 15, "span": 6 },
+    { "id": "t_produtos", "type": "table", "title": "Produtos", "fields": ["produto", "ncm"], "measures": ["quantidade", "valor_produtos", "icms", "ipi", "pis", "cofins"], "limit": 200, "span": 12 },
+
+    { "id": "t_emitentes", "type": "table", "title": "Emitentes", "fields": ["emitente", "uf_emitente"], "measures": ["notas", "valor_produtos", "tributos"], "limit": 100, "span": 6 },
+    { "id": "t_destinatarios", "type": "table", "title": "Destinatários", "fields": ["destinatario", "uf_destinatario"], "measures": ["notas", "valor_produtos", "tributos"], "limit": 100, "span": 6 },
+    { "id": "b_uf_destino", "type": "bar", "title": "Valor por UF do destinatário", "field": "uf_destinatario", "measures": ["valor_produtos"], "sort": "measure_desc", "limit": 27, "span": 12 },
+
+    { "id": "t_notas", "type": "table", "title": "Notas", "fields": ["nota", "tipo", "emitente", "destinatario", "cfop"], "measures": ["valor_produtos", "descontos", "icms", "icms_st", "ipi"], "limit": 500, "span": 12 }
+  ],
+  "analyses": [
+    { "id": "visao_geral", "title": "Visão geral", "description": "", "visuals": ["k_valor", "k_notas", "k_medio", "k_tributos", "k_icms", "k_icms_st", "k_ipi", "k_pis", "k_cofins", "k_carga", "l_mes", "d_tipo"] },
+    { "id": "produtos", "title": "CFOP, NCM e produtos", "description": "", "visuals": ["b_cfop", "b_ncm", "t_produtos"] },
+    { "id": "participantes", "title": "Emitentes e destinatários", "description": "", "visuals": ["t_emitentes", "t_destinatarios", "b_uf_destino"] },
+    { "id": "notas", "title": "Notas", "description": "", "visuals": ["t_notas"] }
+  ],
+  "summary": [
+    { "title": "NF-e", "analyses": ["visao_geral", "produtos", "participantes", "notas"] }
+  ]
+}
