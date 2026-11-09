@@ -1,0 +1,102 @@
+{
+  "id": "ecd",
+  "version": 1,
+  "name": "ECD",
+  "area": "Contábil",
+  "origin": "web",
+  "description": "Escrituração contábil digital: balancete do mês com saldo inicial, débitos, créditos e saldo final por natureza, grupo e conta; ativo, passivo, patrimônio líquido e resultado acumulado.",
+  "tables": [
+    {
+      "name": "saldos_contas",
+      "kind": "fact",
+      "description": "Saldos periódicos das contas analíticas (registros I150 + I155): uma linha por conta, centro de custo e período. Saldos com sinal: devedor positivo, credor negativo.",
+      "sortBy": "periodo, cnpj",
+      "columns": [
+        { "name": "cnpj", "type": "text", "description": "CNPJ da empresa (registro 0000)" },
+        { "name": "periodo", "type": "date", "description": "Início do período do saldo (DT_INI do I150)" },
+        { "name": "id_cta", "type": "text", "description": "Conta: CNPJ + '-' + COD_CTA" },
+        { "name": "cod_ccus", "type": "text", "required": false, "description": "Centro de custo" },
+        { "name": "vl_sld_ini", "type": "decimal", "description": "Saldo inicial com sinal (D +, C −)" },
+        { "name": "vl_deb", "type": "decimal" },
+        { "name": "vl_cred", "type": "decimal" },
+        { "name": "vl_sld_fin", "type": "decimal", "description": "Saldo final com sinal (D +, C −)" }
+      ]
+    },
+    {
+      "name": "empresas", "kind": "dimension", "description": "Empresas declarantes (registro 0000).", "key": "cnpj",
+      "columns": [
+        { "name": "cnpj", "type": "text" },
+        { "name": "nome", "type": "text" },
+        { "name": "uf", "type": "text", "required": false }
+      ]
+    },
+    {
+      "name": "plano_contas", "kind": "dimension", "description": "Plano de contas (I050) com o mapeamento referencial (I051) e os nomes das contas sintéticas de nível 1 a 3 acima de cada conta.", "key": "id_cta",
+      "columns": [
+        { "name": "id_cta", "type": "text" },
+        { "name": "cod_cta", "type": "text" },
+        { "name": "nome", "type": "text" },
+        { "name": "natureza", "type": "text", "description": "COD_NAT: 01 ativo, 02 passivo, 03 PL, 04 resultado, 05 compensação, 09 outras" },
+        { "name": "nivel", "type": "integer", "required": false },
+        { "name": "grupo_1", "type": "text", "required": false, "description": "Conta sintética de nível 1 acima" },
+        { "name": "grupo_2", "type": "text", "required": false, "description": "Conta sintética de nível 2 acima" },
+        { "name": "grupo_3", "type": "text", "required": false, "description": "Conta sintética de nível 3 acima" },
+        { "name": "cod_cta_ref", "type": "text", "required": false, "description": "Conta referencial (I051)" }
+      ]
+    }
+  ],
+  "relationships": [
+    { "from": { "table": "saldos_contas", "column": "cnpj" }, "to": { "table": "empresas", "column": "cnpj" } },
+    { "from": { "table": "saldos_contas", "column": "id_cta" }, "to": { "table": "plano_contas", "column": "id_cta" } }
+  ],
+  "fields": [
+    { "id": "mes", "label": "Mês", "sql": "strftime(saldos_contas.periodo, '%Y-%m')" },
+    { "id": "empresa", "label": "Empresa", "sql": "empresas.nome" },
+    { "id": "natureza", "label": "Natureza", "sql": "CASE plano_contas.natureza WHEN '01' THEN '1 - Ativo' WHEN '02' THEN '2 - Passivo' WHEN '03' THEN '3 - Patrimônio líquido' WHEN '04' THEN '4 - Resultado' WHEN '05' THEN '5 - Compensação' ELSE '9 - Outras' END" },
+    { "id": "grupo_1", "label": "Grupo (nível 1)", "sql": "plano_contas.grupo_1" },
+    { "id": "grupo_2", "label": "Grupo (nível 2)", "sql": "plano_contas.grupo_2" },
+    { "id": "grupo_3", "label": "Grupo (nível 3)", "sql": "plano_contas.grupo_3" },
+    { "id": "conta", "label": "Conta", "sql": "concat(plano_contas.cod_cta, ' - ', plano_contas.nome)" },
+    { "id": "conta_referencial", "label": "Conta referencial", "sql": "plano_contas.cod_cta_ref" },
+    { "id": "centro_custo", "label": "Centro de custo", "sql": "saldos_contas.cod_ccus" }
+  ],
+  "measures": [
+    { "id": "saldo_inicial", "label": "Saldo inicial", "sql": "SUM(saldos_contas.vl_sld_ini)", "format": "currency" },
+    { "id": "debitos", "label": "Débitos", "sql": "SUM(saldos_contas.vl_deb)", "format": "currency" },
+    { "id": "creditos", "label": "Créditos", "sql": "SUM(saldos_contas.vl_cred)", "format": "currency" },
+    { "id": "saldo_final", "label": "Saldo final", "sql": "SUM(saldos_contas.vl_sld_fin)", "format": "currency" },
+    { "id": "ativo", "label": "Ativo", "sql": "SUM(CASE WHEN plano_contas.natureza = '01' THEN saldos_contas.vl_sld_fin END)", "format": "currency" },
+    { "id": "passivo", "label": "Passivo", "sql": "-SUM(CASE WHEN plano_contas.natureza = '02' THEN saldos_contas.vl_sld_fin END)", "format": "currency" },
+    { "id": "patrimonio_liquido", "label": "Patrimônio líquido", "sql": "-SUM(CASE WHEN plano_contas.natureza = '03' THEN saldos_contas.vl_sld_fin END)", "format": "currency" },
+    { "id": "resultado_acumulado", "label": "Resultado acumulado", "sql": "-SUM(CASE WHEN plano_contas.natureza = '04' THEN saldos_contas.vl_sld_fin END)", "format": "currency" },
+    { "id": "resultado_mes", "label": "Resultado do mês", "sql": "SUM(CASE WHEN plano_contas.natureza = '04' THEN saldos_contas.vl_cred - saldos_contas.vl_deb END)", "format": "currency" },
+    { "id": "contas_movimentadas", "label": "Contas movimentadas", "sql": "COUNT(DISTINCT CASE WHEN saldos_contas.vl_deb <> 0 OR saldos_contas.vl_cred <> 0 THEN saldos_contas.id_cta END)", "format": "integer" }
+  ],
+  "filters": ["mes", "empresa", "natureza", "grupo_1", "grupo_2", "grupo_3", "centro_custo"],
+  "filterDefaults": { "mes": "mais recente" },
+  "visuals": [
+    { "id": "k_ativo", "type": "kpi", "title": "Ativo", "measure": "ativo", "span": 3 },
+    { "id": "k_passivo", "type": "kpi", "title": "Passivo", "measure": "passivo", "span": 3 },
+    { "id": "k_pl", "type": "kpi", "title": "Patrimônio líquido", "measure": "patrimonio_liquido", "span": 3 },
+    { "id": "k_resultado", "type": "kpi", "title": "Resultado acumulado", "measure": "resultado_acumulado", "span": 3 },
+    { "id": "k_resultado_mes", "type": "kpi", "title": "Resultado do mês", "measure": "resultado_mes", "span": 3 },
+    { "id": "k_debitos", "type": "kpi", "title": "Débitos do mês", "measure": "debitos", "span": 3 },
+    { "id": "k_creditos", "type": "kpi", "title": "Créditos do mês", "measure": "creditos", "span": 3 },
+    { "id": "k_contas", "type": "kpi", "title": "Contas movimentadas", "measure": "contas_movimentadas", "span": 3 },
+    { "id": "d_ativo", "type": "donut", "title": "Composição do ativo", "field": "grupo_2", "measure": "ativo", "span": 6 },
+    { "id": "d_passivo", "type": "donut", "title": "Composição do passivo", "field": "grupo_2", "measure": "passivo", "span": 6 },
+
+    { "id": "t_balancete", "type": "table", "title": "Balancete por grupo", "fields": ["natureza", "grupo_1", "grupo_2"], "measures": ["saldo_inicial", "debitos", "creditos", "saldo_final"], "limit": 300, "span": 12 },
+    { "id": "b_resultado", "type": "bar", "title": "Resultado acumulado por grupo", "field": "grupo_3", "measures": ["resultado_acumulado"], "sort": "measure_desc", "horizontal": true, "limit": 20, "span": 12 },
+
+    { "id": "t_contas", "type": "table", "title": "Contas analíticas", "fields": ["natureza", "conta", "conta_referencial"], "measures": ["saldo_inicial", "debitos", "creditos", "saldo_final"], "limit": 500, "span": 12 }
+  ],
+  "analyses": [
+    { "id": "visao_geral", "title": "Visão geral", "description": "Posição do mês escolhido no filtro (abre no mais recente). Saldos com sinal: devedor positivo, credor negativo; passivo, PL e resultado aparecem positivos quando credores.", "visuals": ["k_ativo", "k_passivo", "k_pl", "k_resultado", "k_resultado_mes", "k_debitos", "k_creditos", "k_contas", "d_ativo", "d_passivo"] },
+    { "id": "balancete", "title": "Balancete", "description": "", "visuals": ["t_balancete", "b_resultado"] },
+    { "id": "contas", "title": "Contas", "description": "", "visuals": ["t_contas"] }
+  ],
+  "summary": [
+    { "title": "ECD", "analyses": ["visao_geral", "balancete", "contas"] }
+  ]
+}

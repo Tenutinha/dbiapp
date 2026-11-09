@@ -1,0 +1,130 @@
+{
+  "id": "efd-contribuicoes",
+  "version": 1,
+  "name": "EFD Contribuições",
+  "area": "Fiscal",
+  "origin": "web",
+  "description": "Escrituração de PIS e COFINS: receitas tributadas e não tributadas, débitos e créditos por mês, estabelecimento, CST, natureza do crédito, CFOP, item e participante.",
+  "tables": [
+    {
+      "name": "itens_pis_cofins",
+      "kind": "fact",
+      "description": "Uma linha por item com PIS/COFINS escriturado (C170, C181/C185, C191/C195, A170, D201/D205, F100 …). Débitos são os CST 01 a 49; créditos, os CST 50 a 66.",
+      "sortBy": "periodo, cnpj",
+      "columns": [
+        { "name": "cnpj", "type": "text", "description": "CNPJ do estabelecimento (registros 0140, A010, C010 …)" },
+        { "name": "periodo", "type": "date", "description": "Primeiro dia do período da escrituração" },
+        { "name": "registro", "type": "text", "description": "Registro de origem (C170, A170, F100 …)" },
+        { "name": "ind_oper", "type": "text", "required": false, "description": "0 = entrada/aquisição, 1 = saída/receita" },
+        { "name": "num_doc", "type": "text", "required": false },
+        { "name": "dt_doc", "type": "date", "required": false },
+        { "name": "id_part", "type": "text", "required": false, "description": "Participante: CNPJ do declarante + '-' + COD_PART" },
+        { "name": "id_item", "type": "text", "required": false, "description": "Item: CNPJ do declarante + '-' + COD_ITEM" },
+        { "name": "cfop", "type": "text", "required": false },
+        { "name": "cst_pis", "type": "text" },
+        { "name": "cst_cofins", "type": "text" },
+        { "name": "nat_bc_cred", "type": "text", "required": false, "description": "Natureza da base de cálculo do crédito (01 a 18)" },
+        { "name": "vl_item", "type": "decimal" },
+        { "name": "vl_bc_pis", "type": "decimal", "required": false },
+        { "name": "aliq_pis", "type": "decimal", "required": false },
+        { "name": "vl_pis", "type": "decimal", "required": false },
+        { "name": "vl_bc_cofins", "type": "decimal", "required": false },
+        { "name": "aliq_cofins", "type": "decimal", "required": false },
+        { "name": "vl_cofins", "type": "decimal", "required": false }
+      ]
+    },
+    {
+      "name": "estabelecimentos", "kind": "dimension", "description": "Estabelecimentos (registros 0000 e 0140).", "key": "cnpj",
+      "columns": [
+        { "name": "cnpj", "type": "text" },
+        { "name": "nome", "type": "text" },
+        { "name": "uf", "type": "text", "required": false }
+      ]
+    },
+    {
+      "name": "participantes", "kind": "dimension", "description": "Participantes (registro 0150).", "key": "id_part",
+      "columns": [
+        { "name": "id_part", "type": "text" },
+        { "name": "nome", "type": "text" },
+        { "name": "cnpj_cpf", "type": "text", "required": false },
+        { "name": "uf", "type": "text", "required": false }
+      ]
+    },
+    {
+      "name": "itens", "kind": "dimension", "description": "Itens (registro 0200).", "key": "id_item",
+      "columns": [
+        { "name": "id_item", "type": "text" },
+        { "name": "descricao", "type": "text" },
+        { "name": "ncm", "type": "text", "required": false },
+        { "name": "tipo_item", "type": "text", "required": false }
+      ]
+    }
+  ],
+  "relationships": [
+    { "from": { "table": "itens_pis_cofins", "column": "cnpj" }, "to": { "table": "estabelecimentos", "column": "cnpj" } },
+    { "from": { "table": "itens_pis_cofins", "column": "id_part" }, "to": { "table": "participantes", "column": "id_part" } },
+    { "from": { "table": "itens_pis_cofins", "column": "id_item" }, "to": { "table": "itens", "column": "id_item" } }
+  ],
+  "fields": [
+    { "id": "ano", "label": "Ano", "sql": "CAST(year(itens_pis_cofins.periodo) AS VARCHAR)" },
+    { "id": "mes", "label": "Mês", "sql": "strftime(itens_pis_cofins.periodo, '%Y-%m')" },
+    { "id": "estabelecimento", "label": "Estabelecimento", "sql": "estabelecimentos.nome" },
+    { "id": "operacao", "label": "Operação", "sql": "CASE WHEN itens_pis_cofins.cst_pis < '50' THEN 'Receita (débito)' WHEN itens_pis_cofins.cst_pis <= '66' THEN 'Aquisição com crédito' ELSE 'Aquisição sem crédito' END" },
+    { "id": "registro", "label": "Registro", "sql": "itens_pis_cofins.registro" },
+    { "id": "bloco", "label": "Bloco", "sql": "CASE left(itens_pis_cofins.registro, 1) WHEN 'A' THEN 'A - Serviços' WHEN 'C' THEN 'C - Mercadorias' WHEN 'D' THEN 'D - Transporte e comunicação' WHEN 'F' THEN 'F - Demais operações' ELSE itens_pis_cofins.registro END" },
+    { "id": "cst_pis", "label": "CST PIS", "sql": "itens_pis_cofins.cst_pis" },
+    { "id": "cst_cofins", "label": "CST COFINS", "sql": "itens_pis_cofins.cst_cofins" },
+    { "id": "tributacao_receita", "label": "Tributação da receita", "sql": "CASE WHEN itens_pis_cofins.cst_pis IN ('01', '02', '03', '05') THEN 'Tributada' WHEN itens_pis_cofins.cst_pis = '04' THEN 'Monofásica (alíquota zero na revenda)' WHEN itens_pis_cofins.cst_pis = '06' THEN 'Alíquota zero' WHEN itens_pis_cofins.cst_pis = '07' THEN 'Isenta' WHEN itens_pis_cofins.cst_pis = '08' THEN 'Sem incidência' WHEN itens_pis_cofins.cst_pis = '09' THEN 'Com suspensão' WHEN itens_pis_cofins.cst_pis < '50' THEN 'Outras saídas' ELSE 'Não é receita' END" },
+    { "id": "nat_bc_cred", "label": "Natureza do crédito", "sql": "itens_pis_cofins.nat_bc_cred" },
+    { "id": "cfop", "label": "CFOP", "sql": "itens_pis_cofins.cfop" },
+    { "id": "item", "label": "Item", "sql": "itens.descricao" },
+    { "id": "ncm", "label": "NCM", "sql": "itens.ncm" },
+    { "id": "participante", "label": "Participante", "sql": "participantes.nome" },
+    { "id": "uf_participante", "label": "UF do participante", "sql": "participantes.uf" }
+  ],
+  "measures": [
+    { "id": "receita", "label": "Receita", "sql": "SUM(CASE WHEN itens_pis_cofins.cst_pis < '50' THEN itens_pis_cofins.vl_item END)", "format": "currency" },
+    { "id": "receita_tributada", "label": "Receita tributada", "sql": "SUM(CASE WHEN itens_pis_cofins.cst_pis IN ('01', '02', '03', '05') THEN itens_pis_cofins.vl_item END)", "format": "currency" },
+    { "id": "receita_nao_tributada", "label": "Receita não tributada", "sql": "SUM(CASE WHEN itens_pis_cofins.cst_pis IN ('04', '06', '07', '08', '09') THEN itens_pis_cofins.vl_item END)", "format": "currency" },
+    { "id": "aquisicoes_com_credito", "label": "Aquisições com crédito", "sql": "SUM(CASE WHEN itens_pis_cofins.cst_pis BETWEEN '50' AND '66' THEN itens_pis_cofins.vl_item END)", "format": "currency" },
+    { "id": "aquisicoes_sem_credito", "label": "Aquisições sem crédito", "sql": "SUM(CASE WHEN itens_pis_cofins.cst_pis > '66' THEN itens_pis_cofins.vl_item END)", "format": "currency" },
+    { "id": "pis_debito", "label": "PIS a débito", "sql": "SUM(CASE WHEN itens_pis_cofins.cst_pis < '50' THEN itens_pis_cofins.vl_pis END)", "format": "currency" },
+    { "id": "pis_credito", "label": "PIS a crédito", "sql": "SUM(CASE WHEN itens_pis_cofins.cst_pis BETWEEN '50' AND '66' THEN itens_pis_cofins.vl_pis END)", "format": "currency" },
+    { "id": "cofins_debito", "label": "COFINS a débito", "sql": "SUM(CASE WHEN itens_pis_cofins.cst_cofins < '50' THEN itens_pis_cofins.vl_cofins END)", "format": "currency" },
+    { "id": "cofins_credito", "label": "COFINS a crédito", "sql": "SUM(CASE WHEN itens_pis_cofins.cst_cofins BETWEEN '50' AND '66' THEN itens_pis_cofins.vl_cofins END)", "format": "currency" },
+    { "id": "pis_cofins_a_pagar", "label": "PIS + COFINS (débito − crédito)", "sql": "COALESCE(SUM(CASE WHEN itens_pis_cofins.cst_pis < '50' THEN itens_pis_cofins.vl_pis END), 0) + COALESCE(SUM(CASE WHEN itens_pis_cofins.cst_cofins < '50' THEN itens_pis_cofins.vl_cofins END), 0) - COALESCE(SUM(CASE WHEN itens_pis_cofins.cst_pis BETWEEN '50' AND '66' THEN itens_pis_cofins.vl_pis END), 0) - COALESCE(SUM(CASE WHEN itens_pis_cofins.cst_cofins BETWEEN '50' AND '66' THEN itens_pis_cofins.vl_cofins END), 0)", "format": "currency" },
+    { "id": "carga_receita", "label": "Carga de PIS + COFINS sobre a receita", "sql": "(COALESCE(SUM(CASE WHEN itens_pis_cofins.cst_pis < '50' THEN itens_pis_cofins.vl_pis END), 0) + COALESCE(SUM(CASE WHEN itens_pis_cofins.cst_cofins < '50' THEN itens_pis_cofins.vl_cofins END), 0)) / NULLIF(SUM(CASE WHEN itens_pis_cofins.cst_pis < '50' THEN itens_pis_cofins.vl_item END), 0)", "format": "percent" },
+    { "id": "base_credito", "label": "Base dos créditos", "sql": "SUM(CASE WHEN itens_pis_cofins.cst_pis BETWEEN '50' AND '66' THEN itens_pis_cofins.vl_bc_pis END)", "format": "currency" }
+  ],
+  "filters": ["ano", "mes", "estabelecimento", "operacao", "bloco", "tributacao_receita", "cst_pis", "nat_bc_cred", "cfop", "uf_participante"],
+  "visuals": [
+    { "id": "k_receita", "type": "kpi", "title": "Receita", "measure": "receita", "span": 3 },
+    { "id": "k_receita_tributada", "type": "kpi", "title": "Receita tributada", "measure": "receita_tributada", "span": 3 },
+    { "id": "k_receita_nao_tributada", "type": "kpi", "title": "Receita não tributada", "measure": "receita_nao_tributada", "span": 3 },
+    { "id": "k_aquisicoes_credito", "type": "kpi", "title": "Aquisições com crédito", "measure": "aquisicoes_com_credito", "span": 3 },
+    { "id": "k_pis_debito", "type": "kpi", "title": "PIS a débito", "measure": "pis_debito", "span": 3 },
+    { "id": "k_pis_credito", "type": "kpi", "title": "PIS a crédito", "measure": "pis_credito", "span": 3 },
+    { "id": "k_cofins_debito", "type": "kpi", "title": "COFINS a débito", "measure": "cofins_debito", "span": 3 },
+    { "id": "k_cofins_credito", "type": "kpi", "title": "COFINS a crédito", "measure": "cofins_credito", "span": 3 },
+    { "id": "k_a_pagar", "type": "kpi", "title": "PIS + COFINS (débito − crédito)", "measure": "pis_cofins_a_pagar", "span": 6 },
+    { "id": "k_carga", "type": "kpi", "title": "Carga sobre a receita", "measure": "carga_receita", "span": 6 },
+    { "id": "l_mes", "type": "line", "title": "Débitos e créditos de PIS e COFINS por mês", "field": "mes", "measures": ["pis_debito", "cofins_debito", "pis_credito", "cofins_credito"], "sort": "field", "span": 12 },
+
+    { "id": "d_tributacao", "type": "donut", "title": "Receita por tributação", "field": "tributacao_receita", "measure": "receita", "span": 5 },
+    { "id": "t_cst", "type": "table", "title": "CST de PIS e COFINS", "fields": ["cst_pis", "cst_cofins"], "measures": ["receita", "aquisicoes_com_credito", "pis_debito", "cofins_debito", "pis_credito", "cofins_credito"], "limit": 100, "span": 7 },
+    { "id": "t_nat_credito", "type": "table", "title": "Créditos por natureza da base", "fields": ["nat_bc_cred"], "measures": ["base_credito", "pis_credito", "cofins_credito"], "limit": 30, "span": 6 },
+    { "id": "b_bloco", "type": "bar", "title": "Receita e aquisições por bloco", "field": "bloco", "measures": ["receita", "aquisicoes_com_credito"], "sort": "measure_desc", "span": 6 },
+
+    { "id": "t_itens", "type": "table", "title": "Itens", "fields": ["item", "ncm"], "measures": ["receita", "receita_nao_tributada", "aquisicoes_com_credito", "pis_debito", "cofins_debito", "pis_credito", "cofins_credito"], "limit": 200, "span": 12 },
+    { "id": "t_participantes", "type": "table", "title": "Participantes", "fields": ["participante", "uf_participante"], "measures": ["receita", "aquisicoes_com_credito", "pis_credito", "cofins_credito"], "limit": 100, "span": 8 },
+    { "id": "t_estabelecimentos", "type": "table", "title": "Estabelecimentos", "fields": ["estabelecimento"], "measures": ["receita", "pis_debito", "cofins_debito", "pis_credito", "cofins_credito", "pis_cofins_a_pagar"], "limit": 100, "span": 4 }
+  ],
+  "analyses": [
+    { "id": "visao_geral", "title": "Visão geral", "description": "Débitos e créditos calculados item a item. O valor a pagar não inclui os ajustes e as deduções da apuração (M200/M600).", "visuals": ["k_receita", "k_receita_tributada", "k_receita_nao_tributada", "k_aquisicoes_credito", "k_pis_debito", "k_pis_credito", "k_cofins_debito", "k_cofins_credito", "k_a_pagar", "k_carga", "l_mes"] },
+    { "id": "tributacao", "title": "Tributação e créditos", "description": "", "visuals": ["d_tributacao", "t_cst", "t_nat_credito", "b_bloco"] },
+    { "id": "itens_participantes", "title": "Itens, participantes e estabelecimentos", "description": "", "visuals": ["t_itens", "t_participantes", "t_estabelecimentos"] }
+  ],
+  "summary": [
+    { "title": "EFD Contribuições", "analyses": ["visao_geral", "tributacao", "itens_participantes"] }
+  ]
+}

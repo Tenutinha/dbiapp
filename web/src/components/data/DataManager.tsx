@@ -2,10 +2,22 @@ import type { InstanceAccess } from "@/lib/access";
 import { getDraft, listFiles, type DatasetFile } from "@/lib/data/repository";
 import { formatBytes } from "@/lib/format";
 import { requireTemplate } from "@/lib/services/datasets";
+import { fiscalImporter, listFiscalPeriods, type FiscalPeriod } from "@/lib/services/fiscal";
 import { storageFolderSuggestions } from "@/lib/services/storage-import";
 import { DataConnector } from "./connector/DataConnector";
 import type { ConnectorTable } from "./connector/types";
+import { FiscalImporter } from "./FiscalImporter";
 import { PublishPanel } from "./PublishPanel";
+
+/** Stored raw files of a fiscal dashboard; a storage hiccup must not take the data page down. */
+async function fiscalPeriods(access: InstanceAccess): Promise<FiscalPeriod[]> {
+  try {
+    return await listFiscalPeriods(access);
+  } catch (err) {
+    console.error("[data] could not list fiscal files", err);
+    return [];
+  }
+}
 
 function statusFor(table: string, draft: DatasetFile[], active: DatasetFile[]): ConnectorTable["status"] {
   const d = draft.find((f) => f.tableName === table);
@@ -31,6 +43,8 @@ export async function DataManager({ access }: { access: InstanceAccess }) {
   const has = (t: string): boolean => [...draftFiles, ...activeFiles].some((f) => f.tableName === t);
   const pending = template.tables.filter((t) => !has(t.name)).map((t) => t.name);
   const canUpload = access.actions.has("manageData");
+  const fiscal = fiscalImporter(access);
+  const periods = fiscal && canUpload ? await fiscalPeriods(access) : [];
   // Prepared folder named after the dashboard (eleicoes-presidente → preparado/presidente), else the first one.
   const words = template.id.split("-");
   const startFolder = suggestions.find((f) => words.some((w) => f.split("/").pop() === w)) ?? suggestions[0] ?? "";
@@ -44,6 +58,16 @@ export async function DataManager({ access }: { access: InstanceAccess }) {
         pendingTables={pending}
         canPublish={canUpload}
       />
+
+      {fiscal && (
+        <FiscalImporter
+          instanceId={access.instanceId}
+          title={fiscal.title}
+          extensions={fiscal.extensions}
+          initialPeriods={periods}
+          canUpload={canUpload}
+        />
+      )}
 
       <DataConnector
         instanceId={access.instanceId}
