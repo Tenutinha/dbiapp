@@ -133,7 +133,7 @@ export function DataConnector({ instanceId, tables, initialFolder, canUpload }: 
           <h3 className="font-semibold">Engate dos dados</h3>
           <p className="text-xs text-muted">
             Arraste um arquivo até a tabela que ele alimenta (ou clique no arquivo e depois na tabela). Conferimos as
-            colunas antes de engatar. A tomada de cada tabela envia um arquivo do seu computador.
+            colunas antes de engatar. Para enviar do seu computador, use “Enviar arquivo” na tabela ou solte o arquivo sobre ela.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -185,7 +185,7 @@ export function DataConnector({ instanceId, tables, initialFolder, canUpload }: 
           <FolderBar folder={c.folder} folders={c.data?.folders ?? []} onOpen={(f) => { setPicked(null); c.setFolder(f); }} />
           {c.loading && <p className="animate-pulse text-xs text-muted">Lendo a pasta…</p>}
           {c.error && <p className="text-xs text-danger">{c.error}</p>}
-          {!c.loading && !c.error && files.length === 0 && <p className="text-xs text-muted">Nenhum .parquet ou .csv nesta pasta. Abra uma subpasta ou use a tomada de cada tabela.</p>}
+          {!c.loading && !c.error && files.length === 0 && <p className="text-xs text-muted">Nenhum .parquet ou .csv nesta pasta. Envie direto pelo botão “Enviar arquivo” de cada tabela, ou solte o arquivo do computador sobre ela.</p>}
           <ul className="flex flex-col gap-2">
             {files.map((f) => {
               const wired = c.links.filter((l) => l.file === f.name && !l.uploaded);
