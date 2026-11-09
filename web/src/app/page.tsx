@@ -10,7 +10,7 @@ import { AccessError, getCurrentUser, type CurrentUser } from "@/lib/auth";
 import { listCatalog } from "@/lib/data/catalog";
 import { listAllOrganizations, type OrgOverview } from "@/lib/data/platform";
 import { guard } from "@/lib/guard";
-import { ROLE_LABEL } from "@/lib/permissions";
+import { allowedActions, ROLE_LABEL } from "@/lib/permissions";
 import { catalogReady, listTemplates } from "@/lib/templates/registry";
 import { isVitrineTemplate, toVitrineItem, type VitrineItem } from "@/lib/vitrine";
 
@@ -47,11 +47,27 @@ interface OrgCardProps {
   platformAdmin: boolean;
 }
 
+function GearIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    </svg>
+  );
+}
+
+/**
+ * One organization on the home page: the whole card opens its dashboards; admins also get a
+ * gear to its administration (a sibling link layered on top — links cannot be nested).
+ */
 function OrgCard({ org, stats, platformAdmin }: OrgCardProps) {
   const role = org.orgRole ? ROLE_LABEL[org.orgRole] : platformAdmin ? "Admin master" : "Acesso de cliente";
+  const isAdmin = allowedActions({ orgRole: org.orgRole, clientRoles: {}, platformAdmin }, { clientId: null }).has("admin");
   return (
-    <Link href={`/${org.slug}`} className="card group p-5 transition hover:border-brand/60">
-      <p className="text-lg font-bold group-hover:text-brand-2">{org.name}</p>
+    <div className="card group relative p-5 transition hover:border-brand/60">
+      <Link href={`/${org.slug}`} className="after:absolute after:inset-0 after:rounded-[inherit] after:content-['']">
+        <p className={`text-lg font-bold group-hover:text-brand-2 ${isAdmin ? "pr-8" : ""}`}>{org.name}</p>
+      </Link>
       <p className="mt-1 font-mono text-xs text-muted">dbi.app.br/{org.slug}</p>
       <p className="mt-3 text-xs text-muted">{role}</p>
       {stats && (
@@ -60,7 +76,17 @@ function OrgCard({ org, stats, platformAdmin }: OrgCardProps) {
           {plural(stats.people, "pessoa", "pessoas")}
         </p>
       )}
-    </Link>
+      {isAdmin && (
+        <Link
+          href={`/${org.slug}/admin`}
+          title={`Administração de ${org.name}`}
+          aria-label={`Administração de ${org.name}`}
+          className="absolute right-3 top-3 z-10 rounded-lg p-1.5 text-muted transition hover:bg-brand/15 hover:text-brand-2 focus-visible:text-brand-2"
+        >
+          <GearIcon />
+        </Link>
+      )}
+    </div>
   );
 }
 

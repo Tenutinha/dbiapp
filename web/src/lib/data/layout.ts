@@ -27,7 +27,7 @@ export async function getSpaceLayout(space: SpaceRef): Promise<SpaceLayout> {
              (i.active_version_id IS NOT NULL) AS published, v.published_at AS "publishedAt"
       FROM dashboard_instances i
       LEFT JOIN dataset_versions v ON v.id = i.active_version_id
-      WHERE i.organization_id = ${space.orgId} AND ${clientFilter(space.clientId)}
+      WHERE i.organization_id = ${space.orgId} AND ${clientFilter(space.clientId)} AND i.archived_at IS NULL
       ORDER BY i.position, i.created_at`,
   ]);
   return { sections, dashboards };

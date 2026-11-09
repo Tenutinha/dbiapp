@@ -7,7 +7,8 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { getClientContext, getOrgContext, orgActions, requireAction, requireInstance } from "@/lib/access";
 import { AccessError, DEV_USER_COOKIE, devAuthEnabled } from "@/lib/auth";
-import { createInstance, createShareLink, revokeShareLink } from "@/lib/data/repository";
+import { linkDashboard } from "@/lib/data/instances";
+import { createShareLink, revokeShareLink } from "@/lib/data/repository";
 import { publishDraft, type PublishResult, UserFacingError } from "@/lib/services/datasets";
 import { getCatalogEntry } from "@/lib/templates/registry";
 
@@ -56,7 +57,8 @@ export async function activateTemplate(formData: FormData): Promise<void> {
     orgId = ctx.org.id;
   }
 
-  const id = await createInstance(orgId, clientId, template.id, template.name);
+  // Re-linking a dashboard that was unlinked from this space brings its data back.
+  const { id } = await linkDashboard(orgId, clientId, template.id, template.name);
   revalidatePath(`/${input.org}`, "layout");
   redirect(`/${input.org}/d/${id}/dados`);
 }

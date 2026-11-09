@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireSpaceAction } from "@/lib/access";
 import { AccessError } from "@/lib/auth";
-import { saveSpaceColors } from "@/lib/data/branding";
+import { BackgroundColorUnavailableError, saveSpaceColors } from "@/lib/data/branding";
 import { LogoError, removeLogo, replaceLogo } from "@/lib/services/branding";
 import { brandingInputSchema } from "@/lib/theme/theme";
 
@@ -22,6 +22,9 @@ function scopeFrom(formData: FormData) {
 }
 
 function failure(err: unknown): ThemeFormState {
+  if (err instanceof BackgroundColorUnavailableError) {
+    return { ok: false, message: "O banco ainda não tem o campo de fundo (migração 011). As outras cores podem ser salvas sem o fundo." };
+  }
   if (err instanceof z.ZodError) return { ok: false, message: err.issues[0]?.message ?? "Dados inválidos." };
   if (err instanceof AccessError || err instanceof LogoError) return { ok: false, message: err.message };
   console.error("[branding] unexpected error", err);
@@ -37,6 +40,7 @@ export async function saveColorsAction(_prev: ThemeFormState, formData: FormData
       secondaryColor: orNull(formData.get("secondaryColor")),
       sidebarColor: orNull(formData.get("sidebarColor")),
       appearance: orNull(formData.get("appearance")),
+      backgroundColor: orNull(formData.get("backgroundColor")),
     });
     await saveSpaceColors(space.orgId, space.clientId, input);
     revalidatePath(`/${scope.org}`, "layout");

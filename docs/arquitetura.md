@@ -58,3 +58,33 @@ O modelo de negócio é B2B2B: uma **organização** (ex.: Odeon Tecnologia) con
 - Usuários de cliente (`client_members`): analista (vê e compartilha) ou leitor. **Nunca sobem dados** — isso é da equipe da organização.
 - Regras de acesso centralizadas e testadas em `web/src/lib/permissions.ts`; o que não pode ser visto responde 404.
 - Na migração para o Supabase, essas mesmas tabelas viram a base das políticas de RLS.
+- A página `/<org>/admin` está documentada em [admin-organizacao.md](admin-organizacao.md).
+
+## ✅ Decisão (2026-11-09): administração da organização numa tabela só, com modais
+
+A configuração de uma organização virou **um único objeto**: a tabela de `/<org>/admin`, lida como hierarquia
+**espaço (organização / cliente) → dashboard → dados → acessos**. Tudo o que antes eram páginas ou seções
+separadas abre em **modais no centro da tela**, com endereço próprio (`?dados=`, `?tema=`), para que o
+admin nunca saia da tabela. Detalhes de uso em [admin-organizacao.md](admin-organizacao.md).
+
+- **Escolha de dashboard**: seletor estilo vitrine com todo o catálogo publicado — busca por nome, assunto e
+  análise; destaque com análises, visuais e tabelas que ele pede; capas geradas a partir dos visuais.
+- **Dados ("engate")**: mapa de conexões arquivo → tabela do contrato, com conferência de colunas **antes**
+  de gravar (fio verde/vermelho), engate com animação e upload pela tomada de cada tabela.
+- **Filtro dos dados**: regras sobre colunas da tabela fato (manter só / excluir valores) que valem para a
+  tela, os links compartilhados e as opções dos filtros. Aplicado na consulta (subconsulta filtrada da fato,
+  valores sempre como parâmetros); os arquivos nunca mudam. Lido dentro de `loadDashboard`, nunca pelo chamador.
+- **Tema por espaço**: logo, cores, área clara/escura e **fundo do dashboard**, do qual cartões, linhas e
+  texto derivam com contraste mínimo de 4,5:1.
+- **Acessos**: avatares compactos na tabela; "Gerenciar usuários" abre a lista completa e o formulário.
+- **Tema da plataforma**: botão claro/escuro no topo, guardado por navegador (padrão via `DBI_TEMA_PADRAO`).
+
+Migrações desta etapa, **aplicadas no Supabase de produção em 2026-11-09**:
+
+| Migração | O que faz |
+|----------|-----------|
+| `010_instance_data_filter.sql` | `dashboard_instances.data_filter` (JSON, padrão `[]`) — filtro dos dados |
+| `011_branding_background.sql` | `space_branding.background_color` (hex ou NULL) — fundo do dashboard |
+
+O código lê os dois campos via `to_jsonb(...)`, então continua funcionando num banco sem as migrações
+(sem filtro / sem fundo); só salvar avisa que a migração falta. Para o banco local: `npm --prefix web run db:migrate`.

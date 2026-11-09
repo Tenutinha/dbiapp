@@ -56,20 +56,26 @@ export function CreateClientForm({ orgSlug }: { orgSlug: string }) {
 interface GrantAccessFormProps {
   orgSlug: string;
   clients: { id: string; name: string }[];
+  /** Offer "Equipe da organização" as a destination (default true). */
+  allowOrg?: boolean;
+  title?: string;
+  /** Renders without the card frame (inside a modal). */
+  bare?: boolean;
 }
 
-export function GrantAccessForm({ orgSlug, clients }: GrantAccessFormProps) {
+export function GrantAccessForm({ orgSlug, clients, allowOrg = true, title = "Dar acesso", bare = false }: GrantAccessFormProps) {
   const [state, action, pending] = useActionState(grantAccessAction, INITIAL);
-  const [scope, setScope] = useState("org");
+  const initialScope = allowOrg ? "org" : (clients[0]?.id ?? "org");
+  const [scope, setScope] = useState(initialScope);
   const isClient = scope !== "org";
   // React resets the form fields after a successful action; keep the controlled scope in sync.
   useEffect(() => {
-    if (state.ok) setScope("org");
-  }, [state]);
+    if (state.ok) setScope(initialScope);
+  }, [state, initialScope]);
 
   return (
-    <form action={action} className="card flex flex-col gap-3 p-5">
-      <h3 className="font-semibold">Dar acesso</h3>
+    <form action={action} className={`flex flex-col gap-3 ${bare ? "" : "card p-5"}`}>
+      <h3 className="font-semibold">{title}</h3>
       <input type="hidden" name="org" value={orgSlug} />
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="flex flex-col gap-1 text-xs text-muted">
@@ -83,7 +89,7 @@ export function GrantAccessForm({ orgSlug, clients }: GrantAccessFormProps) {
         <label className="flex flex-col gap-1 text-xs text-muted">
           Onde
           <select name="scope" value={scope} onChange={(e) => setScope(e.target.value)} className={INPUT}>
-            <option value="org">Equipe da organização</option>
+            {allowOrg && <option value="org">Equipe da organização</option>}
             {clients.map((c) => <option key={c.id} value={c.id}>Cliente: {c.name}</option>)}
           </select>
         </label>

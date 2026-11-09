@@ -42,8 +42,11 @@ const tableSchema = z.object({
   description: z.string(),
   /** Primary key for dimensions — must be unique and non-null. */
   key: ident.optional(),
-  /** Rows are sorted by this column when written, so Parquet row-group stats prune well. */
-  sortBy: ident.optional(),
+  /**
+   * Rows are sorted by these columns (comma separated, e.g. "cargo, ano, cd_municipio") when written, so
+   * Parquet row-group stats prune well on the filters people use most.
+   */
+  sortBy: z.string().regex(/^[a-z_][a-z0-9_]*(\s*,\s*[a-z_][a-z0-9_]*){0,5}$/, "use column names separated by commas").optional(),
   columns: z.array(columnSchema).min(1),
 });
 
@@ -165,8 +168,9 @@ export const templateSchema = z
     measures: z.array(measureSchema).min(1),
     filters: z.array(ident),
     /**
-     * Filters that always hold exactly one value (single choice, never cleared), with the value used
-     * when nothing is chosen. For measures that only make sense within one slice, e.g. one election.
+     * Filters that always hold exactly one value (single choice, never cleared). The value lists the
+     * preferred values, comma separated ("2026, 2024"); when none exists in the data, the greatest
+     * available value is used. For measures that only make sense within one slice, e.g. one election.
      */
     filterDefaults: z.record(ident, z.string().min(1).max(200)).default({}),
     visuals: z.array(visualSchema).min(1),
@@ -189,7 +193,9 @@ export const templateSchema = z
       if (tb.key && !tb.columns.some((c) => c.name === tb.key && c.required)) {
         issue(`${tb.name}.key must be a required column`);
       }
-      if (tb.sortBy && !hasColumn(tb.name, tb.sortBy)) issue(`${tb.name}.sortBy is not a column`);
+      for (const col of sortColumns(tb)) {
+        if (!hasColumn(tb.name, col)) issue(`${tb.name}.sortBy: ${col} is not a column`);
+      }
     }
     for (const r of t.relationships) {
       if (!hasColumn(r.from.table, r.from.column)) issue(`relationship from ${r.from.table}.${r.from.column} unknown`);
@@ -264,6 +270,11 @@ function checkAnalyses(t: AnalysesInput, issue: (message: string) => void): void
 }
 
 export type Template = z.infer<typeof templateSchema>;
+
+/** Columns a table is sorted by when written (sortBy is a comma separated list). */
+export function sortColumns(table: { sortBy?: string }): string[] {
+  return table.sortBy ? table.sortBy.split(",").map((c) => c.trim()).filter(Boolean) : [];
+}
 export type TemplateTable = Template["tables"][number];
 export type TemplateColumn = TemplateTable["columns"][number];
 export type Visual = Template["visuals"][number];

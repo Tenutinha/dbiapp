@@ -17,14 +17,9 @@ interface WorkspaceProps {
 /** Two-pane layout: light table of contents on the left, the dashboard on the right. */
 export function Workspace({ space, currentId, userName, pageSummary, children }: WorkspaceProps) {
   const { org, client, links } = space;
-  const canManage = space.actions.has("manageData");
-  const catalogHref = `/${org.slug}/catalogo${client ? `?para=${client.slug}` : ""}`;
 
   const footer = (
     <div className="flex flex-col gap-3">
-      {canManage && (
-        <Link href={catalogHref} className="text-ink underline-offset-4 hover:underline">+ Adicionar dashboard</Link>
-      )}
       {(links.org || links.clients.length > 0) && (
         <details className="group">
           <summary className="cursor-pointer list-none text-ink-muted hover:text-ink">
@@ -59,13 +54,11 @@ export function Workspace({ space, currentId, userName, pageSummary, children }:
         clientSlug={client?.slug ?? null}
         editorToc={space.editorToc}
         footer={footer}
+        content={<div className="mx-auto max-w-[1180px]">{children}</div>}
       >
         {pageSummary}
-        <SidebarNav orgSlug={org.slug} toc={space.toc} currentId={currentId} canManage={canManage} />
+        <SidebarNav toc={space.toc} currentId={currentId} />
       </SidebarShell>
-      <main className="px-4 pb-16 sm:px-8 lg:ml-[300px] lg:px-14">
-        <div className="mx-auto max-w-[1180px]">{children}</div>
-      </main>
     </ThemeScope>
   );
 }

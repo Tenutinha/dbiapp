@@ -24,7 +24,7 @@ export async function requireTemplate(templateId: string): Promise<Template> {
   return template;
 }
 
-function detectFormat(fileName: string): SourceFormat {
+export function detectFormat(fileName: string): SourceFormat {
   const ext = path.extname(fileName).toLowerCase();
   if (ext === ".parquet") return "parquet";
   if (ext === ".csv" || ext === ".txt") return "csv";
@@ -38,7 +38,7 @@ async function requireTable(access: InstanceAccess, tableName: string): Promise<
   return table;
 }
 
-function checkSize(size: number): void {
+export function checkSize(size: number): void {
   if (size <= 0) throw new UserFacingError("Arquivo vazio.");
   if (size > MAX_UPLOAD_BYTES) throw new UserFacingError("Arquivo maior que 2 GB.");
 }
@@ -47,7 +47,7 @@ function checkSize(size: number): void {
  * Validates the raw file at `incomingPath` against the contract, stores the converted Parquet
  * and registers it in the draft. Shared by the direct and the signed-URL upload paths.
  */
-async function ingestIntoDraft(
+export async function ingestIntoDraft(
   access: InstanceAccess, table: TemplateTable, incomingPath: string, originalName: string,
 ): Promise<TableReport> {
   const format = detectFormat(originalName);

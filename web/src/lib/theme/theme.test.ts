@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { checkLogo, detectLogoType } from "./logo";
 import {
-  brandingInputSchema, contrastRatio, DEFAULT_THEME, EMPTY_BRANDING, mix, readableOn, resolveTheme, themeCssVars,
+  brandingInputSchema, contrastRatio, DEFAULT_THEME, effectiveAppearance, EMPTY_BRANDING, mix, readableOn, resolveTheme,
+  themeCssVars,
 } from "./theme";
 
 describe("resolveTheme", () => {
@@ -10,10 +11,11 @@ describe("resolveTheme", () => {
   });
 
   it("client overrides only what it sets; the rest comes from the organization", () => {
-    const org = { primaryColor: "#0055ff", secondaryColor: "#ff9900", sidebarColor: null, appearance: "light" as const };
-    const client = { primaryColor: "#cc0000", secondaryColor: null, sidebarColor: null, appearance: null };
+    const org = { primaryColor: "#0055ff", secondaryColor: "#ff9900", sidebarColor: null, appearance: "light" as const, backgroundColor: "#eef2ff" };
+    const client = { primaryColor: "#cc0000", secondaryColor: null, sidebarColor: null, appearance: null, backgroundColor: null };
     expect(resolveTheme(client, org)).toEqual({
       primaryColor: "#cc0000", secondaryColor: "#ff9900", sidebarColor: DEFAULT_THEME.sidebarColor, appearance: "light",
+      backgroundColor: "#eef2ff",
     });
   });
 });
@@ -44,6 +46,33 @@ describe("themeCssVars", () => {
 
   it("only ever emits hex colours (safe for inline styles)", () => {
     Object.values(themeCssVars(DEFAULT_THEME)).forEach((v) => expect(v).toMatch(/^#[0-9a-f]{6}$/));
+    Object.values(themeCssVars({ ...DEFAULT_THEME, backgroundColor: "#123456" })).forEach((v) => expect(v).toMatch(/^#[0-9a-f]{6}$/));
+  });
+});
+
+describe("dashboard background colour", () => {
+  it.each(["#ffffff", "#f3efe6", "#0b1f4b", "#1e293b", "#7c5cff", "#ffd400"])(
+    "builds readable surfaces on %s",
+    (bg) => {
+      const v = themeCssVars({ ...DEFAULT_THEME, backgroundColor: bg });
+      expect(v["--color-bg"]).toBe(bg);
+      expect(contrastRatio(v["--color-bg"], v["--color-text"])).toBeGreaterThanOrEqual(4.5);
+      expect(contrastRatio(v["--color-card"], v["--color-text"])).toBeGreaterThanOrEqual(4.5);
+      // Cards stand out from the background (a white background keeps white cards, outlined by the border).
+      expect(v["--color-line"]).not.toBe(v["--color-card"]);
+      if (bg !== "#ffffff") expect(v["--color-card"]).not.toBe(bg);
+    },
+  );
+
+  it("decides light or dark from the colour itself", () => {
+    expect(effectiveAppearance({ ...DEFAULT_THEME, appearance: "dark", backgroundColor: "#ffffff" })).toBe("light");
+    expect(effectiveAppearance({ ...DEFAULT_THEME, appearance: "light", backgroundColor: "#0b1f4b" })).toBe("dark");
+    expect(effectiveAppearance({ ...DEFAULT_THEME, appearance: "light" })).toBe("light");
+  });
+
+  it("is validated like the other colours", () => {
+    expect(brandingInputSchema.safeParse({ ...EMPTY_BRANDING, backgroundColor: "url(x)" }).success).toBe(false);
+    expect(brandingInputSchema.parse({ ...EMPTY_BRANDING, backgroundColor: "#ABCDEF" }).backgroundColor).toBe("#abcdef");
   });
 });
 

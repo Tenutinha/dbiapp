@@ -1,16 +1,16 @@
 {
   "id": "eleicoes-presidente",
-  "version": 1,
-  "name": "Eleição presidencial: 1º × 2º turno",
+  "version": 3,
+  "name": "Eleições por município: 1º × 2º turno",
   "area": "Eleições",
   "origin": "web",
-  "description": "Resultado da eleição para presidente por município, nos dois turnos, com dados oficiais do TSE e malhas do IBGE. Recriação do painel do Mapa da Votação. O \"mais votado\" e a força da vitória valem no nível do município.",
+  "description": "Resultado de cada eleição por município, nos dois turnos, de presidente a vereador, com dados oficiais do TSE e malhas do IBGE. Recriação do painel do Mapa da Votação. O \"mais votado\" e a força da vitória valem no nível do município.",
   "tables": [
     {
       "name": "f_votacao",
       "kind": "fact",
-      "sortBy": "cd_municipio",
-      "description": "Uma linha por município, turno e candidato, mais as linhas de brancos, nulos e abstenção.",
+      "sortBy": "cargo, ano, turno, cd_municipio",
+      "description": "Uma linha por município, cargo, ano, turno e candidato, mais as linhas de legenda, brancos, nulos e abstenção.",
       "columns": [
         {
           "name": "ano",
@@ -23,20 +23,25 @@
           "description": "1 ou 2"
         },
         {
+          "name": "cargo",
+          "type": "text",
+          "description": "PRESIDENTE, GOVERNADOR, SENADOR, DEPUTADO FEDERAL, DEPUTADO ESTADUAL, DEPUTADO DISTRITAL, PREFEITO ou VEREADOR"
+        },
+        {
           "name": "cd_municipio",
           "type": "text",
-          "description": "Código IBGE do município (7 dígitos)"
+          "description": "Código IBGE do município (7 dígitos); ZZ = exterior"
         },
         {
           "name": "categoria",
           "type": "text",
-          "description": "candidato, branco, nulo ou abstencao"
+          "description": "candidato, legenda, branco, nulo ou abstencao"
         },
         {
           "name": "cd_candidato",
           "type": "text",
           "required": false,
-          "description": "Sequencial do candidato no TSE (vazio fora da categoria candidato)"
+          "description": "Ano e sequencial do candidato no TSE, ex.: 2026-280002542548 (vazio fora da categoria candidato)"
         },
         {
           "name": "votos",
@@ -82,7 +87,7 @@
       "name": "d_candidato",
       "kind": "dimension",
       "key": "cd_candidato",
-      "description": "Candidatos a presidente de cada eleição.",
+      "description": "Candidatos de cada eleição, com a cor e o espectro político do partido.",
       "columns": [
         {
           "name": "cd_candidato",
@@ -90,7 +95,18 @@
         },
         {
           "name": "ano",
-          "type": "integer"
+          "type": "integer",
+          "required": false
+        },
+        {
+          "name": "cargo",
+          "type": "text",
+          "required": false
+        },
+        {
+          "name": "uf",
+          "type": "text",
+          "required": false
         },
         {
           "name": "nome",
@@ -98,24 +114,35 @@
         },
         {
           "name": "nome_completo",
-          "type": "text"
+          "type": "text",
+          "required": false
         },
         {
           "name": "partido",
-          "type": "text"
+          "type": "text",
+          "required": false
         },
         {
           "name": "numero",
-          "type": "text"
+          "type": "text",
+          "required": false
         },
         {
           "name": "cor",
           "type": "text",
-          "description": "Cor do candidato nos mapas (#rrggbb)"
+          "description": "Cor do candidato nos mapas (#rrggbb, a do partido)"
         },
         {
-          "name": "finalista",
-          "type": "boolean"
+          "name": "espectro",
+          "type": "text",
+          "required": false,
+          "description": "Espectro político do partido"
+        },
+        {
+          "name": "situacao",
+          "type": "text",
+          "required": false,
+          "description": "Situação final no TSE (eleito, 2º turno…)"
         }
       ]
     }
@@ -144,6 +171,11 @@
   ],
   "fields": [
     {
+      "id": "cargo",
+      "label": "Cargo",
+      "sql": "f_votacao.cargo"
+    },
+    {
       "id": "ano",
       "label": "Eleição",
       "sql": "f_votacao.ano"
@@ -171,20 +203,25 @@
     {
       "id": "candidato",
       "label": "Candidato",
-      "sql": "COALESCE(d_candidato.nome, CASE f_votacao.categoria WHEN 'branco' THEN 'Brancos' WHEN 'nulo' THEN 'Nulos' ELSE 'Abstenção' END)"
+      "sql": "COALESCE(d_candidato.nome, CASE f_votacao.categoria WHEN 'legenda' THEN 'Legenda (partido)' WHEN 'branco' THEN 'Brancos' WHEN 'nulo' THEN 'Nulos' ELSE 'Abstenção' END)"
+    },
+    {
+      "id": "partido",
+      "label": "Partido",
+      "sql": "COALESCE(d_candidato.partido, '-')"
     }
   ],
   "measures": [
     {
       "id": "aptos_t1",
       "label": "Eleitores aptos (1º turno)",
-      "sql": "SUM(f_votacao.votos) FILTER (WHERE f_votacao.turno = 1)",
+      "sql": "CASE WHEN COUNT(*) FILTER (WHERE f_votacao.turno = 1 AND f_votacao.categoria = 'abstencao') > 0 THEN SUM(f_votacao.votos) FILTER (WHERE f_votacao.turno = 1) END",
       "format": "integer"
     },
     {
       "id": "comparecimento_t1",
       "label": "Comparecimento (1º turno)",
-      "sql": "SUM(f_votacao.votos) FILTER (WHERE f_votacao.turno = 1 AND f_votacao.categoria <> 'abstencao') / NULLIF(SUM(f_votacao.votos) FILTER (WHERE f_votacao.turno = 1), 0)",
+      "sql": "CASE WHEN COUNT(*) FILTER (WHERE f_votacao.turno = 1 AND f_votacao.categoria = 'abstencao') > 0 THEN SUM(f_votacao.votos) FILTER (WHERE f_votacao.turno = 1 AND f_votacao.categoria <> 'abstencao') / NULLIF(SUM(f_votacao.votos) FILTER (WHERE f_votacao.turno = 1), 0) END",
       "format": "percent"
     },
     {
@@ -208,7 +245,7 @@
     {
       "id": "validos_t1",
       "label": "Votos válidos (1º turno)",
-      "sql": "SUM(f_votacao.votos) FILTER (WHERE f_votacao.turno = 1 AND f_votacao.categoria = 'candidato')",
+      "sql": "SUM(f_votacao.votos) FILTER (WHERE f_votacao.turno = 1 AND f_votacao.categoria IN ('candidato', 'legenda'))",
       "format": "integer"
     },
     {
@@ -232,19 +269,19 @@
     {
       "id": "pct_vencedor_t1",
       "label": "% dos válidos do mais votado (1º turno)",
-      "sql": "MAX(f_votacao.votos) FILTER (WHERE f_votacao.turno = 1 AND f_votacao.categoria = 'candidato') / NULLIF(SUM(f_votacao.votos) FILTER (WHERE f_votacao.turno = 1 AND f_votacao.categoria = 'candidato'), 0)",
+      "sql": "MAX(f_votacao.votos) FILTER (WHERE f_votacao.turno = 1 AND f_votacao.categoria = 'candidato') / NULLIF(SUM(f_votacao.votos) FILTER (WHERE f_votacao.turno = 1 AND f_votacao.categoria IN ('candidato', 'legenda')), 0)",
       "format": "percent"
     },
     {
       "id": "aptos_t2",
       "label": "Eleitores aptos (2º turno)",
-      "sql": "SUM(f_votacao.votos) FILTER (WHERE f_votacao.turno = 2)",
+      "sql": "CASE WHEN COUNT(*) FILTER (WHERE f_votacao.turno = 2 AND f_votacao.categoria = 'abstencao') > 0 THEN SUM(f_votacao.votos) FILTER (WHERE f_votacao.turno = 2) END",
       "format": "integer"
     },
     {
       "id": "comparecimento_t2",
       "label": "Comparecimento (2º turno)",
-      "sql": "SUM(f_votacao.votos) FILTER (WHERE f_votacao.turno = 2 AND f_votacao.categoria <> 'abstencao') / NULLIF(SUM(f_votacao.votos) FILTER (WHERE f_votacao.turno = 2), 0)",
+      "sql": "CASE WHEN COUNT(*) FILTER (WHERE f_votacao.turno = 2 AND f_votacao.categoria = 'abstencao') > 0 THEN SUM(f_votacao.votos) FILTER (WHERE f_votacao.turno = 2 AND f_votacao.categoria <> 'abstencao') / NULLIF(SUM(f_votacao.votos) FILTER (WHERE f_votacao.turno = 2), 0) END",
       "format": "percent"
     },
     {
@@ -268,7 +305,7 @@
     {
       "id": "validos_t2",
       "label": "Votos válidos (2º turno)",
-      "sql": "SUM(f_votacao.votos) FILTER (WHERE f_votacao.turno = 2 AND f_votacao.categoria = 'candidato')",
+      "sql": "SUM(f_votacao.votos) FILTER (WHERE f_votacao.turno = 2 AND f_votacao.categoria IN ('candidato', 'legenda'))",
       "format": "integer"
     },
     {
@@ -292,7 +329,37 @@
     {
       "id": "pct_vencedor_t2",
       "label": "% dos válidos do mais votado (2º turno)",
-      "sql": "MAX(f_votacao.votos) FILTER (WHERE f_votacao.turno = 2 AND f_votacao.categoria = 'candidato') / NULLIF(SUM(f_votacao.votos) FILTER (WHERE f_votacao.turno = 2 AND f_votacao.categoria = 'candidato'), 0)",
+      "sql": "MAX(f_votacao.votos) FILTER (WHERE f_votacao.turno = 2 AND f_votacao.categoria = 'candidato') / NULLIF(SUM(f_votacao.votos) FILTER (WHERE f_votacao.turno = 2 AND f_votacao.categoria IN ('candidato', 'legenda')), 0)",
+      "format": "percent"
+    },
+    {
+      "id": "aptos_final",
+      "label": "Eleitores aptos (turno final)",
+      "sql": "CASE WHEN COALESCE(SUM(f_votacao.votos) FILTER (WHERE f_votacao.turno = 2), 0) >= 0.95 * SUM(f_votacao.votos) FILTER (WHERE f_votacao.turno = 1) THEN CASE WHEN COUNT(*) FILTER (WHERE f_votacao.turno = 2 AND f_votacao.categoria = 'abstencao') > 0 THEN SUM(f_votacao.votos) FILTER (WHERE f_votacao.turno = 2) END ELSE CASE WHEN COUNT(*) FILTER (WHERE f_votacao.turno = 1 AND f_votacao.categoria = 'abstencao') > 0 THEN SUM(f_votacao.votos) FILTER (WHERE f_votacao.turno = 1) END END",
+      "format": "integer"
+    },
+    {
+      "id": "comparecimento_final",
+      "label": "Comparecimento (turno final)",
+      "sql": "CASE WHEN COALESCE(SUM(f_votacao.votos) FILTER (WHERE f_votacao.turno = 2), 0) >= 0.95 * SUM(f_votacao.votos) FILTER (WHERE f_votacao.turno = 1) THEN CASE WHEN COUNT(*) FILTER (WHERE f_votacao.turno = 2 AND f_votacao.categoria = 'abstencao') > 0 THEN SUM(f_votacao.votos) FILTER (WHERE f_votacao.turno = 2 AND f_votacao.categoria <> 'abstencao') / NULLIF(SUM(f_votacao.votos) FILTER (WHERE f_votacao.turno = 2), 0) END ELSE CASE WHEN COUNT(*) FILTER (WHERE f_votacao.turno = 1 AND f_votacao.categoria = 'abstencao') > 0 THEN SUM(f_votacao.votos) FILTER (WHERE f_votacao.turno = 1 AND f_votacao.categoria <> 'abstencao') / NULLIF(SUM(f_votacao.votos) FILTER (WHERE f_votacao.turno = 1), 0) END END",
+      "format": "percent"
+    },
+    {
+      "id": "abstencao_final",
+      "label": "Abstenção (turno final)",
+      "sql": "CASE WHEN COALESCE(SUM(f_votacao.votos) FILTER (WHERE f_votacao.turno = 2), 0) >= 0.95 * SUM(f_votacao.votos) FILTER (WHERE f_votacao.turno = 1) THEN SUM(f_votacao.votos) FILTER (WHERE f_votacao.turno = 2 AND f_votacao.categoria = 'abstencao') / NULLIF(SUM(f_votacao.votos) FILTER (WHERE f_votacao.turno = 2), 0) ELSE SUM(f_votacao.votos) FILTER (WHERE f_votacao.turno = 1 AND f_votacao.categoria = 'abstencao') / NULLIF(SUM(f_votacao.votos) FILTER (WHERE f_votacao.turno = 1), 0) END",
+      "format": "percent"
+    },
+    {
+      "id": "brancos_nulos_final",
+      "label": "Brancos e nulos (turno final)",
+      "sql": "CASE WHEN COALESCE(SUM(f_votacao.votos) FILTER (WHERE f_votacao.turno = 2), 0) >= 0.95 * SUM(f_votacao.votos) FILTER (WHERE f_votacao.turno = 1) THEN SUM(f_votacao.votos) FILTER (WHERE f_votacao.turno = 2 AND f_votacao.categoria IN ('branco', 'nulo')) / NULLIF(SUM(f_votacao.votos) FILTER (WHERE f_votacao.turno = 2 AND f_votacao.categoria <> 'abstencao'), 0) ELSE SUM(f_votacao.votos) FILTER (WHERE f_votacao.turno = 1 AND f_votacao.categoria IN ('branco', 'nulo')) / NULLIF(SUM(f_votacao.votos) FILTER (WHERE f_votacao.turno = 1 AND f_votacao.categoria <> 'abstencao'), 0) END",
+      "format": "percent"
+    },
+    {
+      "id": "pct_vencedor_final",
+      "label": "% dos válidos do mais votado (turno final)",
+      "sql": "CASE WHEN COALESCE(SUM(f_votacao.votos) FILTER (WHERE f_votacao.turno = 2), 0) >= 0.95 * SUM(f_votacao.votos) FILTER (WHERE f_votacao.turno = 1) THEN MAX(f_votacao.votos) FILTER (WHERE f_votacao.turno = 2 AND f_votacao.categoria = 'candidato') / NULLIF(SUM(f_votacao.votos) FILTER (WHERE f_votacao.turno = 2 AND f_votacao.categoria IN ('candidato', 'legenda')), 0) ELSE MAX(f_votacao.votos) FILTER (WHERE f_votacao.turno = 1 AND f_votacao.categoria = 'candidato') / NULLIF(SUM(f_votacao.votos) FILTER (WHERE f_votacao.turno = 1 AND f_votacao.categoria IN ('candidato', 'legenda')), 0) END",
       "format": "percent"
     },
     {
@@ -315,12 +382,14 @@
     }
   ],
   "filters": [
+    "cargo",
     "ano",
     "regiao",
     "uf"
   ],
   "filterDefaults": {
-    "ano": "2026"
+    "cargo": "PRESIDENTE, GOVERNADOR, DEPUTADO FEDERAL, PREFEITO",
+    "ano": "2026, 2024"
   },
   "visuals": [
     {
@@ -328,35 +397,35 @@
       "type": "text",
       "title": "Como cada município votou",
       "span": 12,
-      "body": "Este painel refaz, na plataforma DBI, as análises do Mapa da Votação para a eleição presidencial. Os números vêm direto dos dados abertos do TSE, consolidados por município, e o mapa usa as malhas oficiais do IBGE.\n\nEscolha a eleição no filtro do topo e, se quiser, uma região ou um estado: todos os visuais e os mapas se recalculam juntos. No mapa, a cor mostra quem teve mais votos em cada município e fica mais forte onde a vitória foi mais folgada."
+      "body": "Este painel refaz, na plataforma DBI, as análises do Mapa da Votação. Os números vêm direto dos dados abertos do TSE, seção por seção, somados por município, e o mapa usa as malhas oficiais do IBGE.\n\nEscolha o cargo e a eleição no topo e, se quiser, uma região ou um estado: todos os visuais e os mapas se recalculam juntos. No mapa, a cor é a do partido de quem teve mais votos em cada município e fica mais forte onde a vitória foi mais folgada."
     },
     {
       "id": "k_aptos",
       "type": "kpi",
       "title": "Eleitores aptos",
       "span": 3,
-      "measure": "aptos_t2"
+      "measure": "aptos_final"
     },
     {
       "id": "k_comparecimento",
       "type": "kpi",
-      "title": "Comparecimento no 2º turno",
+      "title": "Comparecimento (turno final)",
       "span": 3,
-      "measure": "comparecimento_t2"
+      "measure": "comparecimento_final"
     },
     {
       "id": "k_abstencao",
       "type": "kpi",
-      "title": "Abstenção no 2º turno",
+      "title": "Abstenção (turno final)",
       "span": 3,
-      "measure": "abstencao_t2"
+      "measure": "abstencao_final"
     },
     {
       "id": "k_brancos_nulos",
       "type": "kpi",
-      "title": "Brancos e nulos no 2º turno",
+      "title": "Brancos e nulos (turno final)",
       "span": 3,
-      "measure": "brancos_nulos_t2"
+      "measure": "brancos_nulos_final"
     },
     {
       "id": "mapa_t1",
@@ -466,6 +535,22 @@
       "limit": 50
     },
     {
+      "id": "tabela_candidatos",
+      "type": "table",
+      "title": "Os mais votados",
+      "span": 12,
+      "fields": [
+        "candidato",
+        "partido"
+      ],
+      "measures": [
+        "validos_t1",
+        "validos_t2"
+      ],
+      "orderBy": "validos_t1",
+      "limit": 30
+    },
+    {
       "id": "tabela_maiores",
       "type": "table",
       "title": "Os maiores colégios eleitorais",
@@ -475,14 +560,14 @@
         "uf"
       ],
       "measures": [
-        "aptos_t2",
+        "aptos_final",
         "vencedor_t1",
         "vencedor_t2",
         "virou",
-        "pct_vencedor_t2",
-        "comparecimento_t2"
+        "pct_vencedor_final",
+        "comparecimento_final"
       ],
-      "orderBy": "aptos_t2",
+      "orderBy": "aptos_final",
       "limit": 30
     },
     {
@@ -490,7 +575,7 @@
       "type": "text",
       "title": "Metodologia e fontes",
       "span": 12,
-      "body": "Votos: TSE, Dados Abertos (votação por seção), somados por município para cada turno. Malhas: IBGE, malha municipal. População: IBGE, Estimativas de População.\n\nO \"mais votado\" e o seu percentual consideram só os votos válidos (sem brancos e nulos). A abstenção é a parte dos eleitores aptos que não votou. Os votos do exterior entram nos totais, mas não aparecem no mapa.\n\nO arquivo de votos tem uma linha por município, turno e candidato. Cada medida deste painel é uma expressão SQL sobre esse arquivo, calculada no DuckDB direto do Parquet a cada filtro."
+      "body": "Votos: TSE, Dados Abertos (votação por seção), somados por município, cargo, eleição e turno. Eleitores aptos e abstenção: TSE, perfil do comparecimento (2016 a 2024) e detalhe da votação (2026); para 2010 e 2014 o acervo não traz essa informação, e esses números aparecem como \"—\". Malhas: IBGE, malha municipal. População: IBGE, Estimativas de População. Cores e espectro: cadastro de partidos do Mapa da Votação.\n\nO \"mais votado\" e o seu percentual consideram os votos válidos: nominais e de legenda, sem brancos e nulos. Votos de legenda contam como válidos, mas não disputam o \"mais votado\". Os votos do exterior entram nos totais, mas não aparecem no mapa.\n\nO arquivo de votos tem uma linha por município, cargo, eleição, turno e candidato. Cada medida deste painel é uma expressão SQL sobre esse arquivo, calculada no DuckDB direto do Parquet a cada filtro."
     }
   ]
 }

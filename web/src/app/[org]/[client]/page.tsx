@@ -8,15 +8,18 @@ export const dynamic = "force-dynamic";
 
 interface Props {
   params: Promise<{ org: string; client: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return { title: (await params).client };
 }
 
-export default async function ClientHomePage({ params }: Props) {
+export default async function ClientHomePage({ params, searchParams }: Props) {
   const { org, client } = await params;
   const ctx = await guard(getClientContext(org, client));
   if (ctx === "forbidden") return <Forbidden />;
-  return <SpaceHome org={ctx.org} client={ctx.client} membership={ctx.membership} user={ctx.user} />;
+  return (
+    <SpaceHome org={ctx.org} client={ctx.client} membership={ctx.membership} user={ctx.user} searchParams={await searchParams} />
+  );
 }

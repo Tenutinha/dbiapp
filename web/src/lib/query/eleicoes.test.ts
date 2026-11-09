@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { loadTemplate } from "../test-helpers";
 import { templateSchema } from "../templates/schema";
 import { buildVisualQuery, type QueryVisual } from "./build";
-import { parseSelection } from "./run";
+import { chooseSingleValue, defaultPreferences, parseSelection } from "./run";
 
 const t = loadTemplate("eleicoes-presidente");
 const files = Object.fromEntries(t.tables.map((tb) => [tb.name, `/data/${tb.name}.parquet`]));
@@ -31,15 +31,40 @@ describe("map visuals", () => {
 describe("table orderBy", () => {
   it("sorts by the chosen measure instead of the first", () => {
     const q = buildVisualQuery(t, files, visual("tabela_maiores"), {});
-    expect(q.sql).toContain("ORDER BY aptos_t2 DESC NULLS LAST LIMIT 30");
+    expect(q.sql).toContain("ORDER BY aptos_final DESC NULLS LAST LIMIT 30");
   });
 });
 
 describe("filterDefaults", () => {
-  it("always selects exactly one election, falling back to the default", () => {
+  it("starts single-choice filters at the user's first value or the first preference", () => {
     expect(parseSelection(t, {}).ano).toEqual(["2026"]);
+    expect(parseSelection(t, {}).cargo).toEqual(["PRESIDENTE"]);
     expect(parseSelection(t, { "f.ano": ["2022", "2026"] }).ano).toEqual(["2022"]);
-    expect(parseSelection(t, { "f.uf": "SP" })).toEqual({ ano: ["2026"], uf: ["SP"] });
+    expect(parseSelection(t, { "f.uf": "SP" })).toEqual({ cargo: ["PRESIDENTE"], ano: ["2026"], uf: ["SP"] });
+  });
+
+  it("reads comma separated preferences", () => {
+    expect(defaultPreferences(t, "cargo")).toEqual(["PRESIDENTE", "GOVERNADOR", "DEPUTADO FEDERAL", "PREFEITO"]);
+    expect(defaultPreferences(t, "uf")).toEqual([]);
+  });
+});
+
+describe("chooseSingleValue", () => {
+  const years = ["2016", "2020", "2024"];
+
+  it("keeps the user's pick when the data has it", () => {
+    expect(chooseSingleValue(years, "2020", ["2026", "2024"])).toBe("2020");
+  });
+
+  it("falls back to the first preference the data has", () => {
+    expect(chooseSingleValue(years, "2026", ["2026", "2024"])).toBe("2024");
+    expect(chooseSingleValue(["GOVERNADOR", "SENADOR"], undefined, ["PRESIDENTE", "GOVERNADOR"])).toBe("GOVERNADOR");
+  });
+
+  it("uses the greatest value when no preference exists (numbers compared as numbers)", () => {
+    expect(chooseSingleValue(["2010", "2014", "2022"], undefined, ["2026"])).toBe("2022");
+    expect(chooseSingleValue(["9", "10"], undefined, [])).toBe("10");
+    expect(chooseSingleValue([], "2026", ["2026"])).toBeUndefined();
   });
 });
 

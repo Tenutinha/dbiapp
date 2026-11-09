@@ -65,6 +65,64 @@ function Preview({ theme, logoUrl, spaceName }: { theme: Theme; logoUrl: string 
   );
 }
 
+/** Quick picks for the dashboard background: soft lights first, then deep darks. */
+const BACKGROUND_PRESETS = ["#ffffff", "#f6f5f1", "#eef2ff", "#f0fdf4", "#fff7ed", "#0b1220", "#111827", "#1e1b4b", "#052e2b"];
+
+interface BackgroundPickerProps {
+  /** What this space set (null = not set here). */
+  own: string | null;
+  /** What it would inherit (organization's background for a client; null = the appearance's own). */
+  inherited: string | null;
+  inheritedLabel: string;
+  /** The background the preview shows right now. */
+  shown: string;
+  onChange: (color: string | null) => void;
+}
+
+/** "Fundo do dashboard": the colour behind the cards; cards, lines and text follow it. */
+function BackgroundPicker({ own, inherited, inheritedLabel, shown, onChange }: BackgroundPickerProps) {
+  const note = own
+    ? "Os cartões, linhas e textos se ajustam à cor; a área fica clara ou escura conforme ela."
+    : inherited
+      ? `Herdando de ${inheritedLabel}.`
+      : "Padrão: o fundo da área clara ou escura escolhida acima.";
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-3">
+        <input
+          type="color"
+          aria-label="Fundo do dashboard"
+          value={shown}
+          onChange={(e) => onChange(e.target.value.toLowerCase())}
+          className="size-10 shrink-0 cursor-pointer rounded-lg border border-line bg-transparent p-0.5"
+        />
+        <input type="hidden" name="backgroundColor" value={own ?? ""} />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm">Fundo do dashboard <span className="font-mono text-xs text-muted">{shown}</span></p>
+          <p className="text-xs text-muted">{note}</p>
+        </div>
+        {own && (
+          <button type="button" onClick={() => onChange(null)} className="text-xs text-muted hover:text-text">Usar o padrão</button>
+        )}
+      </div>
+      <div className="flex flex-wrap gap-1.5 pl-[52px]" role="group" aria-label="Sugestões de fundo">
+        {BACKGROUND_PRESETS.map((c) => (
+          <button
+            key={c}
+            type="button"
+            onClick={() => onChange(c)}
+            title={c}
+            aria-label={`Fundo ${c}`}
+            aria-pressed={own === c}
+            style={{ background: c }}
+            className={`size-6 rounded-md border transition hover:scale-110 ${own === c ? "border-brand ring-2 ring-brand/40" : "border-line"}`}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function ThemeForm(props: ThemeFormProps) {
   const { orgSlug, clientSlug, input, inherited, inheritedLabel } = props;
   const [draft, setDraft] = useState<BrandingInput>(input);
@@ -102,7 +160,7 @@ export function ThemeForm(props: ThemeFormProps) {
           <form action={uploadLogo} className="flex flex-wrap items-center gap-2">
             {scopeFields}
             <input name="logo" type="file" accept="image/png,image/jpeg,image/webp" required
-              className="text-xs file:mr-3 file:rounded-lg file:border file:border-line file:bg-white/5 file:px-3 file:py-1.5 file:text-text" />
+              className="text-xs file:mr-3 file:rounded-lg file:border file:border-line file:bg-text/5 file:px-3 file:py-1.5 file:text-text" />
             <button className="btn btn-ghost px-3 py-1.5 text-xs" disabled={uploading}>{uploading ? "Enviando…" : "Enviar logo"}</button>
           </form>
           {props.logoUrl && (
@@ -163,6 +221,14 @@ export function ThemeForm(props: ThemeFormProps) {
             </div>
             <input type="hidden" name="appearance" value={draft.appearance ?? ""} />
           </fieldset>
+
+          <BackgroundPicker
+            own={draft.backgroundColor}
+            inherited={inherited.backgroundColor}
+            inheritedLabel={inheritedLabel}
+            shown={themeCssVars(preview)["--color-bg"]}
+            onChange={(backgroundColor) => setDraft((d) => ({ ...d, backgroundColor }))}
+          />
 
           <div className="flex items-center gap-3">
             <button className="btn btn-primary" disabled={savingColors}>{savingColors ? "Salvando…" : "Salvar cores"}</button>

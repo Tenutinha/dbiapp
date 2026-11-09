@@ -65,7 +65,7 @@ export default async function VitrineDetailPage({ params }: Props) {
           <Section title="Indicadores calculados">
             <div className="flex flex-wrap gap-1.5">
               {template.measures.map((m) => (
-                <span key={m.id} className="rounded-md bg-white/5 px-2 py-1 text-xs">{m.label}</span>
+                <span key={m.id} className="rounded-md bg-text/5 px-2 py-1 text-xs">{m.label}</span>
               ))}
             </div>
           </Section>

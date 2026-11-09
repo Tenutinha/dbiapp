@@ -65,7 +65,7 @@ function FilterDropdown({
           <ul className="max-h-64 overflow-auto">
             {visible.map((v) => (
               <li key={v}>
-                <label className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-white/5">
+                <label className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-text/5">
                   <input
                     type={filter.single ? "radio" : "checkbox"}
                     name={filter.single ? `filtro-${filter.fieldId}` : undefined}
@@ -80,7 +80,7 @@ function FilterDropdown({
             {visible.length === 0 && <li className="px-2 py-1.5 text-sm text-muted">Nada encontrado</li>}
           </ul>
           {active && !filter.single && (
-            <button type="button" onClick={() => onChange([])} className="mt-1 w-full rounded-md px-2 py-1.5 text-left text-xs text-brand-2 hover:bg-white/5">
+            <button type="button" onClick={() => onChange([])} className="mt-1 w-full rounded-md px-2 py-1.5 text-left text-xs text-brand-2 hover:bg-text/5">
               Limpar seleção
             </button>
           )}

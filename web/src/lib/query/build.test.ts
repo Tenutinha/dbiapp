@@ -56,3 +56,32 @@ describe("buildFilterOptionsQuery", () => {
     expect(q.sql).toContain("SELECT DISTINCT COALESCE(");
   });
 });
+
+describe("dashboard data filter (fact table)", () => {
+  const factFilter = [{ column: "id_loja", op: "in" as const, values: ["L01"] }];
+
+  it("reads the fact table through the filter, keeping its alias for joins and measures", () => {
+    const q = buildVisualQuery(t, files, visual("k_receita"), {}, factFilter);
+    expect(q.sql).toContain(
+      `FROM (SELECT * FROM read_parquet('/data/fato_vendas.parquet') WHERE CAST("id_loja" AS VARCHAR) IN ($1)) AS fato_vendas`,
+    );
+    expect(q.params).toEqual(["L01"]);
+  });
+
+  it("numbers the on-screen filter values after the data filter's", () => {
+    const q = buildVisualQuery(t, files, visual("receita_categoria"), { ano: ["2025"] }, factFilter);
+    expect(q.params).toEqual(["L01", "2025"]);
+    expect(q.sql).toContain("IN ($2)");
+  });
+
+  it("also limits the options offered by the on-screen filters", () => {
+    const q = buildFilterOptionsQuery(t, files, "regiao", {}, factFilter);
+    expect(q.sql).toContain(`WHERE CAST("id_loja" AS VARCHAR) IN ($1)`);
+    expect(q.params).toEqual(["L01"]);
+  });
+
+  it("is a plain read_parquet without a filter", () => {
+    expect(buildVisualQuery(t, files, visual("k_receita"), {}, []).sql).toContain("FROM read_parquet('/data/fato_vendas.parquet') AS fato_vendas");
+  });
+});
+

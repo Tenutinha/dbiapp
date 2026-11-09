@@ -16,7 +16,7 @@ export async function listAllOrganizations(): Promise<OrgOverview[]> {
   return sql<OrgOverview[]>`
     SELECT o.id, o.slug, o.name, o.created_at AS "createdAt",
       (SELECT COUNT(*)::int FROM org_clients c WHERE c.organization_id = o.id) AS clients,
-      (SELECT COUNT(*)::int FROM dashboard_instances i WHERE i.organization_id = o.id) AS dashboards,
+      (SELECT COUNT(*)::int FROM dashboard_instances i WHERE i.organization_id = o.id AND i.archived_at IS NULL) AS dashboards,
       (SELECT COUNT(*)::int FROM (
          SELECT user_id FROM organization_members WHERE organization_id = o.id
          UNION

@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono, Newsreader } from "next/font/google";
 import { DevUserSwitcher } from "@/components/DevUserSwitcher";
+import { ElementInspector } from "@/components/dev/ElementInspector";
+import { defaultUiTheme, themeBootScript } from "@/lib/theme/ui-theme";
 import "./globals.css";
 
 const inter = Inter({ variable: "--font-inter", subsets: ["latin"] });
@@ -14,10 +16,15 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="pt-BR" className={`${inter.variable} ${mono.variable} ${serif.variable}`}>
+    // The boot script sets data-theme before React hydrates, hence suppressHydrationWarning on <html>.
+    <html lang="pt-BR" className={`${inter.variable} ${mono.variable} ${serif.variable}`} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeBootScript(defaultUiTheme(process.env.NODE_ENV, process.env.DBI_TEMA_PADRAO)) }} />
+      </head>
       <body className="min-h-screen antialiased">
         {children}
         <DevUserSwitcher />
+        <ElementInspector />
       </body>
     </html>
   );

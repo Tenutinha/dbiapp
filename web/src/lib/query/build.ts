@@ -7,6 +7,7 @@
  */
 import type { Field, Measure, Template, Visual } from "../templates/schema";
 import { quotePath } from "../duck/engine";
+import { factFilterSql, type FactFilter } from "./fact-filter";
 
 /** Selected values per filter field id. Empty / missing = no filter. */
 export type FilterSelection = Readonly<Record<string, readonly string[]>>;
@@ -32,18 +33,25 @@ function factTable(t: Template): string {
   return fact.name;
 }
 
-export function buildFrom(t: Template, files: TableFiles): string {
+/**
+ * FROM + joins. With a dashboard data filter, the fact table is read through it (a sub-select keeping
+ * the same alias), so every measure, join and filter option only sees the kept rows. Filter values are
+ * appended to `params`.
+ */
+export function buildFrom(t: Template, files: TableFiles, factFilter: FactFilter = [], params: string[] = []): string {
   const fileFor = (table: string): string => {
     const file = files[table];
     if (!file) throw new Error(`missing file for table ${table}`);
     return `read_parquet(${quotePath(file)})`;
   };
   const fact = factTable(t);
+  const where = factFilterSql(factFilter, params);
+  const factSource = where ? `(SELECT * FROM ${fileFor(fact)} ${where})` : fileFor(fact);
   const joins = t.relationships.map(
     (r) =>
       `LEFT JOIN ${fileFor(r.to.table)} AS ${r.to.table} ON ${r.from.table}.${r.from.column} = ${r.to.table}.${r.to.column}`,
   );
-  return [`FROM ${fileFor(fact)} AS ${fact}`, ...joins].join("\n");
+  return [`FROM ${factSource} AS ${fact}`, ...joins].join("\n");
 }
 
 function lookup<T extends { id: string }>(items: readonly T[], id: string, kind: string): T {
@@ -52,9 +60,9 @@ function lookup<T extends { id: string }>(items: readonly T[], id: string, kind:
   return found;
 }
 
-export function buildWhere(t: Template, filters: FilterSelection, excludeField?: string): BuiltQuery {
+/** WHERE of the on-screen filters; `params` may already hold values ($n continues after them). */
+export function buildWhere(t: Template, filters: FilterSelection, excludeField?: string, params: string[] = []): BuiltQuery {
   const clauses: string[] = [];
-  const params: string[] = [];
   for (const fieldId of t.filters) {
     if (fieldId === excludeField) continue;
     const values = (filters[fieldId] ?? []).slice(0, MAX_FILTER_VALUES);
@@ -132,12 +140,16 @@ function selectFor(t: Template, visual: QueryVisual): { select: string[]; groupB
   }
 }
 
-export function buildVisualQuery(t: Template, files: TableFiles, visual: QueryVisual, filters: FilterSelection): BuiltQuery {
+export function buildVisualQuery(
+  t: Template, files: TableFiles, visual: QueryVisual, filters: FilterSelection, factFilter: FactFilter = [],
+): BuiltQuery {
   const { select, groupBy, tail } = selectFor(t, visual);
-  const where = buildWhere(t, filters);
+  const params: string[] = [];
+  const from = buildFrom(t, files, factFilter, params);
+  const where = buildWhere(t, filters, undefined, params);
   const sql = [
     `SELECT ${select.join(", ")}`,
-    buildFrom(t, files),
+    from,
     where.sql,
     groupBy.length ? `GROUP BY ${groupBy.join(", ")}` : "",
     tail,
@@ -153,12 +165,15 @@ export function buildFilterOptionsQuery(
   files: TableFiles,
   fieldId: string,
   filters: FilterSelection,
+  factFilter: FactFilter = [],
 ): BuiltQuery {
   const field = lookup(t.fields, fieldId, "field");
-  const where = buildWhere(t, filters, fieldId);
+  const params: string[] = [];
+  const from = buildFrom(t, files, factFilter, params);
+  const where = buildWhere(t, filters, fieldId, params);
   const sql = [
     `SELECT DISTINCT ${fieldValue(field)} AS value`,
-    buildFrom(t, files),
+    from,
     where.sql,
     `ORDER BY value NULLS LAST LIMIT 500`,
   ]
