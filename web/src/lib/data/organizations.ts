@@ -27,6 +27,22 @@ export async function createClient(orgId: string, name: string, slug: string): P
   }
 }
 
+/**
+ * Renames a client of this organization: its name and its address (/<org>/<slug>). Data, files and shared
+ * links (/s/<token>) are keyed by ids, so only old bookmarks of the previous address stop working.
+ * Returns false if the client is not this organization's; throws DuplicateSlugError if the address is taken.
+ */
+export async function renameClient(orgId: string, clientId: string, name: string, slug: string): Promise<boolean> {
+  try {
+    const updated = await sql`
+      UPDATE org_clients SET name = ${name}, slug = ${slug} WHERE id = ${clientId} AND organization_id = ${orgId}`;
+    return updated.count > 0;
+  } catch (err) {
+    if ((err as { code?: string }).code === "23505") throw new DuplicateSlugError(slug);
+    throw err;
+  }
+}
+
 /** Every person with access to the organization, with their staff role and client roles. */
 export interface OrgPerson {
   userId: string;

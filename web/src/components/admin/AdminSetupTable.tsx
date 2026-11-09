@@ -8,6 +8,7 @@ import {
 import type { PickerItem } from "@/lib/catalog-picker";
 import type { OrgPerson } from "@/lib/data/organizations";
 import { formatDateLong } from "@/lib/format";
+import { ClientNameEditor } from "./ClientNameEditor";
 import { UnlinkDashboardButton } from "./DashboardLinkForms";
 import { SpaceUsersList, SpaceUsersPanel } from "./SetupPeople";
 import {
@@ -26,6 +27,10 @@ export interface AdminSetupTableProps {
 
 const TH = "px-4 py-3 text-left text-xs font-medium text-muted";
 const TD = "px-4 py-3 align-top";
+// Sticky cells need an opaque background, and draw their dividing line as a shadow (collapsed
+// table borders don't move with sticky cells).
+const STICKY_TOP = "sticky top-0 z-20 bg-card shadow-[inset_0_-1px_0_var(--color-line)]";
+const STICKY_BOTTOM = "sticky bottom-0 z-20 bg-card shadow-[inset_0_2px_0_var(--color-line),0_-6px_12px_-8px_rgb(0_0_0/0.25)]";
 
 const SUBTLE_LINK = "text-xs text-muted hover:text-brand-2";
 
@@ -108,6 +113,18 @@ function SpaceCell({
   const path = isOrg ? `/${org.slug}` : `/${org.slug}/${group.slug}`;
   // Opens the theme form of this space in a centered modal over the table (?tema=org | <client slug>).
   const themeHref = `/${org.slug}/admin?tema=${group.slug ?? "org"}`;
+  const spaceName = isOrg ? org.name : group.name;
+  const themeGear = (
+    <Link
+      href={themeHref}
+      scroll={false}
+      title={`Editar o tema de ${spaceName}`}
+      aria-label={`Editar o tema de ${spaceName}`}
+      className="grid size-6 shrink-0 place-items-center rounded-md text-muted hover:bg-text/5 hover:text-text"
+    >
+      <GearIcon />
+    </Link>
+  );
   return (
     <td
       rowSpan={rowSpan}
@@ -116,20 +133,18 @@ function SpaceCell({
       <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">
         {isOrg ? "Organização" : "Cliente"}
       </p>
-      <div className="flex items-center gap-1.5">
-        <Link href={path} className="font-semibold hover:text-brand-2">
-          {isOrg ? org.name : group.name}
-        </Link>
-        <Link
-          href={themeHref}
-          scroll={false}
-          title={`Editar o tema de ${isOrg ? org.name : group.name}`}
-          aria-label={`Editar o tema de ${isOrg ? org.name : group.name}`}
-          className="grid size-6 place-items-center rounded-md text-muted hover:bg-text/5 hover:text-text"
-        >
-          <GearIcon />
-        </Link>
-      </div>
+      {isOrg ? (
+        <div className="flex items-center gap-1.5">
+          <Link href={path} className="font-semibold hover:text-brand-2">
+            {org.name}
+          </Link>
+          {themeGear}
+        </div>
+      ) : (
+        <ClientNameEditor orgSlug={org.slug} clientId={group.scope} name={group.name} slug={group.slug ?? ""}>
+          {themeGear}
+        </ClientNameEditor>
+      )}
       <p className="font-mono text-[11px] text-muted">dbi.app.br{path}</p>
       <p className="mt-1 text-xs text-muted">
         {group.dashboards.length}{" "}
@@ -290,25 +305,29 @@ export function AdminSetupTable({
 }: AdminSetupTableProps) {
   return (
     <CatalogPickerProvider orgSlug={org.slug} items={catalog}>
-      <div className="card overflow-x-auto">
+      {/*
+        Scrolls inside its own box (both ways), sized to the screen: the column names stay on top and the
+        "+ Adicionar cliente" row stays at the bottom, however many clients there are.
+      */}
+      <div className="card max-h-[calc(100vh-8.5rem)] overflow-auto">
         <table className="w-full min-w-[880px] table-fixed border-collapse text-sm">
           <thead>
             <tr>
-              <th className={`${TH} w-[24%]`}>1 · Cliente / organização</th>
-              <th className={`${TH} w-[26%]`}>2 · Dashboard</th>
-              <th className={`${TH} w-[26%]`}>3 · Dados</th>
-              <th className={`${TH} w-[24%]`}>4 · Acessos</th>
+              <th className={`${TH} ${STICKY_TOP} w-[24%]`}>1 · Cliente / organização</th>
+              <th className={`${TH} ${STICKY_TOP} w-[26%]`}>2 · Dashboard</th>
+              <th className={`${TH} ${STICKY_TOP} w-[26%]`}>3 · Dados</th>
+              <th className={`${TH} ${STICKY_TOP} w-[24%]`}>4 · Acessos</th>
             </tr>
           </thead>
           {groups.map((g) => (
             <SpaceBlock key={g.scope} org={org} group={g} people={people} />
           ))}
-          <tbody className="border-t-2 border-line">
+          <tbody>
             <tr>
-              <td className={`${TD} border-r border-line/60 bg-bg-2/40`}>
+              <td className={`${TD} ${STICKY_BOTTOM}`}>
                 <NewClientModal orgSlug={org.slug} />
               </td>
-              <td colSpan={3} />
+              <td colSpan={3} className={STICKY_BOTTOM} />
             </tr>
           </tbody>
         </table>

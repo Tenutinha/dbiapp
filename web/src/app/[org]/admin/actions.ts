@@ -5,8 +5,9 @@ import { z } from "zod";
 import { getOrgContext, orgActions, requireAction, type OrgContext } from "@/lib/access";
 import { AccessError } from "@/lib/auth";
 import {
-  countAdmins, createClient, DuplicateSlugError, grantAccess, listOrgPeople, revokeClientRole, revokeOrgRole,
+  countAdmins, createClient, DuplicateSlugError, grantAccess, listOrgPeople, renameClient, revokeClientRole, revokeOrgRole,
 } from "@/lib/data/organizations";
+import { clientNameSchema } from "@/lib/client-name";
 import { CLIENT_ROLES, isValidSlug, ROLES, slugify } from "@/lib/permissions";
 
 export interface FormState {
@@ -31,9 +32,40 @@ const orgSlugSchema = z.string().regex(/^[a-z0-9-]{1,40}$/);
 
 const clientSchema = z.object({
   org: orgSlugSchema,
-  name: z.string().trim().min(2, "Informe o nome do cliente.").max(80),
+  name: clientNameSchema,
   slug: z.string().trim().max(40).optional(),
 });
+
+const renameSchema = z.object({
+  org: orgSlugSchema,
+  clientId: z.string().uuid(),
+  name: clientNameSchema,
+  slug: z.string().trim().toLowerCase().max(40).optional(),
+});
+
+/**
+ * Renames a client: its name and its address (/<org>/<client>). A blank address follows the name.
+ * Shared links (/s/…) keep working; only bookmarks of the old address stop opening.
+ */
+export async function renameClientAction(_prev: FormState, formData: FormData): Promise<FormState> {
+  try {
+    const input = renameSchema.parse({
+      org: formData.get("org"), clientId: formData.get("clientId"), name: formData.get("name"),
+      slug: formData.get("slug") || undefined,
+    });
+    const ctx = await requireAdmin(input.org);
+    const slug = input.slug || slugify(input.name);
+    if (!isValidSlug(slug)) {
+      return { ok: false, message: `Endereço "${slug}" inválido ou reservado. Use letras minúsculas, números e hífen.` };
+    }
+    if (!(await renameClient(ctx.org.id, input.clientId, input.name, slug))) return { ok: false, message: "Cliente não encontrado." };
+    revalidatePath(`/${ctx.org.slug}`, "layout");
+    return { ok: true, message: `Salvo: ${input.name} · /${ctx.org.slug}/${slug}` };
+  } catch (err) {
+    if (err instanceof DuplicateSlugError) return { ok: false, message: `Já existe um cliente com o endereço "${err.message}".` };
+    return failure(err);
+  }
+}
 
 export async function createClientAction(_prev: FormState, formData: FormData): Promise<FormState> {
   try {
