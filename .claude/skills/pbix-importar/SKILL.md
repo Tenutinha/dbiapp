@@ -30,6 +30,12 @@ uv run --no-project --python 3.11 --with pbixray --with "kaitaistruct>=0.11" --w
 - Sem `DataModel` (Live Connection) só vem o layout. Nesse caso o modelo tem de ser montado com a pessoa.
 - Em DirectQuery não há dados. Avise; os Parquet virão depois pelo upload normal.
 
+Para ter uma visão rápida, rode o resumo. Ele lista os relacionamentos, os visuais de cada página, os slicers, o DAX das medidas usadas e as colunas:
+
+```bash
+python -I .claude/skills/pbix-importar/scripts/resumir_extracao.py "<pasta>/extracao.json" > "<pasta>/resumo.txt"
+```
+
 Leia `extracao.json`:
 
 - `modelo.tabelas`: traz o `nome` (já em snake_case) e as colunas com `tipo` da DBI. As tabelas `interna: true` (LocalDateTable/DateTableTemplate) são as datas automáticas do PBI e devem ser ignoradas.
@@ -55,7 +61,18 @@ Siga o formato de `web/src/lib/templates/schema.ts`. Os exemplos de referência 
 - **Uma única tabela `fact`.** Escolha a que está do lado "muitos" da maioria dos relacionamentos e que alimenta as medidas.
 - **As demais tabelas viram `dimension`**, com `key` = coluna do lado "um".
 - **Relacionamentos sempre partem da fato.** Em floco de neve (dimensão → dimensão), achate: inclua as colunas da sub-dimensão na dimensão, com um JOIN feito no DuckDB sobre os Parquet ao gerar o arquivo final, e registre no relatório.
-- **Mais de uma fato:** pergunte qual vira o dashboard. A outra pode virar outro template.
+- **Mais de uma fato:** gere **um molde por fato** que tenha páginas próprias. Nos casos já feitos:
+  - o Financeiro virou Contas a receber + Contas a pagar;
+  - o Estoque virou Posição de estoque + Entradas de mercadorias.
+
+  Medidas que cruzam fatos (giro, % realizado sobre meta) ficam como pendência.
+- **Linhas repetidas na fato:** se o DAX usa `SUMMARIZE`/`DISTINCT` para não somar duas vezes (ex.: vlrtitulo repetido em cada parcial de recebimento), não dá para traduzir numa agregação simples. Nesse caso:
+  - gere nos dados uma coluna `<valor>_rateado` = valor / `COUNT(*) OVER (PARTITION BY <chave>)`;
+  - some essa coluna;
+  - documente a regra na descrição da tabela.
+
+  A partição precisa repetir exatamente o grão do `SUMMARIZE`.
+- **Fato do tipo foto** (estoque, saldo, carteira), com uma posição por data e medidas "atual" ou "último período": crie um campo de mês da posição, ponha-o em `filters` e em `filterDefaults` com um valor que não existe nos dados (ex.: `"mais recente"`). O filtro passa a abrir no maior valor. A evolução mensal da foto fica como pendência.
 - **Tabelas e colunas não usadas** por medidas, visuais ou relacionamentos ficam fora do contrato. Isso não se aplica a colunas-chave.
 - **`sortBy` da fato:** as colunas mais filtradas, por exemplo a data.
 - **Colunas calculadas** já vêm materializadas no Parquet. Use-as como colunas normais.
@@ -74,7 +91,12 @@ Níveis de hierarquia de data (`nivel_hierarquia` com nível Ano/Trimestre/Mês/
 
 ### Medidas (`measures`): DAX → SQL do DuckDB
 
-O `sql` já inclui a agregação e deve passar no SAFE_SQL: sem `;`, sem `--`, sem aspas duplas, sem `read_`, `copy` e afins. Formatos possíveis: currency | number | integer | percent | text. Use `formatString` ou o nome da medida como pista.
+O `sql` já inclui a agregação e deve passar no SAFE_SQL:
+
+- sem `;`, sem `--`, sem aspas duplas, sem `read_`, `copy` e afins;
+- sem `|`, então para concatenar use `concat(a, ' - ', b)` no lugar de `||`.
+
+O mesmo vale para o `sql` dos campos. Formatos possíveis: currency | number | integer | percent | text. Use `formatString` ou o nome da medida como pista.
 
 | DAX | SQL |
 |---|---|
@@ -142,7 +164,9 @@ O validador confere:
 - cada campo, mostrando o top 3;
 - cada visual e cada filtro.
 
-Corrija até ficar "Tudo ok". Em seguida, mostre à pessoa os totais das principais medidas para que ela confira com os cartões do Power BI, que devem bater sem filtros aplicados.
+Corrija até ficar "Tudo ok".
+
+O validador roda **sem** os `filterDefaults`, então numa fato do tipo foto os totais somam todos os meses. Para comparar com o PBI, confira o top 3 do campo de mês, que mostra o valor de cada mês. Em seguida, mostre à pessoa os totais das principais medidas para que ela confira com os cartões do Power BI, que devem bater sem filtros aplicados.
 
 ## Passo 4: relatório e entrega
 
