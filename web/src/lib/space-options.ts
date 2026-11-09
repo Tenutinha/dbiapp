@@ -1,3 +1,5 @@
+import { matchesQuery } from "./text-search";
+
 /** One space a person can open in an organization: the organization itself or one of its clients. */
 export interface SpaceOption {
   href: string;
@@ -27,4 +29,10 @@ export function spaceOptions(
       current: c.id === currentClientId,
     })),
   ];
+}
+
+
+/** The switcher's search: spaces whose name contains the query (accent- and case-insensitive), in order. */
+export function filterSpaces(spaces: readonly SpaceOption[], query: string): SpaceOption[] {
+  return spaces.filter((s) => matchesQuery(s.label, query));
 }

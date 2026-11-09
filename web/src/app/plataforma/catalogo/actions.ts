@@ -1,7 +1,6 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import { z } from "zod";
 import { AccessError, getCurrentUser, type CurrentUser } from "@/lib/auth";
 import {
@@ -133,21 +132,51 @@ export async function updateTemplateAction(_prev: TemplateFormState, formData: F
   }
 }
 
-export async function setTemplateStatusAction(formData: FormData): Promise<void> {
-  await requirePlatformAdmin();
-  const id = templateId.parse(formData.get("id"));
-  const status = statusSchema.parse(formData.get("status"));
-  await setStatus(id, status);
-  console.info(`[catalog] template ${id} → ${status}`);
-  revalidateCatalog(id);
+/** Result of the status/deletion actions called from the vitrine modal (no redirect, the modal shows it). */
+export interface CatalogActionResult {
+  ok: boolean;
+  message: string;
 }
 
-export async function deleteTemplateAction(formData: FormData): Promise<void> {
-  await requirePlatformAdmin();
-  const id = templateId.parse(formData.get("id"));
-  const deleted = await deleteUnusedTemplate(id);
-  if (!deleted) throw new AccessError(403, "Este dashboard está em uso ou é embutido — arquive em vez de excluir.");
-  console.info(`[catalog] template deleted: ${id}`);
-  revalidateCatalog();
-  redirect("/#vitrine");
+function actionFailure(err: unknown): CatalogActionResult {
+  if (err instanceof AccessError) return { ok: false, message: err.message };
+  if (err instanceof z.ZodError) return { ok: false, message: "Pedido inválido." };
+  console.error("[catalog] action failed", err);
+  return { ok: false, message: "Algo deu errado. Tente novamente." };
+}
+
+const STATUS_DONE: Record<TemplateStatus, string> = {
+  draft: "Voltou para rascunho.",
+  published: "Publicado: as organizações já veem no catálogo.",
+  archived: "Arquivado: saiu do catálogo.",
+};
+
+export async function changeTemplateStatusAction(rawId: string, rawStatus: string): Promise<CatalogActionResult> {
+  try {
+    await requirePlatformAdmin();
+    const id = templateId.parse(rawId);
+    const status = statusSchema.parse(rawStatus);
+    if (!(await getCatalogEntry(id))) return { ok: false, message: "Dashboard não encontrado." };
+    await setStatus(id, status);
+    console.info(`[catalog] template ${id} → ${status}`);
+    revalidateCatalog(id);
+    return { ok: true, message: STATUS_DONE[status] };
+  } catch (err) {
+    return actionFailure(err);
+  }
+}
+
+export async function removeTemplateAction(rawId: string): Promise<CatalogActionResult> {
+  try {
+    await requirePlatformAdmin();
+    const id = templateId.parse(rawId);
+    if (!(await deleteUnusedTemplate(id))) {
+      return { ok: false, message: "Este dashboard está em uso ou é embutido — arquive em vez de excluir." };
+    }
+    console.info(`[catalog] template deleted: ${id}`);
+    revalidateCatalog();
+    return { ok: true, message: "Dashboard excluído." };
+  } catch (err) {
+    return actionFailure(err);
+  }
 }

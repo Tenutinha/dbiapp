@@ -118,9 +118,10 @@ A barra lateral de `/<org>` e `/<org>/<cliente>` (a tela onde os dashboards abre
 
 - **Topo:** o **nome da organização** (no lugar do logo da DBI), levando à página da organização quando a pessoa
   pode abri-la; o botão de recolher continua ao lado.
-- **Logo do espaço** (tema da organização/cliente) logo abaixo e, embaixo dele, o **seletor de clientes**: quem
-  acessa mais de um espaço (admins, editores) escolhe a organização ou um cliente numa lista agrupada
-  ("Organização" / "Clientes") e o espaço abre na hora; quem acessa só um vê apenas o nome dele. Substitui o antigo
+- **Seletor de clientes como subtítulo** do nome da organização, discreto (texto menor e apagado, com uma
+  setinha): quem acessa mais de um espaço (admins, editores) clica e escolhe a organização ou um cliente numa
+  menu próprio no estilo da barra lateral (iniciais de cada espaço, ✓ no atual, setas/Enter/Esc e busca a partir de 7 espaços), sem categorias (um "cliente" muitas vezes é só uma segmentação da organização), e o espaço abre na hora; quem acessa só um vê apenas o nome dele.
+  Embaixo, o **logo do espaço** (tema da organização/cliente), quando houver. Substitui o antigo
   "Outros espaços" do rodapé. Lista montada em `web/src/lib/space-options.ts` (testada).
 - **Rodapé:** quem está logado e "Administração" (para admins); embaixo, o **logo da DBI** (volta ao início) **ao lado
   do Sair**.

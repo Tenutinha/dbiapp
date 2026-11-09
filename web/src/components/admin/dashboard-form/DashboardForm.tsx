@@ -64,9 +64,13 @@ interface DashboardFormProps {
   /** Shipped in web/templates: a file with a higher version there replaces these edits. */
   builtIn?: boolean;
   onSaved: (message: string) => void;
+  /** Height cap of the form panel (shorter when something sits above it, e.g. the vitrine modal tabs). */
+  maxHeightClass?: string;
 }
 
-export function DashboardForm({ stored, usage = 0, builtIn = false, onSaved }: DashboardFormProps) {
+export function DashboardForm({
+  stored, usage = 0, builtIn = false, onSaved, maxHeightClass = "max-h-[calc(100vh-2rem)]",
+}: DashboardFormProps) {
   const editing = stored !== null;
   const [template, setTemplate] = useState<Template>(() => stored ?? emptyTemplate());
   const [step, setStep] = useState(0);
@@ -103,7 +107,7 @@ export function DashboardForm({ stored, usage = 0, builtIn = false, onSaved }: D
   const stepProps = { template, onChange: setTemplate };
 
   return (
-    <div className="card flex max-h-[calc(100vh-2rem)] flex-col">
+    <div className={`card flex flex-col ${maxHeightClass}`}>
       <header className="border-b border-line px-5 pb-3 pt-5 pr-12">
         <h2 className="font-semibold">{editing ? `Editar: ${stored.name}` : "Cadastrar dashboard"}</h2>
         {editing && usage > 0 && (
