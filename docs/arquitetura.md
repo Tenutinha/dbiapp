@@ -64,7 +64,7 @@ O modelo de negócio é B2B2B: uma **organização** (ex.: Odeon Tecnologia) con
 
 A configuração de uma organização virou **um único objeto**: a tabela de `/<org>/admin`, lida como hierarquia
 **espaço (organização / cliente) → dashboard → dados → acessos**. Tudo o que antes eram páginas ou seções
-separadas abre em **modais no centro da tela**, com endereço próprio (`?dados=`, `?tema=`), para que o
+separadas abre em **modais no centro da tela**, com endereço próprio (`?dados=`, `?tema=`, `?sumario=`), para que o
 admin nunca saia da tabela. Detalhes de uso em [admin-organizacao.md](admin-organizacao.md).
 
 - **Escolha de dashboard**: seletor estilo vitrine com todo o catálogo publicado — busca por nome, assunto e
@@ -111,3 +111,20 @@ e sua administração, tema claro/escuro, **Meu perfil** e Sair. Sem login, o to
 - Código: `web/src/components/user-menu/` (menu, modal e painel), `web/src/app/perfil/actions.ts`,
   `web/src/lib/data/users.ts`, `web/src/lib/services/avatar.ts`.
 - Ainda com o "Sair" antigo: a barra lateral da tela do dashboard (`Workspace`), que não usa este cabeçalho.
+
+## ✅ Decisão (2026-11-09): barra lateral da tela do dashboard
+
+A barra lateral de `/<org>` e `/<org>/<cliente>` (a tela onde os dashboards abrem):
+
+- **Topo:** o **nome da organização** (no lugar do logo da DBI), levando à página da organização quando a pessoa
+  pode abri-la; o botão de recolher continua ao lado.
+- **Logo do espaço** (tema da organização/cliente) logo abaixo e, embaixo dele, o **seletor de clientes**: quem
+  acessa mais de um espaço (admins, editores) escolhe a organização ou um cliente numa lista agrupada
+  ("Organização" / "Clientes") e o espaço abre na hora; quem acessa só um vê apenas o nome dele. Substitui o antigo
+  "Outros espaços" do rodapé. Lista montada em `web/src/lib/space-options.ts` (testada).
+- **Rodapé:** quem está logado e "Administração" (para admins); embaixo, o **logo da DBI** (volta ao início) **ao lado
+  do Sair**.
+- **Sem edição do sumário aqui:** o antigo "Organizar sumário" saiu da barra lateral e foi para a admin — link
+  "Organizar sumário →" na coluna Dashboard de cada espaço, abrindo um modal central (`?sumario=<org | cliente>`).
+
+Código: `web/src/components/workspace/SidebarShell.tsx`, `SpaceSwitcher.tsx` e `Workspace.tsx`.

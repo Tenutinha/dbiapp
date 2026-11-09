@@ -118,6 +118,7 @@ As regras vivem em `web/src/lib/permissions.ts` (veja também `docs/arquitetura.
 | Modal central genérico aberto por parâmetro na URL (fecha com ×, Esc ou clique fora) | `web/src/components/admin/RouteModal.tsx` |
 | Modal de dados (abre por `?dados=<id>`) | `web/src/components/admin/DataModal.tsx` |
 | Modal de tema (abre por `?tema=<org \| cliente>`) | `web/src/components/admin/ThemeModal.tsx` |
+| Modal "Organizar sumário" (seções e ordem dos dashboards na barra lateral; abre por `?sumario=<org \| cliente>`, link na coluna Dashboard de cada espaço) | `web/src/components/admin/SummaryModal.tsx`, `SummaryEditorPanel.tsx` (reusa `workspace/SidebarEditor.tsx`) |
 | Engate dos dados (mapa de conexões, animações, tomada de upload) | `web/src/components/data/connector/` |
 | Conferência de colunas arquivo × contrato (pura, testada) | `web/src/lib/ingest/schema-check.ts` + teste |
 | API do engate (listar pasta, conferir, engatar) | `web/src/app/api/instances/[id]/connector/route.ts` → `web/src/lib/services/data-connector.ts` |

@@ -252,11 +252,23 @@ function SpaceBlock({
       <tr>
         {n === 0 && <SpaceCell org={org} group={group} rowSpan={1} />}
         <td className={TD}>
-          <AddDashboardButton
-            scope={group.scope}
-            spaceName={spaceName}
-            linkedIds={group.dashboards.map((d) => d.templateId)}
-          />
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+            <AddDashboardButton
+              scope={group.scope}
+              spaceName={spaceName}
+              linkedIds={group.dashboards.map((d) => d.templateId)}
+            />
+            {n > 0 && (
+              <Link
+                href={`/${org.slug}/admin?sumario=${group.slug ?? "org"}`}
+                scroll={false}
+                title="Seções e ordem dos dashboards na barra lateral"
+                className={SUBTLE_LINK}
+              >
+                Organizar sumário →
+              </Link>
+            )}
+          </div>
         </td>
         <td className={TD}>
           {firstDashboard ? (

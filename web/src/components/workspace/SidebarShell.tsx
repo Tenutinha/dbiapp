@@ -3,18 +3,21 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import type { TocGroup } from "@/lib/layout/toc";
 import { DEFAULT_THEME } from "@/lib/theme/theme";
-import { SidebarEditor } from "./SidebarEditor";
+import type { SpaceOption } from "@/lib/space-options";
+import { SpaceSwitcher } from "./SpaceSwitcher";
 import { SpaceLogo } from "./ThemeScope";
 
 interface SidebarShellProps {
+  /** Name of the open space (mobile top bar). */
   title: string;
-  subtitle: string | null;
+  /** The organization, shown at the top of the panel; href null when this person can't open its own page. */
+  org: { name: string; href: string | null };
+  /** Spaces this person can open here (client switcher under the logo). */
+  spaces: SpaceOption[];
   logoUrl: string | null;
   orgSlug: string;
   clientSlug: string | null;
-  editorToc: TocGroup[] | null;
   footer: React.ReactNode;
   /** The page itself, shown to the right of the panel (full width when the panel is collapsed). */
   content: React.ReactNode;
@@ -49,7 +52,7 @@ function HamburgerIcon() {
 }
 
 /** DBI mark with the platform's own colours (the space theme recolours brand variables). */
-function DbiLogo() {
+export function DbiLogo() {
   const gradient = `linear-gradient(135deg, ${DEFAULT_THEME.primaryColor}, ${DEFAULT_THEME.secondaryColor})`;
   return (
     <span className="flex items-center gap-2 text-base font-extrabold tracking-tight">
@@ -67,14 +70,13 @@ const ICON_BUTTON = "grid size-9 place-items-center rounded-lg border border-lin
 
 /**
  * Light "table of contents" panel: fixed on desktop (collapsible with the hamburger button), a drawer on
- * mobile. Admins can flip it into the editor ("Organizar").
+ * mobile. The summary is organized in the admin (/<org>/admin?sumario=…), not here.
  */
 export function SidebarShell({
-  title, subtitle, logoUrl, orgSlug, clientSlug, editorToc, footer, content, children,
+  title, org, spaces, logoUrl, orgSlug, clientSlug, footer, content, children,
 }: SidebarShellProps) {
   const [open, setOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
-  const [editing, setEditing] = useState(false);
   const pathname = usePathname();
   const spaceHref = `/${orgSlug}${clientSlug ? `/${clientSlug}` : ""}`;
 
@@ -134,9 +136,13 @@ export function SidebarShell({
         } ${collapsed ? "lg:-translate-x-full" : "lg:translate-x-0"}`}
       >
         <div className="flex items-center justify-between gap-2 border-b border-paper-line px-5 py-3">
-          <Link href="/" aria-label="DBI — voltar à tela inicial" title="Voltar à tela inicial" className="rounded-md hover:opacity-80">
-            <DbiLogo />
-          </Link>
+          {org.href ? (
+            <Link href={org.href} className="min-w-0 truncate text-base font-bold tracking-tight hover:underline" title={org.name}>
+              {org.name}
+            </Link>
+          ) : (
+            <span className="min-w-0 truncate text-base font-bold tracking-tight" title={org.name}>{org.name}</span>
+          )}
           <button
             type="button"
             onClick={toggleCollapsed}
@@ -152,35 +158,12 @@ export function SidebarShell({
 
         <div className="px-5 pb-4 pt-5">
           <SpaceLogo url={logoUrl} className="mb-4 max-h-12 max-w-[200px]" />
-          <Link href={spaceHref} className="block text-[19px] leading-tight hover:underline">
-            {title}
-          </Link>
-          {subtitle && <p className="mt-1 text-[13px] text-ink-muted">{subtitle}</p>}
+          <SpaceSwitcher spaces={spaces} />
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-6">
-          {editing && editorToc ? (
-            <SidebarEditor
-              orgSlug={orgSlug}
-              clientSlug={clientSlug}
-              toc={editorToc}
-              onDone={() => setEditing(false)}
-            />
-          ) : (
-            children
-          )}
-        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-6">{children}</div>
 
-        {!editing && (
-          <div className="border-t border-paper-line px-5 py-4 text-sm">
-            {editorToc && (
-              <button type="button" onClick={() => setEditing(true)} className="mb-3 text-ink underline-offset-4 hover:underline">
-                Organizar sumário
-              </button>
-            )}
-            {footer}
-          </div>
-        )}
+        <div className="border-t border-paper-line px-5 py-4 text-sm">{footer}</div>
       </aside>
 
       <main
