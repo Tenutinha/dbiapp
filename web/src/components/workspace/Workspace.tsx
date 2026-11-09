@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { SpaceView } from "@/lib/services/space";
 import { SignOutButton } from "../SignOutButton";
 import { SidebarNav } from "./SidebarNav";
-import { SidebarShell } from "./SidebarShell";
+import { DbiLogo, SidebarShell } from "./SidebarShell";
 import { ThemeScope } from "./ThemeScope";
 
 interface WorkspaceProps {
@@ -16,30 +16,25 @@ interface WorkspaceProps {
 
 /** Two-pane layout: light table of contents on the left, the dashboard on the right. */
 export function Workspace({ space, currentId, userName, pageSummary, children }: WorkspaceProps) {
-  const { org, client, links } = space;
+  const { org, client } = space;
+  // The organization's own page is linked only when this person can open it (client users may not).
+  const orgHref = space.spaces.some((s) => s.kind === "org") ? `/${org.slug}` : null;
 
+  // Other spaces are in the switcher at the top; the footer keeps who is signed in, the admin links,
+  // and the DBI logo (back to the platform's home) next to "Sair".
   const footer = (
     <div className="flex flex-col gap-3">
-      {(links.org || links.clients.length > 0) && (
-        <details className="group">
-          <summary className="cursor-pointer list-none text-ink-muted hover:text-ink">
-            Outros espaços <span className="inline-block transition group-open:rotate-90">›</span>
-          </summary>
-          <ul className="mt-2 flex max-h-40 flex-col gap-1 overflow-y-auto">
-            {links.org && <li><Link href={links.org.href} className="hover:underline">{links.org.label}</Link></li>}
-            {links.clients.map((c) => (
-              <li key={c.href}><Link href={c.href} className="hover:underline">{c.label}</Link></li>
-            ))}
-          </ul>
-        </details>
-      )}
       <div className="flex items-center justify-between gap-2 text-[13px] text-ink-muted">
         <span className="truncate">{userName}</span>
-        <span className="flex shrink-0 gap-3">
-          {space.isOrgAdmin && <Link href={`/${org.slug}/admin`} className="hover:text-ink hover:underline">Administração</Link>}
-          {space.isPlatformAdmin && <Link href="/" className="hover:text-ink hover:underline">Plataforma</Link>}
-          <SignOutButton className="hover:text-ink hover:underline" />
-        </span>
+        {space.isOrgAdmin && (
+          <Link href={`/${org.slug}/admin`} className="shrink-0 hover:text-ink hover:underline">Administração</Link>
+        )}
+      </div>
+      <div className="flex items-center justify-between gap-2">
+        <Link href="/" aria-label="DBI — voltar à tela inicial" title="Voltar à tela inicial" className="rounded-md hover:opacity-80">
+          <DbiLogo />
+        </Link>
+        <SignOutButton className="text-[13px] text-ink-muted hover:text-ink hover:underline" />
       </div>
     </div>
   );
@@ -48,11 +43,11 @@ export function Workspace({ space, currentId, userName, pageSummary, children }:
     <ThemeScope theme={space.theme}>
       <SidebarShell
         title={client?.name ?? org.name}
-        subtitle={client ? org.name : null}
+        org={{ name: org.name, href: orgHref }}
+        spaces={space.spaces}
         logoUrl={space.logoUrl}
         orgSlug={org.slug}
         clientSlug={client?.slug ?? null}
-        editorToc={space.editorToc}
         footer={footer}
         content={<div className="mx-auto max-w-[1180px]">{children}</div>}
       >

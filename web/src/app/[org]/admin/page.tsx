@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Forbidden, OrgFrame } from "@/components/AppShell";
 import { AdminSetupTable } from "@/components/admin/AdminSetupTable";
 import { DataModal } from "@/components/admin/DataModal";
+import { SummaryModal } from "@/components/admin/SummaryModal";
 import { ThemeModal } from "@/components/admin/ThemeModal";
 import { DataManager } from "@/components/data/DataManager";
 import { getOrgContext, orgActions, requireAction, requireInstance, type InstanceAccess } from "@/lib/access";
@@ -51,7 +52,7 @@ export default async function AdminPage({ params, searchParams }: {
   params: Promise<{ org: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { dados, tema } = await searchParams;
+  const { dados, tema, sumario } = await searchParams;
   const data = await guard(loadAdmin((await params).org));
   if (data === "forbidden") return <Forbidden message="Somente admins da organização acessam esta página." />;
   const { ctx, people, groups, pickerItems } = data;
@@ -71,6 +72,14 @@ export default async function AdminPage({ params, searchParams }: {
           orgSlug={ctx.org.slug}
           orgName={ctx.org.name}
           space={tema}
+          spaces={groups.map((g) => ({ slug: g.slug, name: g.slug === null ? ctx.org.name : g.name }))}
+        />
+      )}
+      {typeof sumario === "string" && /^[a-z0-9-]{1,40}$/.test(sumario) && (
+        <SummaryModal
+          orgSlug={ctx.org.slug}
+          orgName={ctx.org.name}
+          space={sumario}
           spaces={groups.map((g) => ({ slug: g.slug, name: g.slug === null ? ctx.org.name : g.name }))}
         />
       )}
