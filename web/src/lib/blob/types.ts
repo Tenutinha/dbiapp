@@ -1,5 +1,9 @@
+import type { FolderListing } from "../storage-browse";
+
 /** A private object bucket in the cloud. Keys are already validated by `storage.ts`. */
 export interface RemoteBucket {
+  /** One level of a folder: its sub-folders and files (at most `limit` files). */
+  list(prefix: string, limit: number): Promise<FolderListing>;
   upload(key: string, body: Uint8Array, contentType: string): Promise<void>;
   download(key: string): Promise<Uint8Array>;
   /** Best effort: logs and swallows errors (cleanup must not break the request). */

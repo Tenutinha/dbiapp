@@ -7,7 +7,7 @@ import { mkdir, rename, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import type { DuckDBConnection } from "@duckdb/node-api";
 import { queryRows, quotePath, withConnection } from "../duck/engine";
-import type { TemplateTable } from "../templates/schema";
+import { sortColumns, type TemplateTable } from "../templates/schema";
 import { castExpr, castSelect, matchColumns, quoteIdent, type ColumnMapping, type SourceColumn } from "./contract";
 
 export type SourceFormat = "parquet" | "csv";
@@ -106,7 +106,8 @@ export async function ingestTable(input: IngestInput): Promise<TableReport> {
       if (castErrors.length > 0) return fail(castErrors, match.warnings);
 
       await mkdir(path.dirname(targetPath), { recursive: true });
-      const order = table.sortBy ? ` ORDER BY ${table.sortBy}` : "";
+      const sortBy = sortColumns(table);
+      const order = sortBy.length > 0 ? ` ORDER BY ${sortBy.join(", ")}` : "";
       await conn.run(
         `COPY (SELECT ${castSelect(match.mapping)} FROM ${src}${order}) TO ${quotePath(tmpPath)} ` +
           `(FORMAT parquet, COMPRESSION zstd, ROW_GROUP_SIZE 122880)`,

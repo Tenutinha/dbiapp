@@ -1,5 +1,5 @@
 /**
- * Gera os arquivos do contrato "eleicoes-presidente" (organização Mapa da Votação) a partir dos
+ * Gera os arquivos do contrato "eleicoes-presidente" v2, só presidente 2022/2026 (organização Mapa da Votação), a partir dos
  * pacotes que o mapadavotacao-insight já monta com os dados abertos do TSE e as estimativas do IBGE
  * (scripts/eleicoes2026presidente/gerar_dados_painel.js e gerar_populacao.js naquele repositório).
  *
@@ -50,9 +50,9 @@ const pacoteSchema = z.object({
 const populacaoSchema = z.object({ populacao: z.array(z.number().nullable()) });
 type Pacote = z.infer<typeof pacoteSchema>;
 
-interface Voto { ano: number; turno: number; cd_municipio: string; categoria: string; cd_candidato: string | null; votos: number }
+interface Voto { ano: number; turno: number; cargo: string; cd_municipio: string; categoria: string; cd_candidato: string | null; votos: number }
 interface Municipio { cd_municipio: string; nome: string; uf: string; regiao: string; capital: boolean; populacao: number | null }
-interface Candidato { cd_candidato: string; ano: number; nome: string; nome_completo: string; partido: string; numero: string; cor: string; finalista: boolean }
+interface Candidato { cd_candidato: string; ano: number; cargo: string; uf: string; nome: string; nome_completo: string; partido: string; numero: string; cor: string; espectro: string | null; situacao: string | null }
 
 async function lerJson<T>(arquivo: string, schema: z.ZodType<T>): Promise<T> {
   const parsed = schema.safeParse(JSON.parse(await readFile(arquivo, "utf8")));
@@ -74,10 +74,10 @@ function votosDoAno(p: Pacote, ano: number): Voto[] {
   const { ibge } = p.municipios;
   ([[1, p.t1], [2, p.t2]] as const).forEach(([turno, t]) => {
     for (let i = 0; i < ibge.length; i++) {
-      const base = { ano, turno, cd_municipio: ibge[i] };
+      const base = { ano, turno, cargo: "PRESIDENTE", cd_municipio: ibge[i] };
       let nominais = 0;
       for (const [cd, votos] of Object.entries(t.votos)) {
-        if (votos[i] > 0) linhas.push({ ...base, categoria: "candidato", cd_candidato: cd, votos: votos[i] });
+        if (votos[i] > 0) linhas.push({ ...base, categoria: "candidato", cd_candidato: `${ano}-${cd}`, votos: votos[i] });
         nominais += votos[i];
       }
       if (nominais + t.brancos[i] + t.nulos[i] !== t.comp[i]) {
@@ -114,8 +114,8 @@ async function main(): Promise<void> {
       });
     });
     candidatos.push(...pacote.candidatos.map((c) => ({
-      cd_candidato: c.id, ano, nome: c.nome, nome_completo: c.nomeCompleto,
-      partido: c.partido, numero: c.numero, cor: c.cor, finalista: c.segundoTurno,
+      cd_candidato: `${ano}-${c.id}`, ano, cargo: "PRESIDENTE", uf: "BR", nome: c.nome, nome_completo: c.nomeCompleto,
+      partido: c.partido, numero: c.numero, cor: c.cor, espectro: null, situacao: c.segundoTurno ? "2º TURNO" : null,
     })));
     console.log(`${ano}: ${m.ibge.length} municípios, ${pacote.candidatos.length} candidatos`);
   }
@@ -128,11 +128,11 @@ async function main(): Promise<void> {
 
   const tabelas = [
     { nome: "f_votacao", linhas: votos, ordem: "ano, turno, cd_municipio",
-      colunas: "{ano: 'INTEGER', turno: 'INTEGER', cd_municipio: 'VARCHAR', categoria: 'VARCHAR', cd_candidato: 'VARCHAR', votos: 'BIGINT'}" },
+      colunas: "{ano: 'INTEGER', turno: 'INTEGER', cargo: 'VARCHAR', cd_municipio: 'VARCHAR', categoria: 'VARCHAR', cd_candidato: 'VARCHAR', votos: 'BIGINT'}" },
     { nome: "d_municipio", linhas: [...municipios.values()], ordem: "cd_municipio",
       colunas: "{cd_municipio: 'VARCHAR', nome: 'VARCHAR', uf: 'VARCHAR', regiao: 'VARCHAR', capital: 'BOOLEAN', populacao: 'BIGINT'}" },
     { nome: "d_candidato", linhas: candidatos, ordem: "ano, cd_candidato",
-      colunas: "{cd_candidato: 'VARCHAR', ano: 'INTEGER', nome: 'VARCHAR', nome_completo: 'VARCHAR', partido: 'VARCHAR', numero: 'VARCHAR', cor: 'VARCHAR', finalista: 'BOOLEAN'}" },
+      colunas: "{cd_candidato: 'VARCHAR', ano: 'INTEGER', cargo: 'VARCHAR', uf: 'VARCHAR', nome: 'VARCHAR', nome_completo: 'VARCHAR', partido: 'VARCHAR', numero: 'VARCHAR', cor: 'VARCHAR', espectro: 'VARCHAR', situacao: 'VARCHAR'}" },
   ];
 
   const instance = await DuckDBInstance.create(":memory:");

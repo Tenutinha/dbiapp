@@ -10,7 +10,7 @@
  */
 import "server-only";
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { gcsBucket } from "./blob/gcs";
 import { supabaseBucket } from "./blob/supabase";
@@ -18,6 +18,7 @@ import type { RemoteBucket } from "./blob/types";
 import { env } from "./env";
 import * as keys from "./storage-keys";
 import { assertKey, StorageKeyError } from "./storage-keys";
+import { browsePrefix, type FolderListing } from "./storage-browse";
 
 export { StorageKeyError };
 
@@ -124,6 +125,30 @@ export const storage = {
     const valid = list.filter((k) => (path.isAbsolute(k) && !isRemote()) || keys.isValidKey(k));
     await Promise.all(valid.map((k) => rm(workPath(k), { force: true }).catch(() => undefined)));
     if (isRemote() && valid.length > 0) await bucket().remove(valid);
+  },
+
+  /**
+   * Read-only listing of one level of an organization's folder (`subPath` relative to
+   * orgs/<slug>/, validated so it can never leave it).
+   */
+  async listOrgFolder(orgSlug: string, subPath: string | undefined, limit = 500): Promise<FolderListing> {
+    const prefix = browsePrefix(orgSlug, subPath);
+    if (isRemote()) return bucket().list(prefix, limit);
+
+    const dir = path.resolve(env.workRoot, ...prefix.split("/").filter(Boolean));
+    const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
+    const fileEntries = entries.filter((e) => e.isFile() && !e.name.endsWith(".part"));
+    const files = await Promise.all(
+      fileEntries.slice(0, limit).map(async (e) => {
+        const info = await stat(path.join(dir, e.name));
+        return { key: `${prefix}${e.name}`, name: e.name, sizeBytes: info.size, updatedAt: info.mtime };
+      }),
+    );
+    return {
+      folders: entries.filter((e) => e.isDirectory()).map((e) => e.name).sort(),
+      files: files.sort((a, b) => a.name.localeCompare(b.name)),
+      truncated: fileEntries.length > limit,
+    };
   },
 
   /** Lets the browser upload straight to the bucket (skips the ~4.5 MB serverless body limit). */

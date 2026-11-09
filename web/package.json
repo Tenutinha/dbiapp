@@ -15,7 +15,8 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "mapadavotacao:parquets": "node --import tsx scripts/mapadavotacao/gerar-parquets.ts",
-    "mapadavotacao:carregar-local": "node --env-file=.env.local --conditions=react-server --import tsx scripts/mapadavotacao/carregar-local.ts"
+    "mapadavotacao:carregar-local": "node --env-file=.env.local --conditions=react-server --import tsx scripts/mapadavotacao/carregar-local.ts",
+    "mapadavotacao:importar": "node --import tsx scripts/mapadavotacao/importar-acervo.ts"
   },
   "dependencies": {
     "@duckdb/node-api": "^2.0.0-r.1",

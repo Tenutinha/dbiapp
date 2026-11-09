@@ -10,6 +10,8 @@ import { getDraft, listFiles, type DatasetFile } from "@/lib/data/repository";
 import { formatBytes } from "@/lib/format";
 import { guard } from "@/lib/guard";
 import { requireTemplate } from "@/lib/services/datasets";
+import { storageFolderSuggestions } from "@/lib/services/storage-import";
+import { ImportFromStorage } from "@/components/data/ImportFromStorage";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Dados" };
@@ -57,6 +59,16 @@ export default async function DataPage({ params }: { params: Promise<{ org: stri
           canPublish={canUpload}
         />
       </div>
+
+      {canUpload && (
+        <div className="mb-6">
+          <ImportFromStorage
+            instanceId={access.instanceId}
+            orgSlug={access.org.slug}
+            suggestions={await storageFolderSuggestions(access.org.slug)}
+          />
+        </div>
+      )}
 
       <div className="grid gap-4 md:grid-cols-2">
         {template.tables.map((t) => (
