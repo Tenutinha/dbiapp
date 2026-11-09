@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/AppShell";
 import { AddToOrg } from "@/components/vitrine/AddToOrg";
@@ -105,7 +106,16 @@ export default async function VitrineDetailPage({ params }: Props) {
           </Section>
         </div>
 
-        <aside className="lg:sticky lg:top-24 lg:self-start">
+        <aside className="flex flex-col gap-4 lg:sticky lg:top-24 lg:self-start">
+          <div className="card flex flex-col gap-3 p-5">
+            <h2 className="text-base font-bold">Explore antes de adicionar</h2>
+            <p className="text-sm text-muted">
+              Abra o dashboard com dados de exemplo fictícios e teste os filtros, os gráficos e as análises.
+            </p>
+            <Link href={`/vitrine/${template.id}/demo`} className="btn btn-primary justify-center text-sm">
+              Explorar com dados de exemplo
+            </Link>
+          </div>
           <div className="card flex flex-col gap-3 p-5">
             <h2 className="text-base font-bold">Adicionar à sua organização</h2>
             <AddToOrg templateId={template.id} viewer={viewer} />

@@ -23,7 +23,7 @@ export function VitrineCard({ item }: VitrineCardProps) {
           <code key={t} className="rounded-md border border-line px-1.5 py-0.5 font-mono text-[11px] text-muted">{t}</code>
         ))}
       </div>
-      <span className="mt-auto pt-2 text-sm font-semibold text-brand-2">Ver detalhes e adicionar →</span>
+      <span className="mt-auto pt-2 text-sm font-semibold text-brand-2">Explorar com dados de exemplo →</span>
     </Link>
   );
 }

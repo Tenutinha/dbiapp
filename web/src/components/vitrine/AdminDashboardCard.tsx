@@ -46,7 +46,10 @@ export function AdminDashboardCard({ row }: AdminDashboardCardProps) {
             </span>
           </button>
           <div className="flex items-center justify-between gap-2 px-5 pb-4 text-sm">
-            <button type="button" onClick={open} className="font-semibold text-brand-2 hover:underline">Editar</button>
+            <span className="flex items-center gap-3">
+              <button type="button" onClick={open} className="font-semibold text-brand-2 hover:underline">Editar</button>
+              <Link href={`/vitrine/${row.id}/demo`} className="font-semibold text-brand-2 hover:underline">Pré-visualizar</Link>
+            </span>
             <Link href={`/plataforma/catalogo/${row.id}`} className="text-xs text-muted hover:text-text">Status e exclusão →</Link>
           </div>
         </div>
