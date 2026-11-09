@@ -1,0 +1,120 @@
+{
+  "id": "efd-icms-ipi",
+  "version": 1,
+  "name": "EFD ICMS/IPI",
+  "area": "Fiscal",
+  "origin": "web",
+  "description": "Escrituração fiscal de ICMS e IPI: operações de entrada e saída, ICMS a débito e a crédito, ICMS-ST e IPI por mês, estabelecimento, CFOP, CST, alíquota e participante.",
+  "tables": [
+    {
+      "name": "documentos_analitico",
+      "kind": "fact",
+      "description": "Registro analítico dos documentos fiscais (C190, C590, D190, D590 …): uma linha por documento × CST × CFOP × alíquota, com os dados do cabeçalho do documento (C100/D100 …).",
+      "sortBy": "periodo, cnpj",
+      "columns": [
+        { "name": "cnpj", "type": "text", "description": "CNPJ do estabelecimento declarante (registro 0000)" },
+        { "name": "periodo", "type": "date", "description": "Primeiro dia do período da escrituração" },
+        { "name": "registro", "type": "text", "description": "Registro de origem (C190, D190 …)" },
+        { "name": "ind_oper", "type": "text", "description": "0 = entrada, 1 = saída" },
+        { "name": "cod_mod", "type": "text", "required": false, "description": "Modelo do documento (55, 65, 57 …)" },
+        { "name": "cod_sit", "type": "text", "required": false, "description": "Situação do documento" },
+        { "name": "serie", "type": "text", "required": false },
+        { "name": "num_doc", "type": "text", "required": false },
+        { "name": "chave", "type": "text", "required": false, "description": "Chave de acesso do documento eletrônico" },
+        { "name": "dt_doc", "type": "date", "required": false },
+        { "name": "id_part", "type": "text", "required": false, "description": "Participante: CNPJ do declarante + '-' + COD_PART" },
+        { "name": "cst_icms", "type": "text" },
+        { "name": "cfop", "type": "text" },
+        { "name": "aliq_icms", "type": "decimal", "required": false },
+        { "name": "vl_opr", "type": "decimal" },
+        { "name": "vl_bc_icms", "type": "decimal", "required": false },
+        { "name": "vl_icms", "type": "decimal", "required": false },
+        { "name": "vl_bc_icms_st", "type": "decimal", "required": false },
+        { "name": "vl_icms_st", "type": "decimal", "required": false },
+        { "name": "vl_red_bc", "type": "decimal", "required": false },
+        { "name": "vl_ipi", "type": "decimal", "required": false }
+      ]
+    },
+    {
+      "name": "estabelecimentos", "kind": "dimension", "description": "Estabelecimentos declarantes (registro 0000).", "key": "cnpj",
+      "columns": [
+        { "name": "cnpj", "type": "text" },
+        { "name": "nome", "type": "text" },
+        { "name": "uf", "type": "text", "required": false },
+        { "name": "ie", "type": "text", "required": false }
+      ]
+    },
+    {
+      "name": "participantes", "kind": "dimension", "description": "Participantes (registro 0150).", "key": "id_part",
+      "columns": [
+        { "name": "id_part", "type": "text" },
+        { "name": "nome", "type": "text" },
+        { "name": "cnpj_cpf", "type": "text", "required": false },
+        { "name": "uf", "type": "text", "required": false }
+      ]
+    }
+  ],
+  "relationships": [
+    { "from": { "table": "documentos_analitico", "column": "cnpj" }, "to": { "table": "estabelecimentos", "column": "cnpj" } },
+    { "from": { "table": "documentos_analitico", "column": "id_part" }, "to": { "table": "participantes", "column": "id_part" } }
+  ],
+  "fields": [
+    { "id": "ano", "label": "Ano", "sql": "CAST(year(documentos_analitico.periodo) AS VARCHAR)" },
+    { "id": "mes", "label": "Mês", "sql": "strftime(documentos_analitico.periodo, '%Y-%m')" },
+    { "id": "estabelecimento", "label": "Estabelecimento", "sql": "estabelecimentos.nome" },
+    { "id": "uf_estabelecimento", "label": "UF do estabelecimento", "sql": "estabelecimentos.uf" },
+    { "id": "operacao", "label": "Operação", "sql": "CASE documentos_analitico.ind_oper WHEN '0' THEN 'Entrada' WHEN '1' THEN 'Saída' ELSE documentos_analitico.ind_oper END" },
+    { "id": "cfop", "label": "CFOP", "sql": "documentos_analitico.cfop" },
+    { "id": "grupo_cfop", "label": "Grupo de CFOP", "sql": "CASE left(documentos_analitico.cfop, 1) WHEN '1' THEN 'Entrada estadual' WHEN '2' THEN 'Entrada interestadual' WHEN '3' THEN 'Entrada do exterior' WHEN '5' THEN 'Saída estadual' WHEN '6' THEN 'Saída interestadual' WHEN '7' THEN 'Saída para o exterior' ELSE 'Outros' END" },
+    { "id": "cst_icms", "label": "CST ICMS", "sql": "documentos_analitico.cst_icms" },
+    { "id": "aliquota", "label": "Alíquota ICMS", "sql": "concat(CAST(documentos_analitico.aliq_icms AS VARCHAR), '%')" },
+    { "id": "modelo", "label": "Modelo do documento", "sql": "documentos_analitico.cod_mod" },
+    { "id": "registro", "label": "Registro", "sql": "documentos_analitico.registro" },
+    { "id": "participante", "label": "Participante", "sql": "participantes.nome" },
+    { "id": "uf_participante", "label": "UF do participante", "sql": "participantes.uf" }
+  ],
+  "measures": [
+    { "id": "valor_operacoes", "label": "Valor das operações", "sql": "SUM(documentos_analitico.vl_opr)", "format": "currency" },
+    { "id": "valor_saidas", "label": "Saídas", "sql": "SUM(CASE WHEN documentos_analitico.ind_oper = '1' THEN documentos_analitico.vl_opr END)", "format": "currency" },
+    { "id": "valor_entradas", "label": "Entradas", "sql": "SUM(CASE WHEN documentos_analitico.ind_oper = '0' THEN documentos_analitico.vl_opr END)", "format": "currency" },
+    { "id": "icms_debito", "label": "ICMS a débito", "sql": "SUM(CASE WHEN documentos_analitico.ind_oper = '1' THEN documentos_analitico.vl_icms END)", "format": "currency" },
+    { "id": "icms_credito", "label": "ICMS a crédito", "sql": "SUM(CASE WHEN documentos_analitico.ind_oper = '0' THEN documentos_analitico.vl_icms END)", "format": "currency" },
+    { "id": "icms_saldo", "label": "Saldo de ICMS (débito − crédito)", "sql": "COALESCE(SUM(CASE WHEN documentos_analitico.ind_oper = '1' THEN documentos_analitico.vl_icms END), 0) - COALESCE(SUM(CASE WHEN documentos_analitico.ind_oper = '0' THEN documentos_analitico.vl_icms END), 0)", "format": "currency" },
+    { "id": "icms_st", "label": "ICMS-ST", "sql": "SUM(documentos_analitico.vl_icms_st)", "format": "currency" },
+    { "id": "ipi", "label": "IPI", "sql": "SUM(documentos_analitico.vl_ipi)", "format": "currency" },
+    { "id": "base_icms", "label": "Base de cálculo do ICMS", "sql": "SUM(documentos_analitico.vl_bc_icms)", "format": "currency" },
+    { "id": "carga_icms_saidas", "label": "Carga de ICMS nas saídas", "sql": "SUM(CASE WHEN documentos_analitico.ind_oper = '1' THEN documentos_analitico.vl_icms END) / NULLIF(SUM(CASE WHEN documentos_analitico.ind_oper = '1' THEN documentos_analitico.vl_opr END), 0)", "format": "percent" },
+    { "id": "documentos", "label": "Documentos", "sql": "COUNT(DISTINCT concat(documentos_analitico.cnpj, documentos_analitico.cod_mod, documentos_analitico.serie, documentos_analitico.num_doc, documentos_analitico.ind_oper))", "format": "integer" }
+  ],
+  "filters": ["ano", "mes", "estabelecimento", "operacao", "grupo_cfop", "cfop", "cst_icms", "aliquota", "modelo", "uf_participante"],
+  "visuals": [
+    { "id": "k_saidas", "type": "kpi", "title": "Saídas", "measure": "valor_saidas", "span": 3 },
+    { "id": "k_entradas", "type": "kpi", "title": "Entradas", "measure": "valor_entradas", "span": 3 },
+    { "id": "k_icms_debito", "type": "kpi", "title": "ICMS a débito", "measure": "icms_debito", "span": 3 },
+    { "id": "k_icms_credito", "type": "kpi", "title": "ICMS a crédito", "measure": "icms_credito", "span": 3 },
+    { "id": "k_icms_saldo", "type": "kpi", "title": "Saldo de ICMS", "measure": "icms_saldo", "span": 3 },
+    { "id": "k_icms_st", "type": "kpi", "title": "ICMS-ST", "measure": "icms_st", "span": 3 },
+    { "id": "k_ipi", "type": "kpi", "title": "IPI", "measure": "ipi", "span": 3 },
+    { "id": "k_carga", "type": "kpi", "title": "Carga de ICMS nas saídas", "measure": "carga_icms_saidas", "span": 3 },
+    { "id": "l_icms_mes", "type": "line", "title": "ICMS a débito e a crédito por mês", "field": "mes", "measures": ["icms_debito", "icms_credito"], "sort": "field", "span": 8 },
+    { "id": "d_grupo_cfop", "type": "donut", "title": "Operações por grupo de CFOP", "field": "grupo_cfop", "measure": "valor_operacoes", "span": 4 },
+    { "id": "b_operacoes_mes", "type": "bar", "title": "Entradas e saídas por mês", "field": "mes", "measures": ["valor_entradas", "valor_saidas"], "sort": "field", "span": 12 },
+
+    { "id": "b_cfop", "type": "bar", "title": "Valor por CFOP", "field": "cfop", "measures": ["valor_operacoes"], "sort": "measure_desc", "horizontal": true, "limit": 15, "span": 6 },
+    { "id": "t_cfop", "type": "table", "title": "CFOP: valor, base e ICMS", "fields": ["operacao", "cfop"], "measures": ["valor_operacoes", "base_icms", "icms_debito", "icms_credito", "icms_st", "ipi"], "limit": 100, "span": 6 },
+    { "id": "t_cst", "type": "table", "title": "CST de ICMS", "fields": ["operacao", "cst_icms"], "measures": ["valor_operacoes", "base_icms", "icms_debito", "icms_credito"], "limit": 100, "span": 6 },
+    { "id": "b_aliquota", "type": "bar", "title": "Base de cálculo por alíquota", "field": "aliquota", "measures": ["base_icms"], "sort": "measure_desc", "limit": 20, "span": 6 },
+
+    { "id": "t_participantes", "type": "table", "title": "Participantes", "fields": ["participante", "uf_participante"], "measures": ["valor_entradas", "valor_saidas", "icms_credito", "icms_debito", "documentos"], "limit": 100, "span": 8 },
+    { "id": "b_uf_participante", "type": "bar", "title": "Operações por UF do participante", "field": "uf_participante", "measures": ["valor_entradas", "valor_saidas"], "sort": "measure_desc", "horizontal": true, "limit": 27, "span": 4 },
+    { "id": "t_estabelecimentos", "type": "table", "title": "Estabelecimentos", "fields": ["estabelecimento", "uf_estabelecimento"], "measures": ["valor_saidas", "valor_entradas", "icms_debito", "icms_credito", "icms_saldo", "documentos"], "limit": 100, "span": 12 }
+  ],
+  "analyses": [
+    { "id": "visao_geral", "title": "Visão geral", "description": "Valores somados dos registros analíticos dos documentos. O saldo é débito menos crédito das operações, sem os ajustes da apuração (E110).", "visuals": ["k_saidas", "k_entradas", "k_icms_debito", "k_icms_credito", "k_icms_saldo", "k_icms_st", "k_ipi", "k_carga", "l_icms_mes", "d_grupo_cfop", "b_operacoes_mes"] },
+    { "id": "cfop_cst", "title": "CFOP, CST e alíquotas", "description": "", "visuals": ["b_cfop", "t_cfop", "t_cst", "b_aliquota"] },
+    { "id": "participantes", "title": "Participantes e estabelecimentos", "description": "", "visuals": ["t_participantes", "b_uf_participante", "t_estabelecimentos"] }
+  ],
+  "summary": [
+    { "title": "EFD ICMS/IPI", "analyses": ["visao_geral", "cfop_cst", "participantes"] }
+  ]
+}

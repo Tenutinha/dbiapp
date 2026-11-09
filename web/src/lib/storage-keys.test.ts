@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  brandingKey, datasetKey, isIssuedUploadKey, isOrgLogoKey, isUserAvatarKey, isValidKey, orgFolder, StorageKeyError, uploadKey,
-  userAvatarKey,
+  brandingKey, clientFolder, datasetKey, fiscalDocumentId, fiscalFileKey, fiscalFolder, isIssuedFiscalUploadKey, isIssuedUploadKey,
+  isOrgLogoKey, isUserAvatarKey, isValidKey, orgFolder, spaceFolder, StorageKeyError, storableFileName, uploadKey, userAvatarKey,
 } from "./storage-keys";
 
 const INSTANCE = "3f9a2c1b-7d2e-4c1a-9b0f-1e2d3c4b5a69";
@@ -15,6 +15,44 @@ describe("orgFolder", () => {
 
   it.each(["", "Acme", "acme/x", "../x", "-acme", "acme-", "a b", "acme.."])("rejects slug %j", (slug) => {
     expect(() => orgFolder(slug)).toThrow(StorageKeyError);
+  });
+});
+
+describe("client and space folders", () => {
+  it("gives each client a folder inside the organization's", () => {
+    expect(clientFolder("acme", "loja-norte")).toBe("orgs/acme/clientes/loja-norte/");
+    expect(spaceFolder("acme", "loja-norte")).toBe("orgs/acme/clientes/loja-norte/");
+    expect(spaceFolder("acme", null)).toBe("orgs/acme/");
+    expect(() => clientFolder("acme", "../x")).toThrow(StorageKeyError);
+  });
+
+  it("keeps raw fiscal files inside the space, by company and month", () => {
+    const folder = fiscalFolder("acme", "loja-norte", "nfe");
+    expect(folder).toBe("orgs/acme/clientes/loja-norte/fiscal/nfe/");
+    expect(fiscalFolder("acme", null, "ecd")).toBe("orgs/acme/fiscal/ecd/");
+    const key = fiscalFileKey(folder, "11222333000181", "2025-02", "1".repeat(44), "xml");
+    expect(key).toMatch(/^orgs\/acme\/clientes\/loja-norte\/fiscal\/nfe\/11222333000181\/2025-02\/1{44}\.[0-9a-f]{8}\.xml$/);
+    expect(isValidKey(key)).toBe(true);
+    expect(fiscalDocumentId(key.split("/").pop()!)).toBe("1".repeat(44));
+    expect(() => fiscalFileKey(folder, "123", "2025-02", "x", "txt")).toThrow(StorageKeyError);
+    expect(() => fiscalFileKey(folder, "11222333000181", "2025-13", "x", "txt")).toThrow(StorageKeyError);
+  });
+
+  it("accepts only fiscal raw uploads it issued", () => {
+    expect(isIssuedFiscalUploadKey(`orgs/acme/uploads/${INSTANCE}/${OTHER}.xml`, "acme", INSTANCE)).toBe(true);
+    expect(isIssuedFiscalUploadKey(`orgs/acme/uploads/${INSTANCE}/${OTHER}.csv`, "acme", INSTANCE)).toBe(false);
+  });
+});
+
+describe("storableFileName", () => {
+  it("keeps a safe, accent-free name with an allowed extension", () => {
+    expect(storableFileName("Notas Março 2025.XML")).toBe("Notas-Marco-2025.xml");
+    expect(storableFileName("SPED-EFD (1).txt")).toBe("SPED-EFD-1.txt");
+    expect(storableFileName("../../etc/passwd.csv")).toBe("etc-passwd.csv");
+  });
+
+  it.each(["programa.exe", "sem-extensao", ".csv", "script.js"])("refuses %j", (name) => {
+    expect(storableFileName(name)).toBeNull();
   });
 });
 

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireInstance } from "@/lib/access";
-import { checkConnection, engageConnection, listConnectorFolder } from "@/lib/services/data-connector";
+import { checkConnection, engageConnection, listConnectorFolder, planFolderUpload } from "@/lib/services/data-connector";
 import { fail, fileName, handleError, instanceParams, tableName } from "../upload/respond";
 
 export const runtime = "nodejs";
@@ -15,6 +15,7 @@ const body = z.discriminatedUnion("action", [
   z.object({ action: z.literal("list"), folder }),
   z.object({ action: z.literal("check"), folder, file: fileName, table: tableName }),
   z.object({ action: z.literal("engage"), folder, file: fileName, table: tableName }),
+  z.object({ action: z.literal("uploadPlan"), folder, file: fileName, size: z.number().int().nonnegative() }),
 ]);
 
 /**
@@ -29,6 +30,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     const input = body.parse(await req.json());
     if (input.action === "list") {
       return NextResponse.json({ success: true, data: await listConnectorFolder(access, input.folder) });
+    }
+    if (input.action === "uploadPlan") {
+      return NextResponse.json({ success: true, data: await planFolderUpload(access, input.folder, input.file, input.size) });
     }
     if (input.action === "check") {
       return NextResponse.json({ success: true, data: await checkConnection(access, input.folder, input.file, input.table) });
