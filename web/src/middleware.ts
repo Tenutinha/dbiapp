@@ -28,6 +28,6 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // Skip static assets, logos and the public guest links.
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/branding|s/).*)"],
+  // Skip static assets, logos, avatars and the public guest links.
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/branding|api/users/avatar|s/).*)"],
 };

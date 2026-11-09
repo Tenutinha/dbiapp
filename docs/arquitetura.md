@@ -94,3 +94,20 @@ Supabase (`aws-0-us-east-2.pooler.supabase.com:6543`, usuário `postgres.<ref>`)
 (`db.<ref>.supabase.co:5432`) só tem IPv6, que as funções da Vercel não alcançam — as páginas que consultam o
 banco ficavam carregando até o limite de 300 s (corrigido em 2026-11-09). O código reconhece a porta 6543 e
 ajusta a conexão (sem prepared statements, poucas conexões por instância) em `web/src/lib/db.ts`.
+
+## ✅ Decisão (2026-11-09): cabeçalho com logo e avatar, e "Meu perfil"
+
+O topo das telas da plataforma (home, admin, vitrine, dados) tem **o logo da DBI à esquerda** (volta ao início)
+e **o avatar da pessoa à direita**. Passar o mouse no avatar (ou focar/tocar) abre o menu: a organização da página
+e sua administração, tema claro/escuro, **Meu perfil** e Sair. Sem login, o topo mostra o logo e o botão de tema.
+
+- **Meu perfil** (modal central): nome, e-mail, desde quando, "Admin master", onde a pessoa tem acesso (com o
+  papel em cada organização/cliente), **troca de senha** sem sair da página e **avatar** (PNG/JPG/WebP até 1 MB,
+  validado pelo conteúdo, com prévia). O avatar aparece no menu e nas listas de acesso da admin.
+- Avatar guardado em `users/<id>/avatar/<uuid>.<ext>` no armazenamento e servido em `/api/users/avatar/<uuid>`
+  (id impossível de adivinhar, como os logos). Colunas em `users` pela **migração 012**; antes dela, todos aparecem
+  com as iniciais e só o envio avisa que a migração falta.
+- A troca de senha usa a mesma regra da página `/entrar/nova-senha` (`web/src/lib/password.ts`).
+- Código: `web/src/components/user-menu/` (menu, modal e painel), `web/src/app/perfil/actions.ts`,
+  `web/src/lib/data/users.ts`, `web/src/lib/services/avatar.ts`.
+- Ainda com o "Sair" antigo: a barra lateral da tela do dashboard (`Workspace`), que não usa este cabeçalho.

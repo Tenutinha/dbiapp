@@ -13,6 +13,8 @@ export interface CurrentUser {
   name: string;
   /** Platform administrator ("admin master"). */
   isPlatformAdmin: boolean;
+  /** Public avatar id (null = initials). Read via to_jsonb: null before migration 012. */
+  avatarKey: string | null;
 }
 
 export class AccessError extends Error {
@@ -40,7 +42,7 @@ const NOT_SIGNED_IN = (): AccessError => new AccessError(401, "Entre para contin
 
 async function userByEmail(email: string): Promise<CurrentUser | null> {
   const [user] = await sql<CurrentUser[]>`
-    SELECT id, email, name, is_platform_admin AS "isPlatformAdmin" FROM users WHERE email = ${email.toLowerCase()}`;
+    SELECT id, email, name, is_platform_admin AS "isPlatformAdmin", to_jsonb(users) ->> 'avatar_key' AS "avatarKey" FROM users WHERE email = ${email.toLowerCase()}`;
   return user ?? null;
 }
 
@@ -80,7 +82,7 @@ async function devUser(): Promise<CurrentUser> {
   const chosen = (await cookies()).get(DEV_USER_COOKIE)?.value;
   if (chosen && UUID.test(chosen)) {
     const [user] = await sql<CurrentUser[]>`
-      SELECT id, email, name, is_platform_admin AS "isPlatformAdmin" FROM users WHERE id = ${chosen}`;
+      SELECT id, email, name, is_platform_admin AS "isPlatformAdmin", to_jsonb(users) ->> 'avatar_key' AS "avatarKey" FROM users WHERE id = ${chosen}`;
     if (user) return user;
   }
   const demo = env.DBI_DEMO_USER_EMAIL ? await userByEmail(env.DBI_DEMO_USER_EMAIL) : null;
@@ -103,5 +105,5 @@ export async function isInvited(email: string): Promise<boolean> {
 export async function listUsersForDevSwitcher(): Promise<CurrentUser[]> {
   if (!devAuthEnabled()) return [];
   return sql<CurrentUser[]>`
-    SELECT id, email, name, is_platform_admin AS "isPlatformAdmin" FROM users ORDER BY is_platform_admin DESC, email LIMIT 200`;
+    SELECT id, email, name, is_platform_admin AS "isPlatformAdmin", to_jsonb(users) ->> 'avatar_key' AS "avatarKey" FROM users ORDER BY is_platform_admin DESC, email LIMIT 200`;
 }
