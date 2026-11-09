@@ -9,21 +9,26 @@ interface VitrineCardProps {
 /** One showcase dashboard: origin, area, description and the tables it expects. */
 export function VitrineCard({ item }: VitrineCardProps) {
   return (
-    <Link href={`/vitrine/${item.id}`} className="card group flex flex-col gap-3 p-5 transition hover:border-brand/60">
-      <div className="flex items-center justify-between text-xs">
+    <Link
+      href={`/vitrine/${item.id}`}
+      className="card group flex flex-col gap-3 p-5 transition hover:border-brand/60 in-data-[view=list]:flex-row in-data-[view=list]:items-center in-data-[view=list]:gap-4 in-data-[view=list]:py-3"
+    >
+      <div className="flex items-center justify-between text-xs in-data-[view=list]:order-2 in-data-[view=list]:shrink-0 in-data-[view=list]:flex-col in-data-[view=list]:items-end in-data-[view=list]:gap-1">
         <span className={`rounded-md px-2 py-0.5 font-semibold ${item.origin === "powerbi" ? "bg-accent/15 text-accent" : "bg-ok/15 text-ok"}`}>
           {ORIGIN_LABEL[item.origin]}
         </span>
         <span className="text-muted">{item.area}</span>
       </div>
-      <h2 className="text-lg font-bold tracking-tight group-hover:text-brand-2">{item.name}</h2>
-      <p className="text-sm text-muted">{item.description}</p>
-      <div className="flex flex-wrap gap-1.5">
+      <h2 className="text-lg font-bold tracking-tight group-hover:text-brand-2 in-data-[view=list]:w-52 in-data-[view=list]:max-w-[35%] in-data-[view=list]:shrink-0 in-data-[view=list]:truncate in-data-[view=list]:text-base">{item.name}</h2>
+      <p className="text-sm text-muted in-data-[view=list]:line-clamp-2 in-data-[view=list]:min-w-0 in-data-[view=list]:flex-1">{item.description}</p>
+      <div className="flex flex-wrap gap-1.5 in-data-[view=list]:hidden">
         {item.tables.map((t) => (
           <code key={t} className="rounded-md border border-line px-1.5 py-0.5 font-mono text-[11px] text-muted">{t}</code>
         ))}
       </div>
-      <span className="mt-auto pt-2 text-sm font-semibold text-brand-2">Explorar com dados de exemplo →</span>
+      <span className="mt-auto pt-2 text-sm font-semibold text-brand-2 in-data-[view=list]:order-3 in-data-[view=list]:mt-0 in-data-[view=list]:shrink-0 in-data-[view=list]:pt-0">
+        <span className="in-data-[view=list]:hidden">Explorar com dados de exemplo </span>→
+      </span>
     </Link>
   );
 }

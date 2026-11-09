@@ -90,7 +90,8 @@ function OrgCard({ org, stats, platformAdmin }: OrgCardProps) {
   );
 }
 
-export default async function HomePage() {
+export default async function HomePage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  const { editar } = await searchParams;
   // Other errors (403, DB down…) fall through to guard() below, which already knows how to show them.
   const signedIn = await currentUserOrNull().catch(() => undefined);
   if (signedIn === null) return <LandingPage vitrine={await loadVitrineItems()} />;
@@ -127,7 +128,7 @@ export default async function HomePage() {
           {admin && <NewOrgCard />}
         </div>
       )}
-      <VitrineSection className="mt-12" items={items} admin={catalogRows ? { rows: catalogRows } : null} />
+      <VitrineSection className="mt-12" items={items} admin={catalogRows ? { rows: catalogRows, editId: typeof editar === "string" ? editar : null } : null} />
     </AppShell>
   );
 }

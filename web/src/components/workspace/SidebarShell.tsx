@@ -135,14 +135,17 @@ export function SidebarShell({
           open ? "translate-x-0" : "-translate-x-full"
         } ${collapsed ? "lg:-translate-x-full" : "lg:translate-x-0"}`}
       >
-        <div className="flex items-center justify-between gap-2 border-b border-paper-line px-5 py-3">
-          {org.href ? (
-            <Link href={org.href} className="min-w-0 truncate text-base font-bold tracking-tight hover:underline" title={org.name}>
-              {org.name}
-            </Link>
-          ) : (
-            <span className="min-w-0 truncate text-base font-bold tracking-tight" title={org.name}>{org.name}</span>
-          )}
+        <div className="flex items-start justify-between gap-2 border-b border-paper-line px-5 py-3">
+          <div className="min-w-0 pt-1">
+            {org.href ? (
+              <Link href={org.href} className="block truncate text-base font-bold leading-tight tracking-tight hover:underline" title={org.name}>
+                {org.name}
+              </Link>
+            ) : (
+              <span className="block truncate text-base font-bold leading-tight tracking-tight" title={org.name}>{org.name}</span>
+            )}
+            <SpaceSwitcher spaces={spaces} />
+          </div>
           <button
             type="button"
             onClick={toggleCollapsed}
@@ -156,10 +159,13 @@ export function SidebarShell({
           </button>
         </div>
 
-        <div className="px-5 pb-4 pt-5">
-          <SpaceLogo url={logoUrl} className="mb-4 max-h-12 max-w-[200px]" />
-          <SpaceSwitcher spaces={spaces} />
-        </div>
+        {logoUrl ? (
+          <div className="px-5 pb-4 pt-5">
+            <SpaceLogo url={logoUrl} className="max-h-12 max-w-[200px]" />
+          </div>
+        ) : (
+          <div className="pt-4" />
+        )}
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-6">{children}</div>
 
