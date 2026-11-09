@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { supabaseAuthEnabled } from "@/lib/auth";
-import { SignOutButton } from "./SignOutButton";
+import { getCurrentUser, supabaseAuthEnabled, type CurrentUser } from "@/lib/auth";
+import { avatarUrl } from "@/lib/data/users";
 import { ThemeToggle } from "./ThemeToggle";
+import { UserMenu, type UserMenuLink } from "./user-menu/UserMenu";
 
 export function Logo() {
   return (
@@ -22,40 +23,45 @@ interface AppHeaderProps {
   userName?: string;
 }
 
-export function AppHeader({ org, isAdmin, userName }: AppHeaderProps) {
+/** The signed-in person, or null (the header then shows the logo). getCurrentUser is cached per request. */
+async function signedIn(): Promise<CurrentUser | null> {
+  try {
+    return await getCurrentUser();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Top bar: the DBI logo (home) on the left; signed in, the person's avatar on the right — hovering it opens the menu
+ * (this organization and its administration, light/dark theme, "Meu perfil", "Sair").
+ */
+export async function AppHeader({ org, isAdmin, userName }: AppHeaderProps) {
+  const user = userName ? await signedIn() : null;
+  const links: UserMenuLink[] = [
+    ...(org ? [{ label: org.name, href: `/${org.slug}` }] : []),
+    ...(org && isAdmin ? [{ label: `Administração · ${org.name}`, href: `/${org.slug}/admin` }] : []),
+  ];
+
   return (
     <header className="sticky top-0 z-40 border-b border-line/70 bg-bg/75 backdrop-blur-md">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
-        <div className="flex min-w-0 items-center gap-3">
-          <Link href="/" aria-label="Início">
-            <Logo />
-          </Link>
-          {org && (
-            <>
-              <span className="text-line">/</span>
-              <Link href={`/${org.slug}`} className="truncate text-sm font-semibold hover:text-brand-2">
-                {org.name}
-              </Link>
-            </>
-          )}
-        </div>
-        <nav className="flex shrink-0 items-center gap-1 text-sm">
-          {org && isAdmin && (
-            <Link href={`/${org.slug}/admin`} className="rounded-lg px-3 py-1.5 text-muted hover:bg-text/5 hover:text-text">
-              Administração
-            </Link>
-          )}
+        {/* Left: the DBI logo is the way home. */}
+        <Link href="/" aria-label="Início" title="Início">
+          <Logo />
+        </Link>
+        {/* Right: the person's avatar and its menu (or just the theme switch when signed out). */}
+        {user ? (
+          <UserMenu
+            name={user.name}
+            email={user.email}
+            avatarUrl={avatarUrl(user.avatarKey)}
+            links={links}
+            authEnabled={supabaseAuthEnabled()}
+          />
+        ) : (
           <ThemeToggle className="grid size-8 place-items-center rounded-lg text-muted hover:bg-text/5 hover:text-text" />
-          {userName && (
-            <span className="hidden rounded-full border border-line px-3 py-1 text-xs text-muted sm:inline">{userName}</span>
-          )}
-          {userName && supabaseAuthEnabled() && (
-            <Link href="/entrar/nova-senha" className="rounded-lg px-3 py-1.5 text-muted hover:bg-text/5 hover:text-text">
-              Trocar senha
-            </Link>
-          )}
-          {userName && <SignOutButton className="rounded-lg px-3 py-1.5 text-muted hover:bg-text/5 hover:text-text" />}
-        </nav>
+        )}
       </div>
     </header>
   );

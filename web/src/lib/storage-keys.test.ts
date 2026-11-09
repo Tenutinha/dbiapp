@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  brandingKey, datasetKey, isIssuedUploadKey, isOrgLogoKey, isValidKey, orgFolder, StorageKeyError, uploadKey,
+  brandingKey, datasetKey, isIssuedUploadKey, isOrgLogoKey, isUserAvatarKey, isValidKey, orgFolder, StorageKeyError, uploadKey,
+  userAvatarKey,
 } from "./storage-keys";
 
 const INSTANCE = "3f9a2c1b-7d2e-4c1a-9b0f-1e2d3c4b5a69";
@@ -72,5 +73,19 @@ describe("isOrgLogoKey", () => {
   it("rejects other orgs' logos", () => {
     expect(isOrgLogoKey(`orgs/acme-2/branding/${OTHER}.png`, org)).toBe(false);
     expect(isOrgLogoKey(`branding/org-id-2/${OTHER}.png`, org)).toBe(false);
+  });
+});
+
+describe("user avatars", () => {
+  it("live in the user's own folder and are valid keys", () => {
+    const key = userAvatarKey(INSTANCE, OTHER, "png");
+    expect(key).toBe(`users/${INSTANCE}/avatar/${OTHER}.png`);
+    expect(isValidKey(key)).toBe(true);
+    expect(isUserAvatarKey(key, INSTANCE)).toBe(true);
+  });
+
+  it("never belong to someone else, and refuse a non-uuid user id", () => {
+    expect(isUserAvatarKey(`users/${OTHER}/avatar/${INSTANCE}.png`, INSTANCE)).toBe(false);
+    expect(() => userAvatarKey("../x", OTHER, "png")).toThrow(StorageKeyError);
   });
 });

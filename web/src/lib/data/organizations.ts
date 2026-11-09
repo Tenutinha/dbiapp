@@ -34,11 +34,13 @@ export interface OrgPerson {
   name: string;
   orgRole: Role | null;
   clients: { clientId: string; clientName: string; role: ClientRole }[];
+  /** Public avatar id (null = initials). */
+  avatarKey: string | null;
 }
 
 export async function listOrgPeople(orgId: string): Promise<OrgPerson[]> {
   const rows = await sql<{
-    userId: string; email: string; name: string; orgRole: Role | null;
+    userId: string; email: string; name: string; orgRole: Role | null; avatarKey: string | null;
     clientId: string | null; clientName: string | null; clientRole: ClientRole | null;
   }[]>`
     WITH people AS (
@@ -47,7 +49,7 @@ export async function listOrgPeople(orgId: string): Promise<OrgPerson[]> {
       SELECT cm.user_id FROM client_members cm JOIN org_clients c ON c.id = cm.client_id
       WHERE c.organization_id = ${orgId}
     )
-    SELECT u.id AS "userId", u.email, u.name, om.role AS "orgRole",
+    SELECT u.id AS "userId", u.email, u.name, om.role AS "orgRole", to_jsonb(u) ->> 'avatar_key' AS "avatarKey",
            c.id AS "clientId", c.name AS "clientName", cm.role AS "clientRole"
     FROM people p
     JOIN users u ON u.id = p.user_id
@@ -60,7 +62,7 @@ export async function listOrgPeople(orgId: string): Promise<OrgPerson[]> {
   const byUser = new Map<string, OrgPerson>();
   for (const r of rows) {
     const person = byUser.get(r.userId) ?? {
-      userId: r.userId, email: r.email, name: r.name, orgRole: r.orgRole, clients: [],
+      userId: r.userId, email: r.email, name: r.name, orgRole: r.orgRole, avatarKey: r.avatarKey, clients: [],
     };
     const clients = r.clientId && r.clientName && r.clientRole
       ? [...person.clients, { clientId: r.clientId, clientName: r.clientName, role: r.clientRole }]

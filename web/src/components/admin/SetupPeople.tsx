@@ -3,6 +3,7 @@ import { ORG_SCOPE } from "@/lib/admin-setup";
 import type { OrgPerson } from "@/lib/data/organizations";
 import { ROLE_LABEL } from "@/lib/permissions";
 import { GrantAccessForm } from "./AdminForms";
+import { avatarUrl } from "@/lib/data/users";
 import { Avatar } from "./Avatar";
 
 interface RevokeButtonProps {
@@ -69,7 +70,7 @@ export function SpaceUsersList({ scope, people }: Pick<SpaceUsersProps, "scope" 
     <div className="min-w-0">
       <div className="flex items-center">
         <div className="flex -space-x-2">
-          {shown.map((v) => <Avatar key={v.person.userId} name={v.person.name} email={v.person.email} title={label(v)} />)}
+          {shown.map((v) => <Avatar key={v.person.userId} name={v.person.name} email={v.person.email} imageUrl={avatarUrl(v.person.avatarKey)} title={label(v)} />)}
         </div>
         {rest > 0 && (
           <span
@@ -105,7 +106,7 @@ export function SpaceUsersPanel({ org, scope, spaceName, people }: SpaceUsersPro
         <ul className="divide-y divide-line rounded-lg border border-line">
           {viewers.map(({ person, role, via }) => (
             <li key={person.userId} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
-              <Avatar name={person.name} email={person.email} size="md" />
+              <Avatar name={person.name} email={person.email} imageUrl={avatarUrl(person.avatarKey)} size="md" />
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-medium">{person.name}</span>
                 <span className="block truncate text-xs text-muted">

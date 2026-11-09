@@ -15,15 +15,30 @@ export function avatarHue(key: string): number {
 interface AvatarProps {
   name: string;
   email: string;
-  size?: "sm" | "md";
+  size?: "sm" | "md" | "lg" | "xl";
+  /** The person's uploaded picture; without it, the initials on their colour. */
+  imageUrl?: string | null;
   /** Tooltip text (defaults to the name). */
   title?: string;
   className?: string;
 }
 
-/** Round avatar with the person's initials (no photos are stored yet). */
-export function Avatar({ name, email, size = "sm", title, className = "" }: AvatarProps) {
-  const dim = size === "sm" ? "size-7 text-[10px]" : "size-9 text-xs";
+const SIZE = { sm: "size-7 text-[10px]", md: "size-9 text-xs", lg: "size-10 text-sm", xl: "size-20 text-2xl" } as const;
+
+/** Round avatar: the person's picture when they uploaded one, otherwise their initials. */
+export function Avatar({ name, email, size = "sm", imageUrl, title, className = "" }: AvatarProps) {
+  const dim = SIZE[size];
+  if (imageUrl) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={imageUrl}
+        alt={title ?? name}
+        title={title ?? name}
+        className={`inline-block shrink-0 rounded-full object-cover ring-2 ring-card ${dim} ${className}`}
+      />
+    );
+  }
   return (
     <span
       title={title ?? name}

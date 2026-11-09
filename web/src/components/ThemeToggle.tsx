@@ -8,7 +8,7 @@ function current(): UiTheme {
 }
 
 /** Header button: switches the platform screens between light and dark and remembers it in this browser. */
-export function ThemeToggle({ className = "" }: { className?: string }) {
+export function ThemeToggle({ className = "", withLabel = false }: { className?: string; withLabel?: boolean }) {
   // null until mounted: the server can't know the saved choice (the boot script already applied it).
   const [theme, setTheme] = useState<UiTheme | null>(null);
   useEffect(() => setTheme(current()), []);
@@ -39,6 +39,7 @@ export function ThemeToggle({ className = "" }: { className?: string }) {
           <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />
         </svg>
       )}
+      {withLabel && <span>{theme === "dark" ? "Tema claro" : "Tema escuro"}</span>}
     </button>
   );
 }

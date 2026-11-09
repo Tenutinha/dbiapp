@@ -12,7 +12,7 @@ import { randomUUID } from "node:crypto";
 
 const SLUG = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/;
 const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
-const KEY = /^(orgs|datasets|incoming|branding)\/[A-Za-z0-9._/-]+$/;
+const KEY = /^(orgs|datasets|incoming|branding|users)\/[A-Za-z0-9._/-]+$/;
 
 export class StorageKeyError extends Error {}
 
@@ -48,6 +48,19 @@ export function brandingKey(orgSlug: string, id: string, ext: string): string {
 export function isIssuedUploadKey(key: string, orgSlug: string, instanceId: string): boolean {
   const prefix = `${orgFolder(orgSlug)}uploads/${instanceId}/`;
   return key.startsWith(prefix) && new RegExp(`^${UUID}\\.(csv|parquet)$`).test(key.slice(prefix.length));
+}
+
+const UUID_ONLY = new RegExp(`^${UUID}$`);
+
+/** "users/<user id>/avatar/<id>.<ext>" — a person's avatar, outside any organization's folder. */
+export function userAvatarKey(userId: string, id: string, ext: string): string {
+  if (!UUID_ONLY.test(userId) || !UUID_ONLY.test(id)) throw new StorageKeyError("invalid avatar key");
+  return `users/${userId}/avatar/${id}.${ext}`;
+}
+
+/** Whether `key` is an avatar stored for this user (only those may be replaced or deleted). */
+export function isUserAvatarKey(key: string, userId: string): boolean {
+  return UUID_ONLY.test(userId) && key.startsWith(`users/${userId}/avatar/`) && isValidKey(key);
 }
 
 /** Whether `key` is a logo stored for this organization (current or previous layout). */
