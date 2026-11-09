@@ -12,4 +12,6 @@ export interface RemoteBucket {
   signedUploadUrl(key: string): Promise<string>;
   /** Creates an empty folder marker (e.g. "orgs/acme/"); succeeds if it already exists. */
   createFolder(prefix: string): Promise<void>;
+  /** Copies one object to a new key (fails if the target exists). */
+  copy(fromKey: string, toKey: string): Promise<void>;
 }

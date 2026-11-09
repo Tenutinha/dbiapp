@@ -25,6 +25,35 @@ const curve = (a: Point, b: Point): string => {
   return `M ${a.x} ${a.y} C ${a.x + dx} ${a.y}, ${b.x - dx} ${b.y}, ${b.x} ${b.y}`;
 };
 
+/** Stores files from the computer in the open folder of the bucket. */
+function StoreFiles({ folder, busy, onStore }: { folder: string; busy: string | null; onStore: (files: File[]) => Promise<{ name: string; error: string }[]> }) {
+  const input = useRef<HTMLInputElement>(null);
+  const [result, setResult] = useState<{ sent: number; failures: { name: string; error: string }[] } | null>(null);
+  return (
+    <div className="mb-3 flex flex-col gap-1">
+      <input
+        ref={input}
+        type="file"
+        multiple
+        className="sr-only"
+        onChange={(e) => {
+          const files = [...(e.target.files ?? [])];
+          e.target.value = "";
+          if (!files.length) return;
+          setResult(null);
+          void onStore(files).then((failures) => setResult({ sent: files.length - failures.length, failures }));
+        }}
+      />
+      <button type="button" disabled={busy !== null} onClick={() => input.current?.click()} className="btn btn-ghost self-start px-3 py-1.5 text-xs">
+        ⤒ Enviar arquivos para {folder ? <span className="font-mono">{folder.split("/").pop()}</span> : "esta pasta"}
+      </button>
+      {busy && <p className="text-[11px] text-muted">{busy}</p>}
+      {result && result.sent > 0 && <p className="text-[11px] text-ok">✓ {result.sent} arquivo(s) guardado(s) nesta pasta.</p>}
+      {result?.failures.map((f) => <p key={f.name} className="text-[11px] text-danger">✕ {f.name}: {f.error}</p>)}
+    </div>
+  );
+}
+
 function FolderBar({ folder, folders, onOpen }: { folder: string; folders: string[]; onOpen: (f: string) => void }) {
   const parts = folder.split("/").filter(Boolean);
   return (
@@ -133,7 +162,8 @@ export function DataConnector({ instanceId, tables, initialFolder, canUpload }: 
           <h3 className="font-semibold">Engate dos dados</h3>
           <p className="text-xs text-muted">
             Arraste um arquivo até a tabela que ele alimenta (ou clique no arquivo e depois na tabela). Conferimos as
-            colunas antes de engatar. A tomada de cada tabela envia um arquivo do seu computador.
+            colunas antes de engatar. A tomada de cada tabela envia um arquivo do seu computador; “Enviar arquivos”
+            guarda arquivos na pasta aberta do armazenamento.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -183,11 +213,12 @@ export function DataConnector({ instanceId, tables, initialFolder, canUpload }: 
         <div className="min-w-0">
           <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">Arquivos no armazenamento</p>
           <FolderBar folder={c.folder} folders={c.data?.folders ?? []} onOpen={(f) => { setPicked(null); c.setFolder(f); }} />
+          {canUpload && <StoreFiles folder={c.folder} busy={c.storing} onStore={c.store} />}
           {c.loading && <p className="animate-pulse text-xs text-muted">Lendo a pasta…</p>}
           {c.error && <p className="text-xs text-danger">{c.error}</p>}
-          {!c.loading && !c.error && files.length === 0 && <p className="text-xs text-muted">Nenhum .parquet ou .csv nesta pasta. Abra uma subpasta ou use a tomada de cada tabela.</p>}
+          {!c.loading && !c.error && files.length === 0 && <p className="text-xs text-muted">Pasta vazia. Envie arquivos para ela, abra uma subpasta ou use a tomada de cada tabela.</p>}
           <ul className="flex flex-col gap-2">
-            {files.map((f) => {
+            {files.filter((f) => f.engageable).map((f) => {
               const wired = c.links.filter((l) => l.file === f.name && !l.uploaded);
               const active = picked === f.name || drag?.file === f.name;
               return (
@@ -217,6 +248,16 @@ export function DataConnector({ instanceId, tables, initialFolder, canUpload }: 
                 </li>
               );
             })}
+            {files.some((f) => !f.engageable) && (
+              <li className="mt-1 text-[11px] text-muted">Guardados (só .parquet, .csv e .txt podem ser engatados):</li>
+            )}
+            {files.filter((f) => !f.engageable).map((f) => (
+              <li key={f.name} className="flex items-center gap-2 rounded-lg border border-dashed border-line px-3 py-1.5 text-muted">
+                <span aria-hidden>🗂</span>
+                <span className="min-w-0 flex-1 truncate font-mono text-[11px]" title={f.name}>{f.name}</span>
+                <span className="text-[10px]">{formatBytes(f.sizeBytes)}</span>
+              </li>
+            ))}
           </ul>
         </div>
 

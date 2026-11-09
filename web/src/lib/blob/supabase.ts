@@ -42,6 +42,10 @@ export function supabaseBucket(url: string, serviceRoleKey: string, bucketName: 
       if (error || !data) throw new Error(`could not create upload URL: ${error?.message ?? "no data"}`);
       return data.signedUrl;
     },
+    async copy(fromKey, toKey) {
+      const { error } = await bucket().copy(fromKey, toKey);
+      if (error) throw new Error(`storage copy failed for ${fromKey}: ${error.message}`);
+    },
     async createFolder(prefix) {
       // Supabase Storage has no empty folders; its dashboard uses this placeholder file.
       const { error } = await bucket().upload(`${prefix}.emptyFolderPlaceholder`, new Uint8Array(), { upsert: true });

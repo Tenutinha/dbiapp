@@ -3,7 +3,8 @@
  *
  *   1. upload  — the file goes to the bucket like any upload (signed URL, or the request body locally);
  *   2. store   — it is identified (company, period, document) and kept, organized, under
- *                orgs/<org>/fiscal/<espaço>/<molde>/<cnpj>/<aaaa-mm>/; a newer copy of the same document
+ *                orgs/<org>/clientes/<cliente>/fiscal/<molde>/<cnpj>/<aaaa-mm>/ (or orgs/<org>/fiscal/… for
+ *                the organization's own dashboards); a newer copy of the same document
  *                (the month's SPED, an NF-e key) replaces the old one;
  *   3. rebuild — every stored file is read again into the template's tables, which enter the draft
  *                through the regular ingest (same validation as a table upload). Publishing stays manual.
@@ -38,9 +39,9 @@ function requireImporter(access: InstanceAccess): FiscalImporter {
   return importer;
 }
 
-/** The dashboard's folder of raw files: one per space (client) and model. */
+/** The dashboard's folder of raw files, inside its space's folder (the client's, or the organization's). */
 function folderOf(access: InstanceAccess): string {
-  return fiscalFolder(access.org.slug, access.client?.slug || "organizacao", access.templateId);
+  return fiscalFolder(access.org.slug, access.client?.slug || null, access.templateId);
 }
 
 const extOf = (importer: FiscalImporter, fileName: string): "txt" | "xml" =>
