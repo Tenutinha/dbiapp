@@ -31,7 +31,10 @@ export function FilePickerDialog({ org, table, folder, onPick, onClose }: FilePi
     <dialog
       ref={ref}
       aria-label={`Escolher arquivo para ${table}`}
-      onClose={onClose}
+      onClose={(e) => {
+        // Only this dialog's own closing counts, not one opened inside the explorer.
+        if (e.target === e.currentTarget) onClose();
+      }}
       onClick={(e) => e.target === e.currentTarget && ref.current?.close()}
       style={{ width: "min(1200px, calc(100vw - 2rem))" }}
       className="m-auto rounded-2xl border border-line bg-bg p-0 text-text shadow-2xl backdrop:bg-black/60 backdrop:backdrop-blur-sm"

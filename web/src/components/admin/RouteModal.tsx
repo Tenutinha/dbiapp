@@ -50,7 +50,13 @@ export function RouteModal({ closeHref, eyebrow, title, subtitle, actions, tabs 
     <dialog
       ref={ref}
       aria-label={`${eyebrow} — ${title}`}
-      onClose={() => (onClosed ? onClosed() : router.replace(closeHref, { scroll: false }))}
+      onClose={(e) => {
+        // React hands the close of a dialog opened inside this one (the file picker of the data connector)
+        // to this handler too; only this dialog's own closing leaves the modal.
+        if (e.target !== e.currentTarget) return;
+        if (onClosed) onClosed();
+        else router.replace(closeHref, { scroll: false });
+      }}
       onClick={(e) => {
         if (e.target === e.currentTarget) ref.current?.close();
       }}

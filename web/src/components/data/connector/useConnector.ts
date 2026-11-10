@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import type { TableReport } from "@/lib/ingest/ingest";
 import type { SchemaCheck } from "@/lib/ingest/schema-check";
+import { putLink, withSuggestions } from "./links";
 import type { ConnectorFile, Envelope, Link } from "./types";
 
 interface FolderData {
@@ -26,10 +27,7 @@ async function post<T>(instanceId: string, body: object): Promise<Envelope<T>> {
   }
 }
 
-/** Replaces the link of one table (immutably). */
-function put(links: Link[], link: Link): Link[] {
-  return [...links.filter((l) => l.table !== link.table), link];
-}
+const put = putLink;
 
 /**
  * State and server calls of the data connector: name-based suggestions from the space's folder, wires
@@ -57,13 +55,9 @@ export function useConnector(instanceId: string, folder: string) {
         return;
       }
       setData(res.data);
-      // Name-based suggestions show as dashed wires; engaged/uploaded wires of other folders stay.
-      setLinks((prev) => [
-        ...prev.filter((l) => l.phase === "engaged" || l.uploaded),
-        ...res.data!.suggestions
-          .filter((s) => !prev.some((l) => l.table === s.table && (l.phase === "engaged" || l.uploaded)))
-          .map((s): Link => ({ table: s.table, folder, file: s.file, phase: "suggested" })),
-      ]);
+      // Name-based suggestions show as dashed wires; the wires the person made stay (see withSuggestions).
+      const { suggestions } = res.data;
+      setLinks((prev) => withSuggestions(prev, suggestions, folder));
     });
     return () => {
       alive = false;
