@@ -137,13 +137,14 @@ vê "sem filtro" e salvar avisa que falta a migração.
 
 ## Acesso por link (coluna Acessos)
 
-Na última linha de cada espaço, abaixo de "Gerenciar usuários", o bloco **🔗 Acesso por link** libera o espaço
+Na última linha de cada espaço, abaixo de "Gerenciar usuários", a linha discreta **🔗 Liberar link público** libera o espaço
 para **qualquer pessoa com o link**, sem conta: `dbi.app.br/l/<token>` abre a tela do espaço como um leitor
-(tema, barra lateral com o sumário, dashboards **publicados** e filtros), sem área de dados, administração,
+(tema, barra lateral com o sumário em hierarquia, dashboards **publicados** e filtros), sem área de dados, administração,
 outros espaços nem menu do usuário.
 
-- **Liberar link**: validade de 1, 7 ou 30 dias (padrão) ou sem expiração. Um link ativo por espaço: liberar de novo
-  troca o link (o anterior para de abrir). **Copiar** e **Revogar** (com confirmação) ficam no mesmo bloco.
+- Clicar abre, na mesma linha, a validade (1, 7, 30 dias — padrão — ou sem expiração) e **Liberar**. Um link ativo
+  por espaço: liberar de novo troca o link (o anterior para de abrir). Ligado, a linha mostra **Link público · até
+  dd/mm** (endereço completo na dica), **Copiar** e **Desligar** (com confirmação).
 - Só admins da organização; a ação confere o espaço no servidor. Link revogado, expirado ou desconhecido → 404.
 - Tabela `space_share_links` (migração **014**). Sem ela, a coluna avisa que a migração falta e nenhum link abre.
 - Os links por dashboard (`/s/<token>`, página "Compartilhar" de cada dashboard) continuam existindo.
