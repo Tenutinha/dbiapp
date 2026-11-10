@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildToc, firstItem, nextItem, LayoutError, layoutDraftSchema, planLayout, type DashboardRow, type SectionRow } from "./toc";
+import { buildToc, firstItem, nextItem, previousItem, LayoutError, layoutDraftSchema, planLayout, type DashboardRow, type SectionRow } from "./toc";
 
 const ids = {
   s1: "00000000-0000-4000-8000-000000000001",
@@ -118,5 +118,19 @@ describe("nextItem", () => {
   it("is null after the last dashboard and for one that is not listed", () => {
     expect(nextItem(toc, ids.c)).toBeNull();
     expect(nextItem(toc, ids.d)).toBeNull();
+  });
+});
+
+describe("previousItem", () => {
+  const toc = buildToc(sections, dashboards, { includeUnpublished: false, includeEmptySections: false });
+
+  it("walks the reading order backwards", () => {
+    expect(previousItem(toc, ids.c)?.id).toBe(ids.b);
+    expect(previousItem(toc, ids.b)?.id).toBe(ids.a);
+  });
+
+  it("is null before the first dashboard and for one that is not listed", () => {
+    expect(previousItem(toc, ids.a)).toBeNull();
+    expect(previousItem(toc, ids.d)).toBeNull();
   });
 });

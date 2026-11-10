@@ -4,6 +4,7 @@
 import { queryRows, withConnection, type Row } from "../duck/engine";
 import type { Template, Visual } from "../templates/schema";
 import { buildFilterOptionsQuery, buildVisualQuery, type FilterSelection, type TableFiles } from "./build";
+import type { CrossSelection } from "./cross";
 import type { FactFilter } from "./fact-filter";
 
 export interface VisualResult {
@@ -21,9 +22,19 @@ export interface FilterOptions {
   single: boolean;
 }
 
+/** Values picked in one visual, with the labels the filter panel shows. */
+export interface CrossPicks {
+  visualId: string;
+  fieldId: string;
+  values: string[];
+  label: string;
+  visualTitle: string;
+}
+
 export interface DashboardData {
   visuals: VisualResult[];
   filters: FilterOptions[];
+  cross: CrossPicks[];
   elapsedMs: number;
 }
 
@@ -34,6 +45,8 @@ export async function runDashboard(
   selection: FilterSelection,
   /** The dashboard's data filter on its fact table (set in the data manager). */
   factFilter: FactFilter = [],
+  /** Items picked in the visuals (cross-filtering). */
+  cross: CrossSelection = [],
 ): Promise<DashboardData> {
   const started = performance.now();
   return withConnection(storageRoot, async (conn) => {
@@ -45,7 +58,7 @@ export async function runDashboard(
         continue;
       }
       try {
-        const q = buildVisualQuery(template, files, visual, selection, factFilter);
+        const q = buildVisualQuery(template, files, visual, selection, factFilter, cross);
         visuals.push({ visual, rows: await queryRows(conn, q.sql, q.params) });
       } catch (err) {
         console.error(`[dashboard] visual ${template.id}/${visual.id} failed`, err);
@@ -58,7 +71,7 @@ export async function runDashboard(
       const field = template.fields.find((f) => f.id === fieldId);
       let values: string[] = [];
       try {
-        const q = buildFilterOptionsQuery(template, files, fieldId, selection, factFilter);
+        const q = buildFilterOptionsQuery(template, files, fieldId, selection, factFilter, cross);
         const rows = await queryRows(conn, q.sql, q.params);
         values = rows.map((r) => r.value).filter((v): v is string => typeof v === "string");
       } catch (err) {
@@ -73,7 +86,13 @@ export async function runDashboard(
       });
     }
 
-    return { visuals, filters, elapsedMs: Math.round(performance.now() - started) };
+    const picks: CrossPicks[] = cross.map((entry) => ({
+      ...entry,
+      values: [...entry.values],
+      label: template.fields.find((f) => f.id === entry.fieldId)?.label ?? entry.fieldId,
+      visualTitle: template.visuals.find((v) => v.id === entry.visualId)?.title ?? entry.visualId,
+    }));
+    return { visuals, filters, cross: picks, elapsedMs: Math.round(performance.now() - started) };
   });
 }
 

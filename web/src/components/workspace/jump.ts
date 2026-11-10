@@ -24,3 +24,25 @@ export function takeJump(anchors: readonly string[]): string | null {
     return null;
   }
 }
+
+/** Marks that the next dashboard to open was reached going back: it opens at its end, not at its top. */
+const END_KEY = "dbi:abrir-no-fim";
+
+export function rememberLandAtEnd(): void {
+  try {
+    window.sessionStorage.setItem(END_KEY, "1");
+  } catch {
+    // not kept: the dashboard opens at its top
+  }
+}
+
+/** Whether the dashboard now on screen should open at its end (then forgotten). */
+export function takeLandAtEnd(): boolean {
+  try {
+    const wanted = window.sessionStorage.getItem(END_KEY) === "1";
+    window.sessionStorage.removeItem(END_KEY);
+    return wanted;
+  } catch {
+    return false;
+  }
+}
