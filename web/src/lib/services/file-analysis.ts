@@ -15,6 +15,7 @@ import { relativeToOrg, type BrowseEntryFile } from "../storage-browse";
 import { clientSlugOf, CLIENTS_DIR, isSystemPath, joinPath, parentOf } from "../storage-explorer";
 import { fiscalDocumentId, fiscalFolder } from "../storage-keys";
 import { getCatalogEntry } from "../templates/registry";
+import { inputTable } from "../templates/schema";
 import { UserFacingError } from "./datasets";
 import { fileFiscal } from "./fiscal";
 
@@ -119,7 +120,7 @@ async function spaceDashboards(ctx: OrgContext): Promise<Map<string, SpaceDashbo
     const template = templates.get(d.templateId);
     if (!template) continue;
     const root = d.clientId ? `clientes/${slugOf.get(d.clientId) ?? ""}` : "";
-    bySpace.set(root, [...(bySpace.get(root) ?? []), { name: d.name, templateId: d.templateId, tables: template.tables }]);
+    bySpace.set(root, [...(bySpace.get(root) ?? []), { name: d.name, templateId: d.templateId, tables: template.tables.map(inputTable) }]);
   }
   return bySpace;
 }

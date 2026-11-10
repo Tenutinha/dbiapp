@@ -36,6 +36,22 @@ const columnSchema = z.object({
   description: z.string().optional(),
 });
 
+/**
+ * Raw file a table is fed from, when it differs from what is stored: the engate checks files against
+ * these columns, and on ingest each stored column is computed from them (derive) and, with groupBy,
+ * rows are summed up (e.g. votes per polling station → per municipality). Queries only ever see the
+ * stored table, so measures and visuals do not change.
+ */
+const sourceSchema = z.object({
+  description: z.string().optional(),
+  /** Columns the raw file must have (names as in the file, normalized). */
+  columns: z.array(columnSchema).min(1),
+  /** SQL over the raw columns for a stored column; a stored column without one copies the raw column of the same name. */
+  derive: z.record(ident, sqlExpr).default({}),
+  /** Stored columns that identify a row: rows are grouped by them, so every other stored column must be derived with an aggregate (SUM(…), any_value(…)). */
+  groupBy: z.array(ident).default([]),
+});
+
 const tableSchema = z.object({
   name: ident,
   kind: z.enum(["fact", "dimension"]),
@@ -48,6 +64,7 @@ const tableSchema = z.object({
    */
   sortBy: z.string().regex(/^[a-z_][a-z0-9_]*(\s*,\s*[a-z_][a-z0-9_]*){0,5}$/, "use column names separated by commas").optional(),
   columns: z.array(columnSchema).min(1),
+  source: sourceSchema.optional(),
 });
 
 const relationshipSchema = z.object({
@@ -221,10 +238,33 @@ export const templateSchema = z
         if (!hasColumn(tb.name, col)) issue(`${tb.name}.sortBy: ${col} is not a column`);
       }
     }
+    for (const tb of t.tables) {
+      if (!tb.source) continue;
+      const raw = new Set(tb.source.columns.map((c) => c.name));
+      const stored = new Set(tb.columns.map((c) => c.name));
+      for (const col of Object.keys(tb.source.derive)) {
+        if (!stored.has(col)) issue(`${tb.name}.source.derive: ${col} is not a column of the table`);
+      }
+      for (const col of tb.source.groupBy) {
+        if (!stored.has(col)) issue(`${tb.name}.source.groupBy: ${col} is not a column of the table`);
+      }
+      for (const col of tb.columns) {
+        const derived = col.name in tb.source.derive;
+        if (!derived && !raw.has(col.name)) issue(`${tb.name}.${col.name}: not derived and not a raw column`);
+        if (tb.source.groupBy.length > 0 && !derived && !tb.source.groupBy.includes(col.name)) {
+          issue(`${tb.name}.${col.name}: with groupBy, every other column must be derived with an aggregate`);
+        }
+      }
+    }
+    // Snowflake: a relationship starts at the fact or at a dimension already joined (in this order).
+    const joined = new Set(facts.map((f) => f.name));
     for (const r of t.relationships) {
       if (!hasColumn(r.from.table, r.from.column)) issue(`relationship from ${r.from.table}.${r.from.column} unknown`);
       if (!hasColumn(r.to.table, r.to.column)) issue(`relationship to ${r.to.table}.${r.to.column} unknown`);
-      if (tables.get(r.from.table)?.kind !== "fact") issue("relationships must start at the fact table");
+      if (!joined.has(r.from.table)) {
+        issue(`relationship from ${r.from.table}: start at the fact table or at a dimension joined by an earlier relationship`);
+      }
+      joined.add(r.to.table);
     }
 
     const fieldIds = new Set(t.fields.map((f) => f.id));
@@ -294,6 +334,11 @@ function checkAnalyses(t: AnalysesInput, issue: (message: string) => void): void
 }
 
 export type Template = z.infer<typeof templateSchema>;
+
+/** What a file must look like to feed `table`: its raw source when it has one, else the table itself. */
+export function inputTable<T extends { columns: unknown[]; source?: { columns: unknown[] } }>(table: T): T {
+  return table.source ? { ...table, columns: table.source.columns, source: undefined } : table;
+}
 
 /** Columns a table is sorted by when written (sortBy is a comma separated list). */
 export function sortColumns(table: { sortBy?: string }): string[] {

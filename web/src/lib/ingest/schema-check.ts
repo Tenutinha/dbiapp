@@ -2,7 +2,7 @@
  * Column-by-column comparison of a file's schema with a contract table, for the data connector's
  * "does this file fit this table?" check. Pure; the real conversion still runs on ingest.
  */
-import type { ColumnType, TemplateTable } from "../templates/schema";
+import { inputTable, type ColumnType, type TemplateTable } from "../templates/schema";
 import { matchColumns, normalizeName, type SourceColumn } from "./contract";
 
 export type ColumnStatus = "ok" | "convert" | "missing" | "optional";
@@ -40,7 +40,9 @@ function familyOf(duckType: string): ColumnType | null {
   return null;
 }
 
-export function checkSchema(table: TemplateTable, source: readonly SourceColumn[]): SchemaCheck {
+export function checkSchema(contractTable: TemplateTable, source: readonly SourceColumn[]): SchemaCheck {
+  // Tables fed from a raw source are checked against the raw columns (the file is transformed on engage).
+  const table = inputTable(contractTable);
   const match = matchColumns(table, source);
   const byName = new Map(source.map((c) => [c.name, c]));
   const expected = new Set(table.columns.map((c) => c.name));

@@ -67,6 +67,8 @@ As regras ficam num único arquivo testado: `web/src/lib/permissions.ts`. O que 
 
 1. **Template** (`web/templates/<id>/template.json`): contrato de dados (tabelas fato/dimensão, colunas, tipos, chaves), relacionamentos, campos, medidas em SQL e layout dos visuais. Validado com Zod ao carregar.
 2. **Upload**: cada arquivo é validado contra o contrato (cabeçalhos sem acento/maiúsculas, tipos, nulos, chave única), convertido para Parquet ZSTD ordenado e salvo em `web/storage/<organização>/<dashboard>/v<N>/`.
+   - **Fonte bruta** (`source` na tabela): quando o arquivo vem num formato diferente do guardado (ex.: votos por seção do TSE), a tabela declara as colunas do bruto, como derivar cada coluna guardada (`derive`, SQL) e por quais agrupar (`groupBy`, com `SUM(...)`/`any_value(...)` nas demais). O engate confere o arquivo pelas colunas do bruto e grava já transformado; consultas e medidas só veem a tabela guardada.
+   - **Dimensão de dimensão**: um relacionamento pode partir de uma dimensão já ligada antes (fato → `d_candidato` → `d_partido`).
 3. **Publicação**: o rascunho vira a versão ativa numa transação; tabelas não reenviadas são herdadas da versão anterior. Relações sem correspondência viram aviso.
 4. **Consulta**: cada visual vira uma query DuckDB direto nos Parquets. Filtros são sempre parâmetros. O DuckDB roda em sandbox (só lê e escreve dentro de `web/storage/`) e com limite de memória (`DBI_DUCKDB_MEMORY_LIMIT`, padrão 2GB).
 5. **Compartilhamento**: links de convidado `/s/<token>` (192 bits, expiração, revogáveis), somente leitura.

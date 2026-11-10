@@ -54,7 +54,18 @@ export function buildFrom(
   const factSource = where ? `(SELECT * FROM ${fileFor(fact)} ${where})` : fileFor(fact);
   // Every table must have its file, used by this query or not: a dashboard is published whole.
   for (const r of t.relationships) fileFor(r.to.table);
-  const joins = t.relationships.filter((r) => uses(r.to.table)).map(
+  // A used dimension reached through another one (fact → candidato → partido) needs that one joined too.
+  const needed = new Set(t.relationships.filter((r) => uses(r.to.table)).map((r) => r.to.table));
+  for (let grew = true; grew;) {
+    grew = false;
+    for (const r of t.relationships) {
+      if (needed.has(r.to.table) && r.from.table !== fact && !needed.has(r.from.table)) {
+        needed.add(r.from.table);
+        grew = true;
+      }
+    }
+  }
+  const joins = t.relationships.filter((r) => needed.has(r.to.table)).map(
     (r) =>
       `LEFT JOIN ${fileFor(r.to.table)} AS ${r.to.table} ON ${r.from.table}.${r.from.column} = ${r.to.table}.${r.to.column}`,
   );
