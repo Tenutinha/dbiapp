@@ -35,15 +35,26 @@ async function listFolder(access: InstanceAccess, folder: string): Promise<Brows
 /** Where prepared files usually go: sub-folders of orgs/<slug>/preparado/. */
 export const PREPARED_FOLDER = "preparado";
 
-/** Folders offered in the import field. Never throws: a listing failure just means no suggestions. */
-export async function storageFolderSuggestions(orgSlug: string): Promise<string[]> {
+async function preparedSubfolders(orgSlug: string, base: string): Promise<string[]> {
   try {
-    const listing = await storage.listOrgFolder(orgSlug, PREPARED_FOLDER, 200);
-    return listing.folders.map((f) => `${PREPARED_FOLDER}/${f.replace(/\/$/, "")}`);
+    const listing = await storage.listOrgFolder(orgSlug, base, 200);
+    return listing.folders.map((f) => `${base}/${f.replace(/\/$/, "")}`);
   } catch (err) {
-    console.error("[storage-import] could not list prepared folders", orgSlug, err);
+    console.error("[storage-import] could not list prepared folders", orgSlug, base, err);
     return [];
   }
+}
+
+/**
+ * Folders offered in the import field: for a client's dashboard, the client's own prepared folders first
+ * (clientes/<cliente>/preparado/…), then the organization's (preparado/…). Never throws.
+ */
+export async function storageFolderSuggestions(orgSlug: string, clientSlug?: string | null): Promise<string[]> {
+  const [client, org] = await Promise.all([
+    clientSlug ? preparedSubfolders(orgSlug, `clientes/${clientSlug}/${PREPARED_FOLDER}`) : Promise.resolve([]),
+    preparedSubfolders(orgSlug, PREPARED_FOLDER),
+  ]);
+  return [...client, ...org];
 }
 
 /** Which files of an organization folder would feed which contract tables (nothing is read yet). */

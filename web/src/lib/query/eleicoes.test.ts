@@ -19,7 +19,7 @@ describe("eleicoes-presidente template", () => {
 describe("map visuals", () => {
   it("group by the IBGE code and label, select every colour measure once and allow all municipalities", () => {
     const q = buildVisualQuery(t, files, visual("mapa_t2"), { ano: ["2026"] });
-    expect(q.sql).toMatch(/AS cd_municipio, .* AS municipio, /);
+    expect(q.sql).toMatch(/AS cd_ibge, .* AS municipio, /);
     expect(q.sql).toContain("AS vencedor_t2");
     expect(q.sql).toContain("AS cor_vencedor_t2");
     expect(q.sql.match(/AS pct_vencedor_t2/g)).toHaveLength(1); // also listed in tooltip
@@ -31,7 +31,7 @@ describe("map visuals", () => {
 describe("table orderBy", () => {
   it("sorts by the chosen measure instead of the first", () => {
     const q = buildVisualQuery(t, files, visual("tabela_maiores"), {});
-    expect(q.sql).toContain("ORDER BY aptos_final DESC NULLS LAST LIMIT 30");
+    expect(q.sql).toContain("ORDER BY votos_final DESC NULLS LAST LIMIT 30");
   });
 });
 

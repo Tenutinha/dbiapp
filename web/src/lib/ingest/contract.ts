@@ -107,3 +107,19 @@ export function castExpr(m: ColumnMapping): string {
 export function castSelect(mapping: readonly ColumnMapping[]): string {
   return mapping.map((m) => `${castExpr(m)} AS ${m.target}`).join(", ");
 }
+
+/**
+ * SELECT that turns the raw columns (already cast, in `raw`) into the stored table: each column from
+ * its derive expression or the raw column of the same name, grouped by source.groupBy when set.
+ * Expressions come from the validated template (trusted); nothing here comes from the file.
+ */
+export function transformSelect(table: TemplateTable, raw: string): string {
+  const source = table.source;
+  if (!source) throw new Error(`table ${table.name} has no raw source`);
+  const cols = table.columns.map((c) => {
+    const expr = source.derive[c.name] ?? quoteIdent(c.name);
+    return `CAST((${expr}) AS ${DUCK_TYPE[c.type]}) AS ${quoteIdent(c.name)}`;
+  });
+  const group = source.groupBy.map((g) => String(table.columns.findIndex((c) => c.name === g) + 1));
+  return `SELECT ${cols.join(", ")} FROM ${raw} AS bruto${group.length > 0 ? ` GROUP BY ${group.join(", ")}` : ""}`;
+}

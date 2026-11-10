@@ -7,8 +7,8 @@ import { mkdir, rename, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import type { DuckDBConnection } from "@duckdb/node-api";
 import { queryRows, quotePath, readParquet, withConnection } from "../duck/engine";
-import { sortColumns, type TemplateTable } from "../templates/schema";
-import { castExpr, castSelect, matchColumns, quoteIdent, type ColumnMapping, type SourceColumn } from "./contract";
+import { inputTable, sortColumns, type TemplateTable } from "../templates/schema";
+import { castExpr, castSelect, matchColumns, quoteIdent, transformSelect, type ColumnMapping, type SourceColumn } from "./contract";
 
 export type SourceFormat = "parquet" | "csv";
 
@@ -105,7 +105,8 @@ export async function ingestTable(input: IngestInput): Promise<TableReport> {
       return fail([`Não foi possível ler o arquivo como ${input.format.toUpperCase()}.`]);
     }
 
-    const match = matchColumns(table, columns);
+    // A table with a raw source is checked against the raw columns, then transformed on the way in.
+    const match = matchColumns(inputTable(table), columns);
     if (match.errors.length > 0) return fail(match.errors, match.warnings);
 
     try {
@@ -115,8 +116,10 @@ export async function ingestTable(input: IngestInput): Promise<TableReport> {
       await mkdir(path.dirname(targetPath), { recursive: true });
       const sortBy = sortColumns(table);
       const order = sortBy.length > 0 ? ` ORDER BY ${sortBy.join(", ")}` : "";
+      const cast = `SELECT ${castSelect(match.mapping)} FROM ${src}`;
+      const body = table.source ? transformSelect(table, `(${cast})`) : cast;
       await conn.run(
-        `COPY (SELECT ${castSelect(match.mapping)} FROM ${src}${order}) TO ${quotePath(tmpPath)} ` +
+        `COPY (${body}${order}) TO ${quotePath(tmpPath)} ` +
           `(FORMAT parquet, COMPRESSION zstd, ROW_GROUP_SIZE 122880)`,
       );
 
