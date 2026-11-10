@@ -1,5 +1,5 @@
 import { AdminDashboardCard } from "@/components/vitrine/AdminDashboardCard";
-import { NewDashboardModal } from "@/components/vitrine/NewDashboardModal";
+import { NewDashboardHint } from "@/components/vitrine/NewDashboardHint";
 import { VitrineBrowser, type VitrineEntry } from "@/components/vitrine/VitrineBrowser";
 import { VitrineCard } from "@/components/vitrine/VitrineCard";
 import type { CatalogRow } from "@/lib/data/catalog";
@@ -12,7 +12,7 @@ export const VITRINE_ANCHOR = "vitrine";
 interface VitrineSectionProps {
   /** Published showcase dashboards (what visitors and organization users see). */
   items: VitrineItem[];
-  /** Platform admin view: the whole catalog (drafts and archived too), plus the "register" button. */
+  /** Platform admin view: the whole catalog (drafts and archived too), plus the note on how new ones are made. */
   admin?: { rows: CatalogRow[]; editId?: string | null } | null;
   className?: string;
 }
@@ -44,13 +44,13 @@ export function VitrineSection({ items, admin, className = "" }: VitrineSectionP
         <h2 id="vitrine-titulo" className="mt-1 text-xl font-extrabold tracking-tight">Dashboards prontos</h2>
         <p className="mt-1 text-sm text-muted">
           {admin
-            ? "Todo o catálogo, inclusive rascunhos e arquivados. Clique num dashboard para editar ou excluir; a bandeira troca o status e o olho abre a pré-visualização."
+            ? "Todo o catálogo, inclusive rascunhos e arquivados. Clique num dashboard para editar ou excluir; a bandeira troca o status e o olho abre a pré-visualização. Dashboards novos são criados por agente de IA."
             : "Abra um para ver as tabelas que ele espera e adicione a uma organização."}
         </p>
       </div>
       <VitrineBrowser
         entries={admin ? adminEntries(admin.rows, admin.editId ?? null) : publicEntries(items)}
-        action={admin ? <NewDashboardModal key="cadastrar" /> : undefined}
+        action={admin ? <NewDashboardHint key="novo" /> : undefined}
       />
     </section>
   );

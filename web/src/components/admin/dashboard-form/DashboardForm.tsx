@@ -1,16 +1,12 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import {
-  registerTemplateAction,
-  updateTemplateAction,
-  type TemplateFormState,
-} from "@/app/plataforma/catalogo/actions";
-import { emptyTemplate, prepareForSave } from "@/lib/templates/draft";
+import { updateTemplateAction, type TemplateFormState } from "@/app/plataforma/catalogo/actions";
+import { prepareForSave } from "@/lib/templates/draft";
 import { templateSchema, type Template } from "@/lib/templates/schema";
 import { AnalysesStep } from "./AnalysesStep";
 import { FilesStep } from "./FilesStep";
-import { GeneralStep, type InitialStatus } from "./GeneralStep";
+import { GeneralStep } from "./GeneralStep";
 import { ModelStep } from "./ModelStep";
 import { SummaryStep } from "./SummaryStep";
 
@@ -57,9 +53,9 @@ function localErrors(t: Template): string[] {
 }
 
 interface DashboardFormProps {
-  /** Stored version when editing; null to register a new dashboard. */
-  stored: Template | null;
-  /** Organizations already using it (editing): contract changes then need confirmation. */
+  /** The stored dashboard being edited. New dashboards are not made here: an AI agent builds them (skill novo-dashboard). */
+  stored: Template;
+  /** Organizations already using it: contract changes then need confirmation. */
   usage?: number;
   /** Shipped in web/templates: a file with a higher version there replaces these edits. */
   builtIn?: boolean;
@@ -71,10 +67,8 @@ interface DashboardFormProps {
 export function DashboardForm({
   stored, usage = 0, builtIn = false, onSaved, maxHeightClass = "max-h-[calc(100vh-2rem)]",
 }: DashboardFormProps) {
-  const editing = stored !== null;
-  const [template, setTemplate] = useState<Template>(() => stored ?? emptyTemplate());
+  const [template, setTemplate] = useState<Template>(stored);
   const [step, setStep] = useState(0);
-  const [status, setStatus] = useState<InitialStatus>("draft");
   const [result, setResult] = useState<TemplateFormState | null>(null);
   const [confirmBreaking, setConfirmBreaking] = useState(false);
   const [saving, startSaving] = useTransition();
@@ -92,12 +86,10 @@ export function DashboardForm({
     }
     const data = new FormData();
     data.set("json", JSON.stringify(toSave));
-    if (editing) data.set("id", toSave.id);
-    else data.set("status", status);
+    data.set("id", toSave.id);
     if (confirmBreaking) data.set("confirmBreaking", "on");
     startSaving(async () => {
-      const action = editing ? updateTemplateAction : registerTemplateAction;
-      const res = await action({ ok: false, message: "" }, data);
+      const res = await updateTemplateAction({ ok: false, message: "" }, data);
       setResult(res);
       if (res.ok) onSaved(res.message);
       else if (res.errors?.length) setStep(stepOfError(res.errors[0]));
@@ -109,13 +101,13 @@ export function DashboardForm({
   return (
     <div className={`card flex flex-col ${maxHeightClass}`}>
       <header className="border-b border-line px-5 pb-3 pt-5 pr-12">
-        <h2 className="font-semibold">{editing ? `Editar: ${stored.name}` : "Cadastrar dashboard"}</h2>
-        {editing && usage > 0 && (
+        <h2 className="font-semibold">Editar: {stored.name}</h2>
+        {usage > 0 && (
           <p className="mt-0.5 text-xs text-muted">Em uso em {usage} dashboard(s) de organizações. Mudanças nos arquivos pedem confirmação.</p>
         )}
         {builtIn && (
           <p className="mt-0.5 text-xs text-accent">
-            Dashboard embutido (web/templates/{stored?.id}): se o arquivo no código ganhar uma versão maior que a salva aqui, ele substitui estas edições.
+            Dashboard embutido (web/templates/{stored.id}): se o arquivo no código ganhar uma versão maior que a salva aqui, ele substitui estas edições.
           </p>
         )}
         <nav aria-label="Etapas" className="mt-3 flex gap-1 overflow-x-auto">
@@ -138,7 +130,7 @@ export function DashboardForm({
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-        {step === 0 && <GeneralStep {...stepProps} editing={editing} status={status} onStatus={setStatus} />}
+        {step === 0 && <GeneralStep {...stepProps} />}
         {step === 1 && <FilesStep {...stepProps} />}
         {step === 2 && <ModelStep {...stepProps} />}
         {step === 3 && <AnalysesStep {...stepProps} />}
@@ -178,7 +170,7 @@ export function DashboardForm({
               </button>
             )}
             <button type="button" className="btn btn-primary" disabled={saving} onClick={save}>
-              {saving ? "Salvando…" : editing ? "Salvar alterações" : "Cadastrar"}
+              {saving ? "Salvando…" : "Salvar alterações"}
             </button>
           </div>
         </div>

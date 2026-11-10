@@ -63,7 +63,7 @@ const VIEWS: readonly { id: View; label: string; icon: React.ReactNode }[] = [
 
 interface VitrineBrowserProps {
   entries: VitrineEntry[];
-  /** Extra control at the right of the toolbar (e.g. "+ Cadastrar dashboard"). */
+  /** Extra control at the right of the toolbar (e.g. the note on how new dashboards are made). */
   action?: React.ReactNode;
 }
 
