@@ -6,9 +6,8 @@ import { firstItem } from "@/lib/layout/toc";
 import type { Membership } from "@/lib/permissions";
 import { loadDashboard } from "@/lib/services/dashboard";
 import { loadSpace } from "@/lib/services/space";
-import { buildSummary } from "@/lib/templates/sections";
+import { buildOutline } from "@/lib/templates/sections";
 import { readViewSelection } from "@/lib/view-selection";
-import { DashboardSummary } from "./DashboardSummary";
 import { MainHeader, Workspace } from "./Workspace";
 
 type SearchParams = Record<string, string | string[] | undefined>;
@@ -53,7 +52,6 @@ export async function SpaceHome({ org, client, membership, user, searchParams }:
   }
 
   const dashboard = await loadDashboard(access.instanceId, access.templateId, access.activeVersionId, searchParams);
-  const summary = buildSummary(dashboard.template);
   const shareLink = access.actions.has("share")
     ? [{ href: `/${org.slug}/d/${access.instanceId}/compartilhar`, label: "Compartilhar" }]
     : [];
@@ -63,7 +61,7 @@ export async function SpaceHome({ org, client, membership, user, searchParams }:
       space={space}
       currentId={access.instanceId}
       userName={user.name}
-      pageSummary={summary.length > 0 ? <DashboardSummary title={access.name} groups={summary} /> : undefined}
+      outline={buildOutline(dashboard.template)}
     >
       <MainHeader
         kicker={client ? `${org.name} · ${client.name}` : org.name}

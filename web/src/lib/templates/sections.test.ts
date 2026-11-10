@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { loadTemplate } from "../test-helpers";
 import { templateSchema } from "./schema";
-import { analysisAnchor, buildSections, buildSummary } from "./sections";
+import { analysisAnchor, buildOutline, buildSections, buildSummary } from "./sections";
 
 const base = templateSchema.parse(loadTemplate("vendas-executivo"));
 const t = templateSchema.parse({
@@ -49,5 +49,15 @@ describe("buildSummary", () => {
 
   it("is empty for dashboards without a summary", () => {
     expect(buildSummary(base)).toEqual([]);
+  });
+});
+
+describe("buildOutline", () => {
+  it("lists every analysis of the summary in reading order, without the groups", () => {
+    expect(buildOutline(t).map((i) => [i.number, i.title])).toEqual([[1, "Visão geral"], [2, "Canais"]]);
+  });
+
+  it("is empty for dashboards without a summary", () => {
+    expect(buildOutline(base)).toEqual([]);
   });
 });

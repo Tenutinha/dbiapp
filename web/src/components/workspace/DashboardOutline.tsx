@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { SummaryGroupView } from "@/lib/templates/sections";
+import type { SummaryItem } from "@/lib/templates/sections";
 
-interface DashboardSummaryProps {
-  title: string;
-  groups: SummaryGroupView[];
+interface DashboardOutlineProps {
+  dashboardName: string;
+  items: SummaryItem[];
 }
 
 /** Section whose top already passed this line (px from the viewport top) counts as the current one. */
@@ -21,10 +21,12 @@ function currentAnchor(anchors: readonly string[]): string | null {
   return current;
 }
 
-/** Sidebar summary of the open dashboard: its groups of analyses, linking to each page section. */
-export function DashboardSummary({ title, groups }: DashboardSummaryProps) {
-  const anchors = groups.flatMap((g) => g.items.map((i) => i.anchor));
-  const key = anchors.join("|");
+/**
+ * The analyses of the open dashboard, nested under its name in the sidebar: links to the page sections,
+ * with the one on screen highlighted as the page scrolls.
+ */
+export function DashboardOutline({ dashboardName, items }: DashboardOutlineProps) {
+  const key = items.map((i) => i.anchor).join("|");
   const [active, setActive] = useState<string | null>(null);
 
   useEffect(() => {
@@ -44,33 +46,27 @@ export function DashboardSummary({ title, groups }: DashboardSummaryProps) {
     };
   }, [key]);
 
+  if (items.length === 0) return null;
+
   return (
-    <nav aria-label={`Sumário de ${title}`} className="mb-8 flex flex-col gap-5 border-b border-paper-line pb-6">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-muted">Neste dashboard</p>
-      {groups.map((g) => (
-        <div key={g.title}>
-          <p className="mb-2 text-[13px] text-ink-muted">{g.title}</p>
-          <ul className="border-l border-paper-line">
-            {g.items.map((item) => {
-              const on = item.anchor === active;
-              return (
-                <li key={item.id}>
-                  <a
-                    href={`#${item.anchor}`}
-                    aria-current={on ? "location" : undefined}
-                    className={`-ml-px flex items-baseline justify-between gap-3 border-l py-1 pl-3 pr-1 text-[15px] leading-snug transition-colors ${
-                      on ? "border-ink font-medium text-ink" : "border-transparent text-ink/80 hover:border-ink-muted hover:text-ink"
-                    }`}
-                  >
-                    <span>{item.title}</span>
-                    <span className="shrink-0 tabular-nums text-ink-muted">{item.number}</span>
-                  </a>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      ))}
-    </nav>
+    <ul aria-label={`Análises de ${dashboardName}`} className="pb-2 pt-0.5">
+      {items.map((item) => {
+        const on = item.anchor === active;
+        return (
+          <li key={item.id}>
+            <a
+              href={`#${item.anchor}`}
+              aria-current={on ? "location" : undefined}
+              className={`flex items-baseline justify-between gap-3 py-[3px] pl-7 pr-1 text-[13px] leading-snug transition-colors ${
+                on ? "font-medium text-ink" : "text-ink-muted hover:text-ink"
+              }`}
+            >
+              <span>{item.title}</span>
+              <span className="shrink-0 text-[11px] tabular-nums text-ink-muted/70">{item.number}</span>
+            </a>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
