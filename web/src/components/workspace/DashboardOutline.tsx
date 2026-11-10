@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { useFormStatus } from "react-dom";
 import type { SummaryItem } from "@/lib/templates/sections";
 import { rememberJump } from "./jump";
+import { LinkSwitchSignal, useOpenDashboard } from "./switching";
 import { openDashboardAction } from "./view-actions";
 
 interface DashboardOutlineProps {
@@ -84,12 +84,23 @@ function Label({ item }: { item: SummaryItem }) {
   );
 }
 
-function JumpButton({ item }: { item: SummaryItem }) {
-  const { pending } = useFormStatus();
+/** An analysis of another dashboard: opens that dashboard, to land on this analysis. */
+function JumpForm({ item, dashboardId, dashboardName }: { item: SummaryItem; dashboardId: string; dashboardName: string }) {
+  const { pending, open } = useOpenDashboard(dashboardName);
   return (
-    <button type="submit" aria-busy={pending || undefined} className={`${ROW} ${tone(pending)} ${pending ? "animate-pulse" : ""}`}>
-      <Label item={item} />
-    </button>
+    <form
+      action={openDashboardAction}
+      onSubmit={(e) => {
+        e.preventDefault();
+        rememberJump(item.anchor);
+        open(dashboardId);
+      }}
+    >
+      <input type="hidden" name="id" value={dashboardId} />
+      <button type="submit" aria-busy={pending || undefined} className={`${ROW} ${tone(pending)} ${pending ? "animate-pulse" : ""}`}>
+        <Label item={item} />
+      </button>
+    </form>
   );
 }
 
@@ -121,13 +132,11 @@ export function DashboardOutline({ dashboardId, dashboardName, current, items, h
             </a>
           ) : href ? (
             <Link href={href} onClick={() => rememberJump(item.anchor)} className={`${ROW} ${tone(false)}`}>
+              <LinkSwitchSignal name={dashboardName} />
               <Label item={item} />
             </Link>
           ) : (
-            <form action={openDashboardAction} onSubmit={() => rememberJump(item.anchor)}>
-              <input type="hidden" name="id" value={dashboardId} />
-              <JumpButton item={item} />
-            </form>
+            <JumpForm item={item} dashboardId={dashboardId} dashboardName={dashboardName} />
           )}
         </li>
       ))}

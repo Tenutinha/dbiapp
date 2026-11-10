@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { PUSH_START, pushOnWheel, pushProgress, type PushState } from "@/lib/layout/overscroll";
 import { rememberLandAtEnd } from "./jump";
+import { useSwitchSignal } from "./switching";
 import { openDashboardAction } from "./view-actions";
 
 interface NextDashboardProps {
@@ -34,6 +35,8 @@ export function NextDashboard({ id, name, number, href, direction = "next" }: Ne
   const back = direction === "previous";
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  // The coming dashboard takes the screen (as a skeleton) the moment it is asked for.
+  useSwitchSignal(pending, name);
   const [progress, setProgress] = useState(0);
   const push = useRef<PushState>(PUSH_START);
   const opened = useRef(false);

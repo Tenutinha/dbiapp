@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { DashboardArrival } from "@/components/workspace/DashboardArrival";
 import { DashboardBody, DashboardFallback } from "@/components/workspace/DashboardBody";
+import { DashboardSwitch } from "@/components/workspace/switching";
 import { NextDashboard } from "@/components/workspace/NextDashboard";
 import { SidebarNav } from "@/components/workspace/SidebarNav";
 import { DbiLogo, SidebarShell } from "@/components/workspace/SidebarShell";
@@ -94,6 +95,7 @@ export default async function PublicSpacePage({ params, searchParams }: Props) {
             {chosen && header ? (
               <>
                 <DashboardArrival dashboardId={chosen.instanceId} />
+                <DashboardSwitch>
                 <div key={chosen.instanceId} className="dash-enter">
                   {/* A new dashboard opens at once as a skeleton; a filter change keeps the page and only its cards wait. */}
                   <Suspense fallback={<DashboardFallback header={header} hasPrevious={previous !== null} />}>
@@ -115,6 +117,7 @@ export default async function PublicSpacePage({ params, searchParams }: Props) {
                     />
                   </Suspense>
                 </div>
+                </DashboardSwitch>
               </>
             ) : (
               <p className="py-24 text-center text-muted">Ainda não há dashboards publicados em {spaceName}.</p>

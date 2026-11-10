@@ -11,6 +11,7 @@ import { readViewSelection } from "@/lib/view-selection";
 import { DashboardArrival } from "./DashboardArrival";
 import { DashboardBody, DashboardFallback } from "./DashboardBody";
 import { NextDashboard } from "./NextDashboard";
+import { DashboardOpener, DashboardSwitch } from "./switching";
 import type { Outlines } from "./SidebarNav";
 import { MainHeader, Workspace } from "./Workspace";
 
@@ -103,8 +104,10 @@ export async function SpaceHome({ org, client, membership, user, searchParams }:
       outlines={outlines}
     >
       <DashboardArrival dashboardId={access.instanceId} />
+      <DashboardSwitch>
       {/* Keyed by dashboard: a new one fades in (dash-enter) instead of patching the previous page. */}
       <div key={access.instanceId} className="dash-enter">
+        <DashboardOpener />
         {/* A new dashboard opens at once as a skeleton; a filter change keeps the page and only its cards wait. */}
         <Suspense fallback={<DashboardFallback header={header} hasPrevious={previous !== null} />}>
           <DashboardBody
@@ -123,6 +126,7 @@ export async function SpaceHome({ org, client, membership, user, searchParams }:
           />
         </Suspense>
       </div>
+      </DashboardSwitch>
     </Workspace>
   );
 }
