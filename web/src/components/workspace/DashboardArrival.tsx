@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { takeJump } from "./jump";
+import { takeJump, takeLandAtEnd } from "./jump";
 
 interface DashboardArrivalProps {
   dashboardId: string;
@@ -11,7 +11,7 @@ interface DashboardArrivalProps {
 
 /**
  * Where the reader lands when a dashboard takes the screen: on the analysis picked in the sidebar, or
- * at the top when the dashboard changed. The address is the same for every dashboard of the space, so
+ * at the top when the dashboard changed (at its end when the reader came back from the following one). The address is the same for every dashboard of the space, so
  * the browser would otherwise keep the previous scroll position.
  */
 export function DashboardArrival({ dashboardId, anchorsKey }: DashboardArrivalProps) {
@@ -21,8 +21,9 @@ export function DashboardArrival({ dashboardId, anchorsKey }: DashboardArrivalPr
     const changed = previous.current !== null && previous.current !== dashboardId;
     previous.current = dashboardId;
     const anchor = takeJump(anchorsKey.split("|"));
+    const atEnd = takeLandAtEnd();
     if (anchor) document.getElementById(anchor)?.scrollIntoView();
-    else if (changed) window.scrollTo({ top: 0 });
+    else if (changed) window.scrollTo({ top: atEnd ? document.documentElement.scrollHeight : 0 });
   }, [dashboardId, anchorsKey]);
 
   return null;

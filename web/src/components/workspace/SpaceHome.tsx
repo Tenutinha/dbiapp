@@ -2,7 +2,7 @@ import { DashboardView } from "@/components/dashboard/DashboardView";
 import { requireInstance, type ClientRef, type InstanceAccess, type OrgRef } from "@/lib/access";
 import { AccessError, type CurrentUser } from "@/lib/auth";
 import { formatDateLong } from "@/lib/format";
-import { firstItem, nextItem, type TocGroup } from "@/lib/layout/toc";
+import { firstItem, nextItem, previousItem, type TocGroup } from "@/lib/layout/toc";
 import type { Membership } from "@/lib/permissions";
 import { loadDashboard } from "@/lib/services/dashboard";
 import { loadSpace } from "@/lib/services/space";
@@ -83,6 +83,7 @@ export async function SpaceHome({ org, client, membership, user, searchParams }:
   ]);
   const anchorsKey = buildOutline(dashboard.template).map((i) => i.anchor).join("|");
   const next = nextItem(space.toc, access.instanceId);
+  const previous = previousItem(space.toc, access.instanceId);
   const shareLink = access.actions.has("share")
     ? [{ href: `/${org.slug}/d/${access.instanceId}/compartilhar`, label: "Compartilhar" }]
     : [];
@@ -97,6 +98,7 @@ export async function SpaceHome({ org, client, membership, user, searchParams }:
       <DashboardArrival dashboardId={access.instanceId} anchorsKey={anchorsKey} />
       {/* Keyed by dashboard: a new one fades in (dash-enter) instead of patching the previous page. */}
       <div key={access.instanceId} className="dash-enter">
+        {previous && <NextDashboard direction="previous" id={previous.id} name={previous.name} number={previous.number} />}
         <MainHeader
           kicker={client ? `${org.name} · ${client.name}` : org.name}
           meta={`Atualizado em ${formatDateLong(access.publishedAt)}`}
