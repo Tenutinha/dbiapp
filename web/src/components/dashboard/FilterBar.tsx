@@ -217,15 +217,15 @@ export function FilterBar({ filters, cross = [] }: FilterBarProps) {
         )}
       </div>
 
-      {!rowInView && (
+      {/* The panel opens over this corner and has its own close button. */}
+      {!rowInView && !open && (
         <button
           type="button"
-          onClick={() => setOpen((o) => !o)}
-          aria-label={open ? "Fechar filtros" : "Abrir filtros"}
-          aria-expanded={open}
+          onClick={() => setOpen(true)}
+          aria-label="Abrir filtros"
           style={{ left: floatLeft }}
           className={`card fixed top-20 z-40 inline-flex items-center gap-2 rounded-full px-3.5 py-2 text-sm font-medium shadow-xl hover:border-brand ${
-            open || activeCount > 0 ? "!border-brand" : ""
+            activeCount > 0 ? "!border-brand" : ""
           }`}
         >
           <FunnelIcon />
@@ -238,7 +238,7 @@ export function FilterBar({ filters, cross = [] }: FilterBarProps) {
         <aside
           id="painel-filtros"
           aria-label="Filtros"
-          className="fixed inset-y-0 right-0 z-50 flex w-80 max-w-[90vw] flex-col border-l border-line bg-card shadow-2xl"
+          className="fixed inset-y-0 left-0 z-50 flex w-80 max-w-[90vw] flex-col border-r border-line bg-card shadow-2xl"
         >
           <header className="flex items-center gap-2 border-b border-line px-4 py-3">
             <FunnelIcon />
