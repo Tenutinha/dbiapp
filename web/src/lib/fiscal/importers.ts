@@ -78,7 +78,7 @@ export const FISCAL_IMPORTERS: readonly FiscalImporter[] = [
     title: "NF-e",
     extensions: [".xml"],
     fact: "nfe_itens",
-    dimensionKeys: { emitentes: "cnpj_emit", destinatarios: "doc_dest" },
+    dimensionKeys: {},
     identify(bytes) {
       const id = identifyNfe(bytes);
       return { cnpj: id.cnpjEmit, periodo: month(id.periodo), documentId: id.chave, label: `NF-e ${id.chave}` };

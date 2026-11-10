@@ -41,6 +41,12 @@ export function datasetKey(orgSlug: string, instanceId: string, version: number,
   return `${orgFolder(orgSlug)}datasets/${instanceId}/v${version}/${table}.${rand8()}.parquet`;
 }
 
+/** Whether `key` is a data file this app wrote for that table in that version of the dashboard. */
+export function isDatasetKey(key: string, orgSlug: string, instanceId: string, version: number, table: string): boolean {
+  const prefix = `${orgFolder(orgSlug)}datasets/${instanceId}/v${version}/${table}.`;
+  return key.startsWith(prefix) && /^[0-9a-f]{8}\.parquet$/.test(key.slice(prefix.length));
+}
+
 export function uploadKey(orgSlug: string, instanceId: string, ext: string): string {
   return `${orgFolder(orgSlug)}uploads/${instanceId}/${randomUUID()}.${ext}`;
 }
