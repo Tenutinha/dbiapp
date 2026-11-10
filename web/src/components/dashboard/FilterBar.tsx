@@ -1,7 +1,8 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { createPortal } from "react-dom";
 import { CROSS_PREFIX, crossKey } from "@/lib/query/cross";
 
 type Filter = { fieldId: string; label: string; values: string[]; selected: string[]; single: boolean };
@@ -104,6 +105,15 @@ function FunnelIcon() {
   );
 }
 
+/** Smallest gap between the floating button and the left edge of the window. */
+const EDGE = 12;
+
+/** Where the floating button and panel go: distance from the left, and the element they are rendered into. */
+interface Place {
+  left: number;
+  host: Element | null;
+}
+
 /**
  * The filters of a dashboard. A floating "Filtros" button stays in the bottom-left corner of the screen
  * and opens, right above it, a floating panel listing every filter the dashboard offers. The panel does
@@ -116,6 +126,28 @@ export function FilterBar({ filters, cross = [] }: FilterBarProps) {
   const params = useSearchParams();
   const [pending, start] = useTransition();
   const [open, setOpen] = useState(false);
+  const hidden = filters.length === 0 && cross.length === 0;
+  const anchor = useRef<HTMLDivElement>(null);
+  const [place, setPlace] = useState<Place>({ left: EDGE, host: null });
+
+  // The button floats at the left edge of the dashboard itself, not of the window: in a space, the
+  // window's left edge belongs to the summary sidebar, which would cover it.
+  useEffect(() => {
+    const target = anchor.current;
+    if (hidden || !target) return;
+    const measure = (): void => {
+      const next = Math.max(Math.round(target.getBoundingClientRect().left), EDGE);
+      setPlace((p) => (p.left === next && p.host ? p : { left: next, host: p.host ?? target.closest("main") }));
+    };
+    measure();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    observer?.observe(target);
+    window.addEventListener("resize", measure);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [hidden]);
 
   useEffect(() => {
     if (!open) return;
@@ -152,8 +184,9 @@ export function FilterBar({ filters, cross = [] }: FilterBarProps) {
   const chosen = filters.filter((f) => !f.single && f.selected.length > 0);
   const singles = filters.filter((f) => f.single && f.selected.length > 0);
   const activeCount = chosen.length + cross.length;
-  if (filters.length === 0 && cross.length === 0) return null;
+  if (hidden) return null;
 
+  const left = place.left;
   const picks = cross.map((c) => (
     <Chip
       key={`${c.visualId}.${c.fieldId}`}
@@ -163,6 +196,9 @@ export function FilterBar({ filters, cross = [] }: FilterBarProps) {
       onRemove={() => removePick(c.visualId, c.fieldId)}
     />
   ));
+
+  // Outside any animated wrapper when possible: a transform on an ancestor would pin "fixed" to it, not to the screen.
+  const floating = place.host ? createPortal(renderFloating(), place.host) : renderFloating();
 
   return (
     <>
@@ -184,8 +220,20 @@ export function FilterBar({ filters, cross = [] }: FilterBarProps) {
         </div>
       )}
 
+      {/* In the flow only to tell where the dashboard starts on the left (see `place`). */}
+      <div ref={anchor} aria-hidden className="h-0" />
+      {floating}
+    </>
+  );
+
+  function renderFloating(): React.ReactNode {
+    return (
+    <>
       {/* Always on screen, like the "Inspecionar" button of the opposite corner (same box, mirrored). */}
-      <div className="fixed bottom-16 left-3 z-40 flex items-center gap-2 rounded-xl border border-brand/40 bg-card-2/95 px-2 py-1.5 text-xs shadow-2xl backdrop-blur">
+      <div
+        style={{ left }}
+        className="fixed bottom-16 z-40 flex items-center gap-2 rounded-xl border border-brand/40 bg-card-2/95 px-2 py-1.5 text-xs shadow-2xl backdrop-blur"
+      >
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
@@ -209,7 +257,8 @@ export function FilterBar({ filters, cross = [] }: FilterBarProps) {
           id="painel-filtros"
           aria-label="Filtros"
           // A floating card right above its button: clear of the top and the bottom of the page, as tall as its filters need.
-          className="card fixed bottom-28 left-3 z-50 flex max-h-[calc(100vh-9rem)] w-80 max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden shadow-2xl"
+          style={{ left }}
+          className="card fixed bottom-28 z-50 flex max-h-[calc(100vh-9rem)] w-80 max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden shadow-2xl"
         >
           <header className="flex items-center gap-2 border-b border-line px-4 py-3">
             <FunnelIcon />
@@ -247,5 +296,6 @@ export function FilterBar({ filters, cross = [] }: FilterBarProps) {
         </aside>
       )}
     </>
-  );
+    );
+  }
 }
