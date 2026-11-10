@@ -3,18 +3,21 @@ import type { SummaryItem } from "@/lib/templates/sections";
 import { DashboardNavItem } from "./DashboardNavItem";
 import { DashboardOutline } from "./DashboardOutline";
 
+/** Analyses of each dashboard of the space, by dashboard id (absent = nothing to nest). */
+export type Outlines = Readonly<Record<string, SummaryItem[]>>;
+
 interface SidebarNavProps {
   toc: TocGroup[];
   currentId: string | null;
-  /** Analyses of the open dashboard, nested under its name; the other dashboards show only their name. */
-  outline: SummaryItem[];
+  outlines: Outlines;
 }
 
 /**
- * Reading mode: the space's published dashboards, grouped and numbered, with the analyses of the open
- * one nested under it. Choosing a dashboard opens it on the space's own address (the URL does not change).
+ * Reading mode: the published dashboards of the space, grouped and numbered, each with its analyses
+ * nested under it. Choosing a dashboard or an analysis opens it on the address of the space (the URL
+ * does not change).
  */
-export function SidebarNav({ toc, currentId, outline }: SidebarNavProps) {
+export function SidebarNav({ toc, currentId, outlines }: SidebarNavProps) {
   // Viewing screen: nothing linked, nothing shown.
   if (toc.length === 0) return null;
 
@@ -27,7 +30,12 @@ export function SidebarNav({ toc, currentId, outline }: SidebarNavProps) {
             {group.items.map((item) => (
               <li key={item.id}>
                 <DashboardNavItem id={item.id} name={item.name} number={item.number} active={item.id === currentId} />
-                {item.id === currentId && <DashboardOutline dashboardName={item.name} items={outline} />}
+                <DashboardOutline
+                  dashboardId={item.id}
+                  dashboardName={item.name}
+                  current={item.id === currentId}
+                  items={outlines[item.id] ?? []}
+                />
               </li>
             ))}
           </ul>

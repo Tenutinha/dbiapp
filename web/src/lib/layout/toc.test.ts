@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildToc, firstItem, LayoutError, layoutDraftSchema, planLayout, type DashboardRow, type SectionRow } from "./toc";
+import { buildToc, firstItem, nextItem, LayoutError, layoutDraftSchema, planLayout, type DashboardRow, type SectionRow } from "./toc";
 
 const ids = {
   s1: "00000000-0000-4000-8000-000000000001",
@@ -104,5 +104,19 @@ describe("planLayout", () => {
     expect(layoutDraftSchema.safeParse({
       ungrouped: [], sections: [], dashboards: [{ id: ids.a, name: "A", description: "x".repeat(281) }],
     }).success).toBe(false);
+  });
+});
+
+describe("nextItem", () => {
+  const toc = buildToc(sections, dashboards, { includeUnpublished: false, includeEmptySections: false });
+
+  it("follows the reading order across sections", () => {
+    expect(nextItem(toc, ids.a)?.id).toBe(ids.b);
+    expect(nextItem(toc, ids.b)?.id).toBe(ids.c);
+  });
+
+  it("is null after the last dashboard and for one that is not listed", () => {
+    expect(nextItem(toc, ids.c)).toBeNull();
+    expect(nextItem(toc, ids.d)).toBeNull();
   });
 });

@@ -1,10 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useFormStatus } from "react-dom";
 import type { SummaryItem } from "@/lib/templates/sections";
+import { rememberJump } from "./jump";
+import { openDashboardAction } from "./view-actions";
 
 interface DashboardOutlineProps {
+  dashboardId: string;
   dashboardName: string;
+  /** The dashboard on screen: its analyses are links to the page sections and follow the scroll. */
+  current: boolean;
   items: SummaryItem[];
 }
 
@@ -21,15 +27,11 @@ function currentAnchor(anchors: readonly string[]): string | null {
   return current;
 }
 
-/**
- * The analyses of the open dashboard, nested under its name in the sidebar: links to the page sections,
- * with the one on screen highlighted as the page scrolls.
- */
-export function DashboardOutline({ dashboardName, items }: DashboardOutlineProps) {
-  const key = items.map((i) => i.anchor).join("|");
+/** Follows the page scroll while this is the open dashboard; null otherwise. */
+function useActiveAnchor(key: string, enabled: boolean): string | null {
   const [active, setActive] = useState<string | null>(null);
-
   useEffect(() => {
+    if (!enabled) return;
     const list = key.split("|");
     let frame = 0;
     const update = (): void => {
@@ -44,29 +46,56 @@ export function DashboardOutline({ dashboardName, items }: DashboardOutlineProps
       window.removeEventListener("scroll", update);
       window.removeEventListener("resize", update);
     };
-  }, [key]);
+  }, [key, enabled]);
+  return enabled ? active : null;
+}
 
+const ROW = "flex w-full items-baseline justify-between gap-3 py-[3px] pl-7 pr-1 text-left text-[13px] leading-snug transition-colors";
+const tone = (on: boolean): string => (on ? "font-medium text-ink" : "text-ink-muted hover:text-ink");
+
+function Label({ item }: { item: SummaryItem }) {
+  return (
+    <>
+      <span>{item.title}</span>
+      <span className="shrink-0 text-[11px] tabular-nums text-ink-muted/70">{item.number}</span>
+    </>
+  );
+}
+
+function JumpButton({ item }: { item: SummaryItem }) {
+  const { pending } = useFormStatus();
+  return (
+    <button type="submit" aria-busy={pending || undefined} className={`${ROW} ${tone(pending)} ${pending ? "animate-pulse" : ""}`}>
+      <Label item={item} />
+    </button>
+  );
+}
+
+/**
+ * The analyses of one dashboard, nested under its name in the sidebar. For the open dashboard they
+ * jump to the page sections; for the others they open that dashboard already on the chosen section
+ * (DashboardArrival does the landing).
+ */
+export function DashboardOutline({ dashboardId, dashboardName, current, items }: DashboardOutlineProps) {
+  const active = useActiveAnchor(items.map((i) => i.anchor).join("|"), current);
   if (items.length === 0) return null;
 
   return (
     <ul aria-label={`Análises de ${dashboardName}`} className="pb-2 pt-0.5">
-      {items.map((item) => {
-        const on = item.anchor === active;
-        return (
-          <li key={item.id}>
-            <a
-              href={`#${item.anchor}`}
-              aria-current={on ? "location" : undefined}
-              className={`flex items-baseline justify-between gap-3 py-[3px] pl-7 pr-1 text-[13px] leading-snug transition-colors ${
-                on ? "font-medium text-ink" : "text-ink-muted hover:text-ink"
-              }`}
-            >
-              <span>{item.title}</span>
-              <span className="shrink-0 text-[11px] tabular-nums text-ink-muted/70">{item.number}</span>
+      {items.map((item) => (
+        <li key={item.id}>
+          {current ? (
+            <a href={`#${item.anchor}`} aria-current={item.anchor === active ? "location" : undefined} className={`${ROW} ${tone(item.anchor === active)}`}>
+              <Label item={item} />
             </a>
-          </li>
-        );
-      })}
+          ) : (
+            <form action={openDashboardAction} onSubmit={() => rememberJump(item.anchor)}>
+              <input type="hidden" name="id" value={dashboardId} />
+              <JumpButton item={item} />
+            </form>
+          )}
+        </li>
+      ))}
     </ul>
   );
 }
