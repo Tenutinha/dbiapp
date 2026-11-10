@@ -37,9 +37,18 @@ async function main(): Promise<void> {
   if (JSON.stringify(templateSchema.parse(existing.definition)) === JSON.stringify(t)) {
     console.log(`catálogo: "${t.id}" já está atualizado`);
   } else {
-    if (existing.status !== "draft" || existing.builtIn) throw new Error(`o molde "${t.id}" está ${existing.status}; atualize pela tela`);
+    if (existing.builtIn) throw new Error(`o molde "${t.id}" é embutido; atualize pelo arquivo em web/templates`);
+    // Um molde publicado só muda por aqui enquanto nenhum dashboard feito dele tem dados (o contrato pode mudar à vontade).
+    const [{ n }] = await sql<{ n: number }[]>`
+      SELECT COUNT(*)::int AS n FROM dataset_versions v JOIN dashboard_instances i ON i.id = v.instance_id WHERE i.template_id = ${t.id}`;
+    // With data in place, only what does not touch the contract (visuals, fields, measures, sections) may change here.
+    const current = templateSchema.parse(existing.definition);
+    const sameContract = JSON.stringify([current.tables, current.relationships]) === JSON.stringify([t.tables, t.relationships]);
+    if (existing.status !== "draft" && n > 0 && !sameContract) {
+      throw new Error(`o molde "${t.id}" está ${existing.status} e já tem dashboards com dados; atualize pela tela`);
+    }
     await updateDefinition(t);
-    console.log(`catálogo: rascunho "${t.id}" atualizado (${t.visuals.length} visuais)`);
+    console.log(`catálogo: molde "${t.id}" (${existing.status}) atualizado (${t.visuals.length} visuais)`);
   }
   if (process.argv.includes("--so-molde")) return;
 
