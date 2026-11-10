@@ -238,7 +238,9 @@ export function FilterBar({ filters, cross = [] }: FilterBarProps) {
         <aside
           id="painel-filtros"
           aria-label="Filtros"
-          className="fixed inset-y-0 left-0 z-50 flex w-80 max-w-[90vw] flex-col border-r border-line bg-card shadow-2xl"
+          // A floating card: clear of the top and the bottom of the page, as tall as its filters need.
+          style={{ left: floatLeft }}
+          className="card fixed top-20 z-50 flex max-h-[calc(100vh-7rem)] w-80 max-w-[calc(100vw-1rem)] flex-col overflow-hidden shadow-2xl"
         >
           <header className="flex items-center gap-2 border-b border-line px-4 py-3">
             <FunnelIcon />
