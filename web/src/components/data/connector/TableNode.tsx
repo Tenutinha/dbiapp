@@ -170,7 +170,7 @@ function LinkStatus({ link, onEngage, onRetry }: { link: Link; onEngage: () => v
             ✓ {many ? `${link.files.length} arquivos conferidos: as colunas batem` : `${fine}/${required.length} colunas batem`}
             {converts > 0 ? ` · ${converts} serão convertidas` : ""}
           </p>
-          <button type="button" onClick={onEngage} className="btn btn-primary px-3 py-1 text-xs">⚡ {many ? `Unir e engatar ${link.files.length} arquivos` : "Engatar"}</button>
+          <button type="button" onClick={onEngage} className="btn btn-primary px-3 py-1 text-xs">⚡ {many ? `Engatar ${link.files.length} arquivos` : "Engatar"}</button>
         </div>
       );
     }
