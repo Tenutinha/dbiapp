@@ -33,6 +33,10 @@ export function supabaseBucket(url: string, serviceRoleKey: string, bucketName: 
       if (error || !data) throw new Error(`storage download failed for ${key}: ${error?.message ?? "no data"}`);
       return new Uint8Array(await data.arrayBuffer());
     },
+    async downloadHead(key, bytes) {
+      // Supabase Storage has no ranged read in this client: fetch the object and keep its start.
+      return (await this.download(key)).subarray(0, bytes);
+    },
     async remove(keys) {
       const { error } = await bucket().remove([...keys]);
       if (error) console.error("[storage] remove failed", error.message);

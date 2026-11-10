@@ -32,6 +32,7 @@ type Plan = { mode: "direct" } | { mode: "signed"; key: string; signedUrl: strin
 interface RebuildView {
   ok: boolean;
   files: number;
+  adopted: number;
   skipped: { path: string; error: string }[];
   tables: { table: string; ok: boolean; rowCount: number; errors: string[] }[];
 }
@@ -123,11 +124,10 @@ export function FiscalImporter({ instanceId, title, extensions, initialPeriods, 
       setProgress(null);
       if (res.data) setRebuild(res.data);
       if (!res.success) setRebuildError(res.error ?? "Não foi possível montar as tabelas.");
+      await refreshList();
       router.refresh();
     });
   };
-
-  const totalFiles = periods.reduce((s, p) => s + p.files, 0);
 
   return (
     <section className="card flex flex-col gap-4 p-5">
@@ -136,6 +136,8 @@ export function FiscalImporter({ instanceId, title, extensions, initialPeriods, 
         <p className="text-sm text-muted">
           Envie os arquivos {extensions.join(" ou ")} como saem do sistema. Guardamos cada um na pasta da empresa e do
           período; reenviar o mesmo período (ou a mesma nota) substitui o anterior. Depois, monte as tabelas e publique.
+          Arquivos deste tipo enviados pela etapa Upload do engate, soltos na pasta do espaço, também são reconhecidos e
+          organizados ao montar.
         </p>
       </div>
 
@@ -156,7 +158,7 @@ export function FiscalImporter({ instanceId, title, extensions, initialPeriods, 
           <button className="btn btn-ghost" disabled={busy} onClick={() => input.current?.click()}>
             Escolher arquivos
           </button>
-          <button className="btn btn-primary" disabled={busy || totalFiles === 0} onClick={build}>
+          <button className="btn btn-primary" disabled={busy} onClick={build}>
             {busy && progress?.startsWith("Lendo") ? "Montando…" : "Montar tabelas"}
           </button>
           {progress && <span className="text-sm text-muted">{progress}</span>}
@@ -175,7 +177,8 @@ export function FiscalImporter({ instanceId, title, extensions, initialPeriods, 
       {rebuild && (
         <div className="flex flex-col gap-1 text-sm">
           <p className={rebuild.ok ? "text-ok" : "text-danger"}>
-            {rebuild.ok ? "✓" : "✕"} {rebuild.files.toLocaleString("pt-BR")} arquivo(s) lido(s).{" "}
+            {rebuild.ok ? "✓" : "✕"} {rebuild.files.toLocaleString("pt-BR")} arquivo(s) lido(s)
+            {rebuild.adopted > 0 ? ` (${rebuild.adopted} vindo(s) da pasta do espaço, agora organizado(s))` : ""}.{" "}
             {rebuild.ok ? "As tabelas estão no rascunho: confira e publique acima." : rebuildError}
           </p>
           {rebuild.tables.map((t) => (

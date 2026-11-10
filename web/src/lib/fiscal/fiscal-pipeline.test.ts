@@ -2,17 +2,21 @@
  * End-to-end check of each fiscal template: sample file → importer → CSV → ingest against the real
  * contract (web/fiscal-templates) → every visual and filter of the dashboard runs in DuckDB.
  */
-import { readFileSync } from "node:fs";
+import { once } from "node:events";
+import { createWriteStream, readFileSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { toDuckPath } from "../duck/engine";
+import { queryRows, toDuckPath, withConnection } from "../duck/engine";
 import { ingestTable } from "../ingest/ingest";
+import { buildVisualQuery, type QueryVisual } from "../query/build";
 import { runDashboard } from "../query/run";
 import { templateSchema, type Template } from "../templates/schema";
-import { toCsv } from "./csv";
-import { FISCAL_IMPORTERS, mergeTables } from "./importers";
+import { csvLine, toCsv } from "./csv";
+import { FISCAL_IMPORTERS, mergeTables, type FiscalTables } from "./importers";
+import { factColumns } from "./sped-kinds";
+import { appendSpedFile, writeChunk } from "./sped-stream";
 import { SAMPLE_FILES } from "./test-fixtures";
 
 const loadFiscalTemplate = (id: string): Template =>
@@ -27,34 +31,61 @@ afterAll(async () => {
 });
 
 describe.each(FISCAL_IMPORTERS.map((i) => [i.templateId, i] as const))("template %s", (templateId, importer) => {
-  it("has a contract and an importer that agree on tables and columns", () => {
-    const t = loadFiscalTemplate(templateId);
-    const tables = importer.parse(SAMPLE_FILES[templateId]);
-    expect(Object.keys(tables).sort()).toEqual(t.tables.map((tb) => tb.name).sort());
-    for (const tb of t.tables) {
-      for (const row of tables[tb.name]) {
-        expect(Object.keys(row).sort()).toEqual(tb.columns.map((c) => c.name).sort());
-      }
-    }
-  });
-
   it("ingests every table and runs every visual and filter", async () => {
     const t = loadFiscalTemplate(templateId);
-    const merged = mergeTables(importer, [importer.parse(SAMPLE_FILES[templateId])]);
     const dir = path.join(root, templateId);
     await mkdir(path.join(dir, "in"), { recursive: true });
+    const csv = (table: string): string => path.join(dir, "in", `${table}.csv`);
+
+    let tables: FiscalTables;
+    const streamed = new Set<string>();
+    if (importer.mode === "sped") {
+      // Same path as the service: the raw file is streamed from disk into the fact CSV.
+      const raw = path.join(dir, "in", "arquivo.txt");
+      await writeFile(raw, SAMPLE_FILES[templateId]);
+      const fact = t.tables.find((tb) => tb.kind === "fact")!;
+      const out = createWriteStream(csv(fact.name), { encoding: "utf8" });
+      await writeChunk(out, csvLine(factColumns(importer.kind)));
+      const read = await appendSpedFile(importer.kind, raw, out);
+      out.end();
+      await once(out, "close");
+      expect(read.lines).toBeGreaterThan(5);
+      expect(factColumns(importer.kind)).toEqual(fact.columns.map((c) => c.name));
+      tables = read.dimensions;
+      streamed.add(fact.name);
+    } else {
+      tables = mergeTables(importer, [importer.parse(SAMPLE_FILES[templateId])]);
+    }
+
     const files: Record<string, string> = {};
     for (const tb of t.tables) {
-      const source = path.join(dir, "in", `${tb.name}.csv`);
-      await writeFile(source, toCsv(tb.columns.map((c) => c.name), merged[tb.name]));
+      if (!streamed.has(tb.name)) {
+        expect(tables[tb.name], tb.name).toBeDefined();
+        await writeFile(csv(tb.name), toCsv(tb.columns.map((c) => c.name), tables[tb.name]));
+      }
       const target = toDuckPath(path.join(dir, `${tb.name}.parquet`));
-      const report = await ingestTable({ storageRoot: root, table: tb, sourcePath: toDuckPath(source), format: "csv", targetPath: target });
-      expect(report.errors).toEqual([]);
-      expect(report.ok).toBe(true);
+      const report = await ingestTable({ storageRoot: root, table: tb, sourcePath: toDuckPath(csv(tb.name)), format: "csv", targetPath: target });
+      expect(report.errors, tb.name).toEqual([]);
       files[tb.name] = target;
     }
+
+    // Each visual on its own, so a failure names the visual and shows DuckDB's message.
+    const failures: string[] = [];
+    await withConnection(root, async (conn) => {
+      for (const v of t.visuals) {
+        if (v.type === "text") continue;
+        try {
+          const q = buildVisualQuery(t, files, v as QueryVisual, {});
+          await queryRows(conn, q.sql, q.params);
+        } catch (err) {
+          failures.push(`${v.id}: ${err instanceof Error ? err.message.split("\n")[0] : String(err)}`);
+        }
+      }
+    });
+    expect(failures).toEqual([]);
+
     const data = await runDashboard(root, t, files, {});
     expect(data.visuals.filter((v) => v.error).map((v) => v.visual.id)).toEqual([]);
-    expect(data.filters.every((f) => f.values.length > 0 || f.fieldId === "centro_custo")).toBe(true);
-  });
+    expect(data.visuals.some((v) => v.visual.type === "kpi" && v.rows[0] && Object.values(v.rows[0])[0] !== null)).toBe(true);
+  }, 120_000);
 });

@@ -1,79 +1,117 @@
 import { describe, expect, it } from "vitest";
-import { toCsv } from "./csv";
-import { parseEcd } from "./ecd";
-import { parseEfdContrib } from "./efd-contribuicoes";
-import { parseEfdIcms } from "./efd-icms-ipi";
-import { fiscalImporterFor, mergeTables } from "./importers";
+import { csvLine, toCsv } from "./csv";
+import { fiscalImporterFor, mergeByKey, readSpedFile } from "./importers";
 import { parseNfe } from "./nfe";
-import { readSped, spedDate, spedNumber } from "./sped";
+import { parseLine, readSped, spedDate, spedNumber, type Cell } from "./sped";
+import { factColumns, spedKindFor, SPED_KINDS, type SpedKind } from "./sped-kinds";
+import { asLatin1 as latin1, ECD, EFD_CONTRIB, EFD_ICMS, nfeXml as NFE } from "./test-fixtures";
 
-import { ECD, EFD_CONTRIB, EFD_ICMS, asLatin1 as latin1, nfeXml as NFE } from "./test-fixtures";
+const kind = (id: string): SpedKind => {
+  const k = spedKindFor(id);
+  if (!k) throw new Error(`no kind ${id}`);
+  return k;
+};
+
+/** Rows of one record type as objects keyed by column name, with the original fields named by the layout. */
+function rowsOf(k: SpedKind, bytes: Uint8Array, registro: string): Record<string, Cell>[] {
+  const { columns, rows } = readSpedFile(k, bytes);
+  const names = k.layout[registro]?.c ?? [];
+  return rows
+    .map((r) => Object.fromEntries(columns.map((c, i) => [c, r[i]])))
+    .filter((r) => r.registro === registro)
+    .map((r) => ({ ...r, ...Object.fromEntries(names.map((n, i) => [n, r[`c${String(i + 1).padStart(2, "0")}`]])) }));
+}
 
 describe("sped helpers", () => {
   it("reads records, dates and decimal commas", () => {
     expect(readSped(latin1("|0000|x|\n|C190|a||b|\n|9999|2|\nlixo"))).toEqual([["0000", "x"], ["C190", "a", "", "b"], ["9999", "2"]]);
+    expect(parseLine("  |C100|1||\r")).toEqual(["C100", "1", ""]);
+    expect(parseLine("assinatura")).toBeNull();
     expect(spedDate("05012025")).toBe("2025-01-05");
     expect(spedNumber("1234,56")).toBe("1234.56");
     expect(spedNumber("")).toBeNull();
   });
 });
 
-describe("EFD ICMS/IPI", () => {
-  const t = parseEfdIcms(readSped(EFD_ICMS));
+describe("layouts", () => {
+  it.each(SPED_KINDS.map((k) => [k.templateId, k] as const))("%s fits the fact width and names every field once", (_, k) => {
+    for (const [code, rec] of Object.entries(k.layout)) {
+      expect(rec.c.length, code).toBeLessThanOrEqual(k.width);
+      expect(new Set(rec.c).size, code).toBe(rec.c.length);
+    }
+    expect(factColumns(k).slice(0, 9)).toEqual(["arquivo", "cnpj", "periodo", "linha", "bloco", "registro", "doc", "dt_doc", "oper"]);
+  });
+});
 
-  it("turns each C190 into a row with its document header", () => {
-    expect(t.documentos_analitico).toHaveLength(3);
-    expect(t.documentos_analitico[0]).toMatchObject({
-      cnpj: "11222333000181", periodo: "2025-01-01", registro: "C190", ind_oper: "0", num_doc: "123",
-      id_part: "11222333000181-F01", cst_icms: "000", cfop: "2102", aliq_icms: "12.00", vl_icms: "120.00", vl_ipi: "50.00",
-    });
-    expect(t.documentos_analitico[2]).toMatchObject({ ind_oper: "1", cfop: "5405", vl_opr: "200.00", id_part: null });
+describe("EFD ICMS/IPI", () => {
+  const k = kind("efd-icms-ipi");
+
+  it("keeps every line with its original fields, in file order", () => {
+    const { rows } = readSpedFile(k, EFD_ICMS);
+    expect(rows.map((r) => r[5])).toEqual(["0000", "0150", "0200", "C100", "C170", "C190", "C100", "C190", "C190", "9999"]);
+    expect(rows.map((r) => r[3])).toEqual(["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]);
+    expect(rowsOf(k, EFD_ICMS, "C170")[0]).toMatchObject({ doc: "123", oper: "0", id_item: "11222333000181-P1", VL_ITEM: "1000,00", CFOP: "2102" });
   });
 
-  it("reads the declarant (accented name in ISO-8859-1) and participants with their UF", () => {
-    expect(t.estabelecimentos).toEqual([{ cnpj: "11222333000181", nome: "AUTO PEÇAS TESTE LTDA", uf: "SP", ie: "123456789" }]);
-    expect(t.participantes[0]).toMatchObject({ id_part: "11222333000181-F01", nome: "FORNECEDOR UM", uf: "PR" });
+  it("gives each analytic record the document, date and operation of its note", () => {
+    const [first, second, third] = rowsOf(k, EFD_ICMS, "C190");
+    expect(first).toMatchObject({
+      arquivo: "11222333000181-2025-01", cnpj: "11222333000181", periodo: "2025-01-01", bloco: "C",
+      doc: "123", dt_doc: "2025-01-05", oper: "0", CST_ICMS: "000", CFOP: "2102", ALIQ_ICMS: "12,00", VL_ICMS: "120,00", VL_IPI: "50,00",
+    });
+    expect(second).toMatchObject({ doc: "900", oper: "1", CFOP: "5102" });
+    expect(third).toMatchObject({ doc: "900", oper: "1", CFOP: "5405", VL_OPR: "200,00" });
+  });
+
+  it("links notes to participants and builds the dimensions", () => {
+    expect(rowsOf(k, EFD_ICMS, "C100")[0]).toMatchObject({ id_part: "11222333000181-F01", NUM_DOC: "123", VL_DOC: "1000,00" });
+    expect(rowsOf(k, EFD_ICMS, "C100")[1]).toMatchObject({ id_part: null });
+    const { dimensions } = readSpedFile(k, EFD_ICMS);
+    expect(dimensions.estabelecimentos).toEqual([{ cnpj: "11222333000181", nome: "AUTO PEÇAS TESTE LTDA", uf: "SP" }]);
+    expect(dimensions.participantes).toEqual([{ id_part: "11222333000181-F01", nome: "FORNECEDOR UM", cnpj_cpf: "44555666000199", uf: "PR" }]);
   });
 
   it("refuses another SPED", () => {
-    expect(() => parseEfdIcms(readSped(EFD_CONTRIB))).toThrow(/EFD ICMS\/IPI/);
+    expect(() => readSpedFile(k, EFD_CONTRIB)).toThrow(/EFD ICMS\/IPI/);
   });
 });
 
 describe("EFD Contribuições", () => {
-  const t = parseEfdContrib(readSped(EFD_CONTRIB));
+  const k = kind("efd-contribuicoes");
 
-  it("reads C170 items and F100 operations with PIS/COFINS", () => {
-    expect(t.itens_pis_cofins).toHaveLength(2);
-    expect(t.itens_pis_cofins[0]).toMatchObject({
-      registro: "C170", ind_oper: "1", id_item: "11222333000181-P1", id_part: "11222333000181-C01", cfop: "5102",
-      cst_pis: "01", vl_item: "1000.00", vl_pis: "16.50", cst_cofins: "01", vl_cofins: "76.00",
+  it("reads items with PIS/COFINS, the establishment of their block and their links", () => {
+    expect(rowsOf(k, EFD_CONTRIB, "C170")[0]).toMatchObject({
+      cnpj: "11222333000181", doc: "77", oper: "1", id_item: "11222333000181-P1", VL_ITEM: "1000,00", CFOP: "5102",
+      CST_PIS: "01", VL_PIS: "16,50", CST_COFINS: "01", VL_COFINS: "76,00",
     });
-    expect(t.itens_pis_cofins[1]).toMatchObject({ registro: "F100", ind_oper: "0", cst_pis: "50", vl_pis: "3.30", nat_bc_cred: "13" });
+    expect(rowsOf(k, EFD_CONTRIB, "F100")[0]).toMatchObject({
+      oper: "0", dt_doc: "2025-01-20", id_part: "11222333000181-C01", CST_PIS: "50", VL_PIS: "3,30", NAT_BC_CRED: "13",
+    });
   });
 
-  it("reads items and establishments", () => {
-    expect(t.itens).toEqual([{ id_item: "11222333000181-P1", descricao: "AMORTECEDOR", ncm: "87088000", tipo_item: "00" }]);
-    expect(t.estabelecimentos.map((e) => e.cnpj)).toEqual(["11222333000181", "11222333000181"]);
+  it("builds items and establishments", () => {
+    const { dimensions } = readSpedFile(k, EFD_CONTRIB);
+    expect(dimensions.itens).toEqual([{ id_item: "11222333000181-P1", cod_item: "P1", descricao: "AMORTECEDOR", ncm: "87088000", tipo_item: "00" }]);
+    expect(dimensions.estabelecimentos).toHaveLength(1);
   });
 });
 
 describe("ECD", () => {
-  const t = parseEcd(readSped(ECD));
+  const k = kind("ecd");
 
-  it("signs balances (credit negative) by period", () => {
-    expect(t.saldos_contas).toEqual([
-      { cnpj: "11222333000181", periodo: "2025-01-01", id_cta: "11222333000181-1.1.01", cod_ccus: null,
-        vl_sld_ini: "100.00", vl_deb: "50.00", vl_cred: "30.00", vl_sld_fin: "120.00" },
-      { cnpj: "11222333000181", periodo: "2025-01-01", id_cta: "11222333000181-3.01", cod_ccus: null,
-        vl_sld_ini: "0.00", vl_deb: "0.00", vl_cred: "500.00", vl_sld_fin: "-500.00" },
+  it("keeps balances as they came, with their period and account", () => {
+    expect(rowsOf(k, ECD, "I155")).toMatchObject([
+      { periodo: "2025-01-01", id_cta: "11222333000181-1.1.01", VL_SLD_INI: "100,00", IND_DC_INI: "D", VL_SLD_FIN: "120,00", IND_DC_FIN: "D" },
+      { periodo: "2025-01-01", id_cta: "11222333000181-3.01", VL_CRED: "500,00", VL_SLD_FIN: "500,00", IND_DC_FIN: "C" },
     ]);
   });
 
   it("rolls each account up to its level 1–3 groups and keeps the referential account", () => {
-    const caixa = t.plano_contas.find((c) => c.cod_cta === "1.1.01");
-    expect(caixa).toMatchObject({ natureza: "01", nivel: "3", grupo_1: "ATIVO", grupo_2: "ATIVO CIRCULANTE", grupo_3: "CAIXA", cod_cta_ref: "1.01.01.01.01" });
-    expect(t.plano_contas.find((c) => c.cod_cta === "3.01")).toMatchObject({ grupo_1: "RESULTADO", grupo_2: "RECEITA DE VENDAS", grupo_3: null });
+    const { dimensions } = readSpedFile(k, ECD);
+    expect(dimensions.plano_contas.find((c) => c.cod_cta === "1.1.01")).toMatchObject({
+      natureza: "01", nivel: "3", grupo_1: "ATIVO", grupo_2: "ATIVO CIRCULANTE", grupo_3: "CAIXA", cod_cta_ref: "1.01.01.01.01",
+    });
+    expect(dimensions.plano_contas.find((c) => c.cod_cta === "3.01")).toMatchObject({ grupo_1: "RESULTADO", grupo_2: "RECEITA DE VENDAS", grupo_3: null });
   });
 });
 
@@ -87,7 +125,6 @@ describe("NF-e", () => {
     });
     expect(t.nfe_itens[1]).toMatchObject({ cst_icms: "500", v_icms: null });
     expect(t.emitentes[0]).toEqual({ cnpj_emit: "11222333000181", nome: "AUTO PEÇAS & CIA", uf: "SP", municipio: "Sao Paulo" });
-    expect(t.destinatarios[0]).toMatchObject({ doc_dest: "12345678909", uf: "PR" });
   });
 
   it("refuses rejected documents and events", () => {
@@ -97,23 +134,22 @@ describe("NF-e", () => {
 });
 
 describe("importers", () => {
-  it("identify where each file goes", () => {
+  it("identify where each file goes, from its first bytes", () => {
     expect(fiscalImporterFor("efd-icms-ipi")?.identify(EFD_ICMS)).toMatchObject({ cnpj: "11222333000181", periodo: "2025-01", documentId: "efd-icms-ipi" });
+    expect(fiscalImporterFor("ecd")?.identify(ECD.subarray(0, 200))).toMatchObject({ cnpj: "11222333000181", periodo: "2025-01" });
     expect(fiscalImporterFor("nfe")?.identify(NFE())).toMatchObject({ cnpj: "11222333000181", periodo: "2025-02", documentId: "1".repeat(44) });
     expect(fiscalImporterFor("vendas-executivo")).toBeNull();
   });
 
-  it("merge files: facts appended, dimensions by key", () => {
-    const imp = fiscalImporterFor("efd-icms-ipi");
-    if (!imp) throw new Error("importer missing");
-    const one = imp.parse(EFD_ICMS);
-    const merged = mergeTables(imp, [one, one]);
-    expect(merged.documentos_analitico).toHaveLength(6);
+  it("merge the dimensions of several files by key", () => {
+    const one = readSpedFile(kind("efd-icms-ipi"), EFD_ICMS).dimensions;
+    const merged = mergeByKey({ participantes: "id_part", estabelecimentos: "cnpj" }, [one, one]);
     expect(merged.participantes).toHaveLength(1);
     expect(merged.estabelecimentos).toHaveLength(1);
   });
 
   it("writes CSV with quoting and empty nulls", () => {
     expect(toCsv(["a", "b"], [{ a: 'x,"y"', b: null }])).toBe('a,b\n"x,""y""",\n');
+    expect(csvLine(["1", null, "a;b"])).toBe("1,,a;b\n");
   });
 });

@@ -11,6 +11,7 @@ export const VISUAL_TYPE_LABEL: Record<VisualType, string> = {
   donut: "Rosca",
   table: "Tabela",
   map: "Mapa",
+  rows: "Listagem (dados originais)",
   text: "Texto explicativo",
 };
 const TYPE_OPTIONS = (Object.keys(VISUAL_TYPE_LABEL) as VisualType[]).map((v) => ({ value: v, label: VISUAL_TYPE_LABEL[v] }));
@@ -138,6 +139,18 @@ function TypeSettings({ visual: v, onChange, fields, measures }: TypeSettingsPro
       );
     case "map":
       return <MapSettings visual={v} onChange={onChange} fields={fields} measures={measures} />;
+    case "rows":
+      return (
+        <div className="flex flex-col gap-3">
+          <p className="text-xs text-muted">
+            Lista as linhas como vieram, sem somar. {v.columns.length} coluna(s){v.where ? ` · filtro: ${v.where}` : ""}. As colunas
+            desta listagem são definidas no JSON do dashboard.
+          </p>
+          <Field label="Máximo de linhas">
+            <NumberInput value={v.limit} min={1} max={1000} onChange={(limit) => onChange({ ...v, limit })} />
+          </Field>
+        </div>
+      );
     case "text":
       return (
         <Field label="Texto" hint="Parágrafos separados por uma linha em branco.">

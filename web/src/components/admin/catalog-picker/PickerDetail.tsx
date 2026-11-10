@@ -11,6 +11,7 @@ const KIND_LABEL: Record<VisualKind, string> = {
   donut: "roscas",
   table: "tabelas",
   map: "mapas",
+  rows: "listagens",
   text: "textos",
 };
 
