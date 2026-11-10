@@ -107,6 +107,10 @@ function FunnelIcon() {
 
 /** Smallest gap between the floating button and the left edge of the window. */
 const EDGE = 12;
+/** Space kept between the floating button and the dashboard when it sits beside it. */
+const GAP = 16;
+/** Width assumed for the button before it is on screen to be measured. */
+const BUTTON_WIDTH = 96;
 
 /** Where the floating button and panel go: distance from the left, and the element they are rendered into. */
 interface Place {
@@ -128,6 +132,8 @@ export function FilterBar({ filters, cross = [] }: FilterBarProps) {
   const [open, setOpen] = useState(false);
   const hidden = filters.length === 0 && cross.length === 0;
   const anchor = useRef<HTMLDivElement>(null);
+  const box = useRef<HTMLDivElement>(null);
+  const badgeCount = filters.filter((f) => !f.single && f.selected.length > 0).length + cross.length;
   const [place, setPlace] = useState<Place>({ left: EDGE, host: null });
 
   // The button floats at the left edge of the dashboard itself, not of the window: in a space, the
@@ -136,18 +142,27 @@ export function FilterBar({ filters, cross = [] }: FilterBarProps) {
     const target = anchor.current;
     if (hidden || !target) return;
     const measure = (): void => {
-      const next = Math.max(Math.round(target.getBoundingClientRect().left), EDGE);
+      const content = Math.round(target.getBoundingClientRect().left);
+      // The empty strip beside the dashboard starts after the summary sidebar, when it is on screen.
+      const sidebar = Math.max(document.getElementById("space-sidebar")?.getBoundingClientRect().right ?? 0, 0);
+      const beside = content - (box.current?.offsetWidth ?? BUTTON_WIDTH) - GAP;
+      // Beside the content when the strip has room for it; otherwise over the content's left edge.
+      const next = beside >= sidebar + EDGE ? beside : Math.max(content, EDGE);
       setPlace((p) => (p.left === next && p.host ? p : { left: next, host: p.host ?? target.closest("main") }));
     };
     measure();
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
     observer?.observe(target);
     window.addEventListener("resize", measure);
+    // The content can move without changing size (the sidebar sliding in or out): scrolling catches up.
+    window.addEventListener("scroll", measure, { passive: true });
     return () => {
       observer?.disconnect();
       window.removeEventListener("resize", measure);
+      window.removeEventListener("scroll", measure);
     };
-  }, [hidden]);
+    // Measured again once the button exists (host) and when its badge changes its width.
+  }, [hidden, place.host, badgeCount]);
 
   useEffect(() => {
     if (!open) return;
@@ -231,6 +246,7 @@ export function FilterBar({ filters, cross = [] }: FilterBarProps) {
     <>
       {/* Always on screen, like the "Inspecionar" button of the opposite corner (same box, mirrored). */}
       <div
+        ref={box}
         style={{ left }}
         className="fixed bottom-16 z-40 flex items-center gap-2 rounded-xl border border-brand/40 bg-card-2/95 px-2 py-1.5 text-xs shadow-2xl backdrop-blur"
       >
