@@ -56,9 +56,10 @@ export function OrganizeDialog({ org, folder, folderName, onDone, onCancel }: Or
     });
 
   return (
-    <div role="dialog" aria-label="Organizar pasta" onKeyDown={(e) => e.key === "Escape" && onCancel()} className="absolute inset-0 z-40 grid place-items-center bg-black/30 p-4">
-      <div className="flex max-h-full w-full max-w-3xl flex-col rounded-xl border border-line bg-card shadow-2xl">
-        <header className="border-b border-line px-5 py-4">
+    <div role="dialog" aria-label="Organizar pasta" onKeyDown={(e) => e.key === "Escape" && onCancel()} className="absolute inset-0 z-40 flex items-center justify-center bg-black/30 p-4">
+      {/* Height capped by the overlay: the list scrolls and the buttons stay in view. */}
+      <div className="flex max-h-full min-h-0 w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-line bg-card shadow-2xl">
+        <header className="shrink-0 border-b border-line px-5 py-4">
           <h3 className="font-semibold">Organizar “{folderName}”</h3>
           <p className="mt-0.5 text-xs text-muted">
             Arquivos fiscais reconhecidos (SPED e NF-e) vão para a pasta padrão do espaço:
@@ -67,7 +68,7 @@ export function OrganizeDialog({ org, folder, folderName, onDone, onCancel }: Or
           </p>
         </header>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-3 text-sm">
+        <div className="scroll-quiet min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-3 text-sm">
           {error && <p className="text-danger">{error}</p>}
           {!plan && !error && (
             <p className="flex items-center gap-2 text-muted">
@@ -109,7 +110,7 @@ export function OrganizeDialog({ org, folder, folderName, onDone, onCancel }: Or
           )}
         </div>
 
-        <footer className="flex items-center justify-end gap-2 border-t border-line px-5 py-3">
+        <footer className="flex shrink-0 items-center justify-end gap-2 border-t border-line px-5 py-3">
           <button type="button" onClick={onCancel} className="btn btn-ghost" autoFocus>Cancelar</button>
           <button type="button" onClick={apply} disabled={busy || chosen.size === 0} className="btn btn-primary disabled:opacity-50">
             {busy ? "Organizando…" : `Organizar ${chosen.size} arquivo${chosen.size === 1 ? "" : "s"}`}
