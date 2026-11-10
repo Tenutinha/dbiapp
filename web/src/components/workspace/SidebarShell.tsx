@@ -169,7 +169,7 @@ export function SidebarShell({
           <div className="pt-4" />
         )}
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-6">{children}</div>
+        <div className="scroll-quiet min-h-0 flex-1 overflow-y-auto pb-6 pl-5 pr-3">{children}</div>
 
         <div className="border-t border-paper-line px-5 py-4 text-sm">{footer}</div>
       </aside>

@@ -5,6 +5,7 @@ import { buildSections } from "@/lib/templates/sections";
 import { Chart, type ChartMeasure } from "./Chart";
 import { FilterBar } from "./FilterBar";
 import { MapChart, type MapMeasure } from "./MapChart";
+import { ScrollTable, type ScrollColumn } from "./ScrollTable";
 
 const SPAN: Record<number, string> = {
   1: "md:col-span-1", 2: "md:col-span-2", 3: "md:col-span-3", 4: "md:col-span-4",
@@ -59,65 +60,38 @@ function VisualBody({ template, result }: { template: Template; result: VisualRe
     }
     case "donut":
       return <Chart type="donut" fieldId={visual.field} measures={[measure(visual.measure)]} rows={rows} />;
-    case "rows":
+    case "rows": {
+      const columns: ScrollColumn[] = visual.columns.map((c) => ({
+        label: c.label, headClass: "", cellClass: "max-w-64 truncate whitespace-nowrap font-mono", hint: true,
+      }));
+      const cut = rows.length >= visual.limit;
+      const note = !cut
+        ? undefined
+        : `Estas são as primeiras ${rows.length.toLocaleString("pt-BR")} linhas. ${
+            visual.expand && rows.length < visual.expand.limit
+              ? `Escolha no filtro "${fieldLabel(visual.expand.filter)}" para ver até ${visual.expand.limit.toLocaleString("pt-BR")}.`
+              : "Use os filtros para chegar às demais."
+          }`;
       return (
-        <div className="-mx-1 max-h-[28rem] overflow-auto">
-          <table className="w-full text-xs">
-            <thead className="sticky top-0 bg-card">
-              <tr className="border-b border-line text-left text-muted">
-                {visual.columns.map((c, i) => <th key={i} className="whitespace-nowrap px-1.5 py-2 font-medium">{c.label}</th>)}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r, i) => (
-                <tr key={i} className="border-b border-line/50 last:border-0">
-                  {visual.columns.map((_, j) => (
-                    <td key={j} className="max-w-64 truncate whitespace-nowrap px-1.5 py-1.5 font-mono" title={String(r[`c${j}`] ?? "")}>
-                      {String(r[`c${j}`] ?? "")}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {rows.length >= visual.limit && (
-            <p className="px-1.5 py-2 text-[11px] text-muted">
-              Mostrando as primeiras {rows.length.toLocaleString("pt-BR")} linhas.{" "}
-              {visual.expand && rows.length < visual.expand.limit
-                ? `Escolha no filtro "${fieldLabel(visual.expand.filter)}" para ver até ${visual.expand.limit.toLocaleString("pt-BR")}.`
-                : "Use os filtros para chegar às demais."}
-            </p>
-          )}
-        </div>
+        <ScrollTable dense columns={columns} rows={rows.map((r) => visual.columns.map((_, j) => String(r[`c${j}`] ?? "")))} note={note} />
       );
+    }
     case "table": {
       const ms = visual.measures.map(measure);
-      return (
-        <div className="-mx-1 overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-line text-left text-xs text-muted">
-                {visual.fields.map((f) => <th key={f} className="px-1 py-2 font-medium">{fieldLabel(f)}</th>)}
-                {ms.map((m) => (
-                  <th key={m.id} className={`px-1 py-2 font-medium ${m.format === "text" ? "text-left" : "text-right"}`}>{m.label}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r, i) => (
-                <tr key={i} className="border-b border-line/50 last:border-0">
-                  {visual.fields.map((f) => <td key={f} className="max-w-56 truncate px-1 py-2">{String(r[f] ?? "")}</td>)}
-                  {ms.map((m) => (
-                    <td key={m.id} className={`px-1 py-2 ${m.format === "text" ? "max-w-48 truncate text-left" : "text-right font-mono text-xs tabular-nums"}`}>
-                      {formatValue(r[m.id], m.format)}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      );
+      const columns: ScrollColumn[] = [
+        ...visual.fields.map((f) => ({ label: fieldLabel(f), headClass: "", cellClass: "max-w-56 truncate", hint: true })),
+        ...ms.map((m) => m.format === "text"
+          ? { label: m.label, headClass: "text-left", cellClass: "max-w-48 truncate text-left", hint: true }
+          : { label: m.label, headClass: "text-right", cellClass: "text-right font-mono text-xs tabular-nums" }),
+      ];
+      const cells = rows.map((r) => [
+        ...visual.fields.map((f) => String(r[f] ?? "")),
+        ...ms.map((m) => formatValue(r[m.id], m.format)),
+      ]);
+      const note = rows.length >= visual.limit
+        ? `Estas são as primeiras ${rows.length.toLocaleString("pt-BR")} linhas. Use os filtros para chegar às demais.`
+        : undefined;
+      return <ScrollTable columns={columns} rows={cells} note={note} />;
     }
   }
 }

@@ -67,6 +67,13 @@ export function firstItem(toc: readonly TocGroup[]): TocItem | null {
   return toc.flatMap((g) => g.items).find((i) => i.published) ?? null;
 }
 
+/** The dashboard after the open one in reading order (across sections); null at the last or when unknown. */
+export function nextItem(toc: readonly TocGroup[], currentId: string): TocItem | null {
+  const items = toc.flatMap((g) => g.items);
+  const at = items.findIndex((i) => i.id === currentId);
+  return at < 0 ? null : (items[at + 1] ?? null);
+}
+
 // ---------- admin draft ----------
 
 const uuid = z.string().uuid();

@@ -2,19 +2,21 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { DashboardView } from "@/components/dashboard/DashboardView";
-import { DashboardSummary } from "@/components/workspace/DashboardSummary";
+import { DashboardArrival } from "@/components/workspace/DashboardArrival";
+import { NextDashboard } from "@/components/workspace/NextDashboard";
 import { SidebarNav } from "@/components/workspace/SidebarNav";
 import { DbiLogo, SidebarShell } from "@/components/workspace/SidebarShell";
 import { ThemeScope } from "@/components/workspace/ThemeScope";
+import { loadOutlines } from "@/components/workspace/SpaceHome";
 import { MainHeader } from "@/components/workspace/Workspace";
 import { getEffectiveBranding } from "@/lib/data/branding";
 import { getSpaceLayout } from "@/lib/data/layout";
 import { getPublishedDashboard, resolveSpaceLink } from "@/lib/data/space-links";
 import { formatDateLong, formatDateTime } from "@/lib/format";
-import { buildToc } from "@/lib/layout/toc";
+import { buildToc, nextItem } from "@/lib/layout/toc";
 import { loadDashboard } from "@/lib/services/dashboard";
 import { chooseDashboard, DASHBOARD_PARAM, spaceLinkPath } from "@/lib/space-link";
-import { buildSummary } from "@/lib/templates/sections";
+import { buildOutline } from "@/lib/templates/sections";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Dashboards compartilhados", robots: { index: false, follow: false } };
@@ -47,10 +49,14 @@ export default async function PublicSpacePage({ params, searchParams }: Props) {
   const toc = buildToc(layout.sections, layout.dashboards, { includeUnpublished: false, includeEmptySections: false });
   const chosenId = chooseDashboard(toc.flatMap((g) => g.items.map((i) => i.id)), requested);
   const chosen = chosenId ? await getPublishedDashboard(link.orgId, link.clientId, chosenId) : null;
-  const dashboard = chosen ? await loadDashboard(chosen.instanceId, chosen.templateId, chosen.activeVersionId, filters) : null;
-  const summary = dashboard ? buildSummary(dashboard.template) : [];
+  const [dashboard, outlines] = await Promise.all([
+    chosen ? loadDashboard(chosen.instanceId, chosen.templateId, chosen.activeVersionId, filters) : null,
+    loadOutlines(toc),
+  ]);
+  const next = chosen ? nextItem(toc, chosen.instanceId) : null;
 
   const home = spaceLinkPath(token);
+  const hrefFor = (id: string): string => `${home}?${DASHBOARD_PARAM}=${id}`;
   const spaceName = link.clientName ?? link.orgName;
   const footer = (
     <div className="flex flex-col gap-3">
@@ -78,13 +84,17 @@ export default async function PublicSpacePage({ params, searchParams }: Props) {
           <div className="mx-auto max-w-[1180px]">
             {chosen && dashboard ? (
               <>
-                <MainHeader
-                  kicker={link.clientName ? `${link.orgName} · ${link.clientName}` : link.orgName}
-                  meta={chosen.publishedAt ? `Atualizado em ${formatDateLong(chosen.publishedAt)}` : undefined}
-                  title={chosen.name}
-                  lead={chosen.description ?? dashboard.template.description}
-                />
-                <DashboardView template={dashboard.template} data={dashboard.data} totalRows={dashboard.totalRows} />
+                <DashboardArrival dashboardId={chosen.instanceId} anchorsKey={buildOutline(dashboard.template).map((i) => i.anchor).join("|")} />
+                <div key={chosen.instanceId} className="dash-enter">
+                  <MainHeader
+                    kicker={link.clientName ? `${link.orgName} · ${link.clientName}` : link.orgName}
+                    meta={chosen.publishedAt ? `Atualizado em ${formatDateLong(chosen.publishedAt)}` : undefined}
+                    title={chosen.name}
+                    lead={chosen.description ?? dashboard.template.description}
+                  />
+                  <DashboardView template={dashboard.template} data={dashboard.data} totalRows={dashboard.totalRows} />
+                  {next && <NextDashboard id={next.id} name={next.name} number={next.number} href={hrefFor(next.id)} />}
+                </div>
               </>
             ) : (
               <p className="py-24 text-center text-muted">Ainda não há dashboards publicados em {spaceName}.</p>
@@ -92,8 +102,7 @@ export default async function PublicSpacePage({ params, searchParams }: Props) {
           </div>
         }
       >
-        {summary.length > 0 && chosen && <DashboardSummary title={chosen.name} groups={summary} />}
-        <SidebarNav toc={toc} currentId={chosen?.instanceId ?? null} hrefFor={(id) => `${home}?${DASHBOARD_PARAM}=${id}`} />
+        <SidebarNav toc={toc} currentId={chosen?.instanceId ?? null} outlines={outlines} hrefFor={hrefFor} />
       </SidebarShell>
     </ThemeScope>
   );
