@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatBytes } from "@/lib/format";
 import { matchesQuery } from "@/lib/text-search";
-import { canMoveTo, decorate, isProtectedFolder, parentOf, sortEntries, type SortDir, type SortKey } from "@/lib/storage-explorer";
+import { canMoveTo, decorate, isProtectedFolder, parentOf, pickableItems, sortEntries, type SortDir, type SortKey } from "@/lib/storage-explorer";
 import type { ExplorerItem } from "./api";
 import { ContextMenu, type MenuAction } from "./ContextMenu";
 import { droppedFiles, hasExternalFiles, INTERNAL_DRAG, type DroppedFile } from "./dropped";
@@ -21,7 +21,10 @@ interface PickMode {
   label: string;
   /** Files that can be chosen; the rest are dimmed. */
   accept: (item: ExplorerItem) => boolean;
-  onPick: (item: ExplorerItem) => void;
+  /** Several files can be chosen at once (the usual Ctrl / Shift selection). */
+  multiple?: boolean;
+  /** The chosen file — or files, with `multiple`. */
+  onPick: (items: ExplorerItem[]) => void;
   onCancel: () => void;
 }
 
@@ -31,7 +34,7 @@ interface FileExplorerProps {
   initialFolder: string;
   /** Called when the open folder changes (e.g. to keep it in the address). */
   onFolderChange?: (folder: string) => void;
-  /** Choosing a file for a dashboard table instead of only browsing. */
+  /** Choosing a file (or files) for a dashboard table instead of only browsing. */
   pick?: PickMode;
 }
 
@@ -109,7 +112,8 @@ export function FileExplorer({ org, orgName, initialFolder, onFolderChange, pick
     return pick ? [...sorted.filter((i) => i.folder), ...sorted.filter((i) => !i.folder && matches(i)), ...sorted.filter((i) => !i.folder && !matches(i))] : sorted;
   }, [current, ex.meta, insights, statusFilter, query, sort, pick, matches]);
   const selectedItems = items.filter((i) => ex.selected.has(i.path));
-  const pickable = pick && selectedItems.length === 1 && !selectedItems[0].folder && pick.accept(selectedItems[0]) ? selectedItems[0] : null;
+  /** Pick mode: what "Conectar" would choose — the selection, when every item of it can be chosen. */
+  const pickable = pick ? pickableItems(selectedItems, pick.accept, pick.multiple ?? false) : [];
 
   const chooseView = (v: ViewMode): void => {
     setView(v);
@@ -122,7 +126,7 @@ export function FileExplorer({ org, orgName, initialFolder, onFolderChange, pick
 
   const open = useCallback((item: ExplorerItem) => {
     if (item.folder) ex.go(item.path);
-    else if (pick?.accept(item)) pick.onPick(item);
+    else if (pick?.accept(item)) pick.onPick([item]);
   }, [ex, pick]);
 
   /** A drop on a folder (or on the open folder's empty area): move items or upload files. */
@@ -273,9 +277,9 @@ export function FileExplorer({ org, orgName, initialFolder, onFolderChange, pick
         {ex.notice && <span role="status" className={`ml-auto truncate ${ex.notice.tone === "ok" ? "text-ok" : "text-danger"}`}>{ex.notice.text}</span>}
         {pick && (
           <span className="ml-auto flex items-center gap-2">
-            <span className="hidden truncate sm:inline">{pickable ? pickable.name : `Escolha o arquivo de ${pick.label}`}</span>
+            <span className="hidden truncate sm:inline">{pickable.length === 1 ? pickable[0].name : pickable.length > 1 ? `${pickable.length} arquivos para ${pick.label}` : `Escolha ${pick.multiple ? "um ou mais arquivos" : "o arquivo"} de ${pick.label}`}</span>
             <button type="button" onClick={pick.onCancel} className="btn btn-ghost px-3 py-1 text-[13px]">Cancelar</button>
-            <button type="button" disabled={!pickable} onClick={() => pickable && pick.onPick(pickable)} className="btn btn-primary px-3 py-1 text-[13px] disabled:opacity-50">Conectar</button>
+            <button type="button" disabled={pickable.length === 0} onClick={() => pick.onPick(pickable)} className="btn btn-primary px-3 py-1 text-[13px] disabled:opacity-50">{pickable.length > 1 ? `Conectar ${pickable.length} arquivos` : "Conectar"}</button>
           </span>
         )}
       </footer>

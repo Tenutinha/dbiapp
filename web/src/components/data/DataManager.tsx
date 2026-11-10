@@ -5,6 +5,7 @@ import { requireTemplate } from "@/lib/services/datasets";
 import { fiscalImporter, listFiscalPeriods, type FiscalPeriod } from "@/lib/services/fiscal";
 import { storageFolderSuggestions } from "@/lib/services/storage-import";
 import { CLIENTS_DIR } from "@/lib/storage-keys";
+import { splitParts } from "@/lib/storage-parts";
 import { DataConnector } from "./connector/DataConnector";
 import type { ConnectorTable } from "./connector/types";
 import { FiscalImporter } from "./FiscalImporter";
@@ -20,11 +21,17 @@ async function fiscalPeriods(access: InstanceAccess): Promise<FiscalPeriod[]> {
   }
 }
 
+/** "1.583.994 linhas · 123 MB", and from how many files when the table is fed by several. */
+function sizeOf(f: DatasetFile): string {
+  const parts = splitParts(f.storagePath).length;
+  return `${f.rowCount.toLocaleString("pt-BR")} linhas · ${formatBytes(f.sizeBytes)}${parts > 1 ? ` · ${parts} arquivos` : ""}`;
+}
+
 function statusFor(table: string, draft: DatasetFile[], active: DatasetFile[]): ConnectorTable["status"] {
   const d = draft.find((f) => f.tableName === table);
-  if (d) return { tone: "draft", label: `novo: ${d.rowCount.toLocaleString("pt-BR")} linhas · ${formatBytes(d.sizeBytes)}` };
+  if (d) return { tone: "draft", label: `novo: ${sizeOf(d)}` };
   const a = active.find((f) => f.tableName === table);
-  if (a) return { tone: "ok", label: `publicado: ${a.rowCount.toLocaleString("pt-BR")} linhas · ${formatBytes(a.sizeBytes)}` };
+  if (a) return { tone: "ok", label: `publicado: ${sizeOf(a)}` };
   return { tone: "missing", label: "aguardando arquivo" };
 }
 

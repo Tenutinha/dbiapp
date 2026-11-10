@@ -1,15 +1,19 @@
 import "server-only";
 import { createWriteStream } from "node:fs";
-import { mkdir } from "node:fs/promises";
+import { mkdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 import type { InstanceAccess } from "../access";
-import { checkRelationships, ingestTable, type OrphanReport, type SourceFormat, type TableReport } from "../ingest/ingest";
-import { getDraft, getOrCreateDraft, listFiles, promoteDraft, registerDraftFile } from "../data/repository";
+import {
+  checkRelationships, ingestTable, inspectParts, type OrphanReport, type SourceFormat, type TableReport,
+} from "../ingest/ingest";
+import { joinedName } from "../ingest/joined-name";
+import { getDraft, getOrCreateDraft, listFiles, promoteDraft, registerDraftFile, type VersionRef } from "../data/repository";
 import { storage } from "../storage";
-import { isIssuedUploadKey } from "../storage-keys";
+import { isDatasetKey, isIssuedUploadKey } from "../storage-keys";
+import { joinParts, splitParts } from "../storage-parts";
 import { getTemplate } from "../templates/registry";
 import type { Template, TemplateTable } from "../templates/schema";
 
@@ -81,14 +85,119 @@ export async function ingestIntoDraft(
       errors: ["Uma nova versão foi publicada durante o envio. Envie o arquivo novamente."],
     };
   }
-  // Only files uploaded into this same draft can be replaced (carry-overs happen at publish time).
-  const draftPrefix = `datasets/${access.org.id}/${access.instanceId}/v${draft.version}/`;
-  const legacyDraftDir = `${path.sep}v${draft.version}${path.sep}`;
-  const replaced = registered.replacedPath;
-  if (replaced && (replaced.startsWith(draftPrefix) || (path.isAbsolute(replaced) && replaced.includes(legacyDraftDir)))) {
-    await storage.remove([replaced]);
-  }
+  await removeReplaced(access, draft, registered.replacedPath);
   return report;
+}
+
+/**
+ * Drops the file(s) a table had in this draft before the new ones. Only files written into this same
+ * draft go (what came from a published version is only carried over at publish time, and stays).
+ */
+async function removeReplaced(access: InstanceAccess, draft: VersionRef, replaced: string | null): Promise<void> {
+  if (!replaced) return;
+  const draftFolder = `orgs/${access.org.slug}/datasets/${access.instanceId}/v${draft.version}/`;
+  const olderDraftFolder = `datasets/${access.org.id}/${access.instanceId}/v${draft.version}/`;
+  const legacyDraftDir = `${path.sep}v${draft.version}${path.sep}`;
+  const ofThisDraft = splitParts(replaced).filter(
+    (p) => p.startsWith(draftFolder) || p.startsWith(olderDraftFolder) || (path.isAbsolute(p) && p.includes(legacyDraftDir)),
+  );
+  if (ofThisDraft.length > 0) await storage.remove(ofThisDraft);
+}
+
+// ---------- a table fed by several files: one converted Parquet per file, read together ----------
+
+/** A source file converted for a table of the draft: where the Parquet is, and the file's name. */
+export interface DraftPart {
+  key: string;
+  name: string;
+}
+
+const NEW_VERSION = "Uma nova versão foi publicada durante o envio. Engate de novo.";
+
+/**
+ * Converts one raw file to the contract, as one of the parts of a table of the draft. Same validation as
+ * a table of a single file; the part only counts once `registerParts` makes the table out of it.
+ */
+export async function convertToPart(
+  access: InstanceAccess, table: TemplateTable, incomingPath: string, originalName: string,
+): Promise<TableReport & { key?: string }> {
+  const format = detectFormat(originalName);
+  const draft = await getOrCreateDraft(access.instanceId);
+  const key = storage.datasetKey(access.org.slug, access.instanceId, draft.version, table.name);
+  const report = await ingestTable({
+    storageRoot: storage.workRoot, table, sourcePath: incomingPath, format, targetPath: storage.pathFor(key),
+  });
+  if (!report.ok) return report;
+  try {
+    await storage.commit(key, PARQUET_MIME);
+  } catch (err) {
+    console.error("[datasets] could not store converted part", err);
+    await storage.remove([key]);
+    return { ...report, ok: false, rowCount: 0, sizeBytes: 0, errors: ["Não foi possível guardar o arquivo. Tente novamente."] };
+  }
+  return { ...report, key };
+}
+
+/** Parts that are not the table's registered files in the draft (those must never be dropped as leftovers). */
+async function unregistered(draftId: string, keys: readonly string[]): Promise<string[]> {
+  const inUse = new Set((await listFiles(draftId)).flatMap((f) => splitParts(f.storagePath)));
+  return keys.filter((k) => !inUse.has(k));
+}
+
+/**
+ * Makes a table of the draft out of the converted parts: the table becomes exactly those files, read
+ * together (nothing is rewritten). Refused, and the parts dropped, when they do not go together — a
+ * dimension key that is in two files.
+ */
+export async function registerParts(access: InstanceAccess, table: TemplateTable, parts: readonly DraftPart[]): Promise<TableReport> {
+  const failed = (errors: string[], files?: TableReport["files"]): TableReport => ({
+    table: table.name, ok: false, rowCount: 0, sizeBytes: 0, errors, warnings: [], files,
+  });
+  const draft = await getDraft(access.instanceId);
+  const keys = parts.map((p) => p.key);
+  const mine = draft !== null && keys.every((k) => isDatasetKey(k, access.org.slug, access.instanceId, draft.version, table.name));
+  if (!draft || !mine || new Set(keys).size !== keys.length) return failed([NEW_VERSION]);
+
+  let local: { name: string; path: string }[];
+  try {
+    local = await Promise.all(parts.map(async (p) => ({ name: p.name, path: await storage.localPath(p.key) })));
+  } catch {
+    await storage.remove(await unregistered(draft.id, keys));
+    return failed(["Um dos arquivos convertidos não está mais disponível. Engate de novo."]);
+  }
+  const inspected = await inspectParts(storage.workRoot, table, local);
+  if (inspected.errors.length > 0) {
+    await storage.remove(await unregistered(draft.id, keys));
+    return failed(inspected.errors, inspected.files);
+  }
+
+  const sizes = await Promise.all(local.map((p) => stat(p.path).then((s) => s.size)));
+  const report: TableReport = {
+    table: table.name, ok: true, rowCount: inspected.rowCount, sizeBytes: sizes.reduce((a, b) => a + b, 0),
+    errors: [], warnings: [], files: inspected.files,
+  };
+  const registered = await registerDraftFile(access.instanceId, draft.id, {
+    tableName: table.name,
+    storagePath: joinParts(keys),
+    rowCount: report.rowCount,
+    sizeBytes: report.sizeBytes,
+    originalName: joinedName(parts.map((p) => p.name)),
+  });
+  if (!registered.ok) {
+    await storage.remove(keys);
+    return failed([NEW_VERSION]);
+  }
+  const kept = new Set(keys);
+  await removeReplaced(access, draft, joinParts(splitParts(registered.replacedPath ?? "").filter((p) => !kept.has(p))) || null);
+  return report;
+}
+
+/** Drops converted parts that will not become a table (a later file of the list was refused). */
+export async function discardParts(access: InstanceAccess, table: TemplateTable, keys: readonly string[]): Promise<void> {
+  const draft = await getDraft(access.instanceId);
+  if (!draft) return;
+  const mine = keys.filter((k) => isDatasetKey(k, access.org.slug, access.instanceId, draft.version, table.name));
+  await storage.remove(await unregistered(draft.id, mine));
 }
 
 // ---------- direct upload (local storage: the file comes in the request body) ----------
@@ -150,7 +259,9 @@ export interface PublishResult {
 
 /** Local paths (downloading from Storage when needed) for a table → key map. */
 export async function resolveLocalFiles(keys: Readonly<Record<string, string>>): Promise<Record<string, string>> {
-  const entries = await Promise.all(Object.entries(keys).map(async ([t, k]) => [t, await storage.localPath(k)] as const));
+  // A table fed by several files has one key per part, and so one local path per part (see storage-parts.ts).
+  const entries = await Promise.all(Object.entries(keys).map(async ([t, k]) =>
+    [t, joinParts(await Promise.all(splitParts(k).map((part) => storage.localPath(part))))] as const));
   return Object.fromEntries(entries);
 }
 

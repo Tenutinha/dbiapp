@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, rename, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import type { DuckDBConnection } from "@duckdb/node-api";
-import { queryRows, quotePath, withConnection } from "../duck/engine";
+import { queryRows, quotePath, readParquet, withConnection } from "../duck/engine";
 import { sortColumns, type TemplateTable } from "../templates/schema";
 import { castExpr, castSelect, matchColumns, quoteIdent, type ColumnMapping, type SourceColumn } from "./contract";
 
@@ -19,6 +19,8 @@ export interface TableReport {
   sizeBytes: number;
   errors: string[];
   warnings: string[];
+  /** Rows that came from each file, when the table is fed by several. */
+  files?: { name: string; rowCount: number }[];
 }
 
 export interface IngestInput {
@@ -159,12 +161,69 @@ export async function checkRelationships(
     for (const r of relationships) {
       const [{ n }] = await queryRows(
         conn,
-        `SELECT COUNT(*) AS n FROM read_parquet(${quotePath(files[r.from.table])}) f
-         ANTI JOIN read_parquet(${quotePath(files[r.to.table])}) d ON f.${r.from.column} = d.${r.to.column}
+        `SELECT COUNT(*) AS n FROM ${readParquet(files[r.from.table])} f
+         ANTI JOIN ${readParquet(files[r.to.table])} d ON f.${r.from.column} = d.${r.to.column}
          WHERE f.${r.from.column} IS NOT NULL`,
       );
       reports.push({ relationship: `${r.from.table}.${r.from.column} → ${r.to.table}`, orphans: Number(n) });
     }
     return reports;
+  });
+}
+
+/** One source file already converted to the contract (by `ingestTable`), with the name the person knows it by. */
+export interface TablePart {
+  path: string;
+  name: string;
+}
+
+export interface PartsReport {
+  /** Rows of each part, in the order given. */
+  files: { name: string; rowCount: number }[];
+  rowCount: number;
+  errors: string[];
+}
+
+const MAX_REPEATED_SHOWN = 3;
+
+/** `"A1" em a.csv e b.csv; …`: the first keys that are in more than one part, and the files of each. */
+async function repeatedKeys(conn: DuckDBConnection, parts: readonly TablePart[], key: string): Promise<string | null> {
+  const each = parts.map((p, i) => `SELECT CAST(${key} AS VARCHAR) AS k, ${i} AS i FROM read_parquet(${quotePath(p.path)})`);
+  const [{ n }] = await queryRows(conn, `SELECT COUNT(*) - COUNT(DISTINCT k) AS n FROM (${each.join(" UNION ALL ")})`);
+  if (Number(n) === 0) return null;
+  const rows = await queryRows(
+    conn,
+    `SELECT k, string_agg(DISTINCT CAST(i AS VARCHAR), ',') AS files FROM (${each.join(" UNION ALL ")})
+     GROUP BY k HAVING COUNT(*) > 1 ORDER BY k LIMIT ${MAX_REPEATED_SHOWN + 1}`,
+  );
+  const shown = rows.slice(0, MAX_REPEATED_SHOWN).map((r) => {
+    const names = String(r.files).split(",").map(Number).sort((a, b) => a - b).map((i) => parts[i].name);
+    return `"${String(r.k)}" em ${names.join(" e ")}`;
+  });
+  return (
+    `Chave "${key}" repetida em ${Number(n).toLocaleString("pt-BR")} linhas entre os arquivos: ` +
+    `${shown.join("; ")}${rows.length > MAX_REPEATED_SHOWN ? "; e outras" : ""}. Cada chave pode estar em um arquivo só.`
+  );
+}
+
+/**
+ * Checks the parts of one table as a whole, before they become the table: every part must be readable,
+ * and a dimension key must not be in two files (each part alone was already validated when converted).
+ * The parts are not rewritten — the table is read from all of them (see `readParquet`).
+ */
+export async function inspectParts(storageRoot: string, table: TemplateTable, parts: readonly TablePart[]): Promise<PartsReport> {
+  return withConnection(storageRoot, async (conn) => {
+    const files: PartsReport["files"] = [];
+    try {
+      for (const p of parts) {
+        const [{ n }] = await queryRows(conn, `SELECT COUNT(*) AS n FROM read_parquet(${quotePath(p.path)})`);
+        files.push({ name: p.name, rowCount: Number(n) });
+      }
+      const repeated = table.key ? await repeatedKeys(conn, parts, table.key) : null;
+      return { files, rowCount: files.reduce((sum, f) => sum + f.rowCount, 0), errors: repeated ? [repeated] : [] };
+    } catch (err) {
+      console.error(`[ingest] ${table.name}: parts could not be read`, err);
+      return { files, rowCount: 0, errors: ["Não foi possível ler os arquivos convertidos. Engate de novo."] };
+    }
   });
 }

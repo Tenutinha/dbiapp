@@ -28,8 +28,8 @@ interface DataConnectorProps {
 /**
  * The "engate": what the dashboard needs (one card per contract table) and the fact table's data filter.
  * Only relates files: they are sent and organized in the "Arquivos" explorer, and each table chooses its
- * stored file there ("Escolher arquivo"). The server checks the columns before "Engatar" converts the file
- * into the draft.
+ * stored file(s) there ("Escolher arquivos": several files feed the same table, one converted file each).
+ * The server checks the columns of every file before "Engatar" converts them into the draft.
  */
 export function DataConnector({ instanceId, org, tables, initialFolder, canUpload }: DataConnectorProps) {
   const c = useConnector(instanceId, initialFolder);
@@ -80,7 +80,8 @@ export function DataConnector({ instanceId, org, tables, initialFolder, canUploa
         <div>
           <h3 className="font-semibold">Engate dos dados</h3>
           <p className="text-xs text-muted">
-            Relacione cada tabela a um arquivo já guardado no armazenamento; conferimos as colunas antes de engatar. Para
+            Relacione cada tabela a um ou mais arquivos já guardados no armazenamento (vários arquivos do mesmo layout, como um
+            por ano, alimentam a mesma tabela); conferimos as colunas de cada um antes de engatar. Para
             enviar ou organizar arquivos, use o explorador:{" "}
             <FilesLink orgSlug={org.slug} folder={initialFolder} className="font-semibold text-brand-2 hover:underline">📁 Arquivos ↗</FilesLink>
           </p>
@@ -88,7 +89,7 @@ export function DataConnector({ instanceId, org, tables, initialFolder, canUploa
         <div className="flex flex-wrap items-center gap-2">
           {engagedCount > 0 && <span className="rounded-full bg-ok/15 px-3 py-1 text-xs font-semibold text-ok">{engagedCount}/{tables.length} engatadas nesta sessão</span>}
           {suggested.length > 0 && (
-            <button type="button" onClick={() => suggested.forEach((l) => void c.connect(l.folder ?? initialFolder, l.file, l.table))} className="btn btn-ghost px-3 py-1.5 text-xs">
+            <button type="button" onClick={() => suggested.forEach((l) => c.connect(l.table, l.files))} className="btn btn-ghost px-3 py-1.5 text-xs">
               Verificar {suggested.length} sugest{suggested.length === 1 ? "ão" : "ões"}
             </button>
           )}
@@ -125,7 +126,8 @@ export function DataConnector({ instanceId, org, tables, initialFolder, canUploa
                   filtered={filterRules > 0}
                   onChooseFile={() => setChoosing(t.name)}
                   onEngage={(l) => void c.engage(l)}
-                  onRetry={(l) => void c.connect(l.folder ?? initialFolder, l.file, l.table)}
+                  onRetry={(l) => c.connect(l.table, l.files.filter((f) => f.state !== "ok"))}
+                  onRemoveFile={(f) => c.remove(t.name, f)}
                   onDisconnect={() => c.disconnect(t.name)}
                 />
               ))}
@@ -160,7 +162,7 @@ export function DataConnector({ instanceId, org, tables, initialFolder, canUploa
             setChoosing(null);
             c.reload(); // files may have been added in the explorer: fresh name suggestions
           }}
-          onPick={({ folder, file }) => void c.connect(folder, file, choosing)}
+          onPick={(picks) => c.connect(choosing, picks)}
         />
       )}
     </section>

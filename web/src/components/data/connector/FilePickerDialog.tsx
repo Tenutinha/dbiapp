@@ -4,20 +4,23 @@ import { useEffect, useRef } from "react";
 import type { ExplorerItem } from "@/components/storage/api";
 import { FileExplorer } from "@/components/storage/FileExplorer";
 import { fileKind, parentOf } from "@/lib/storage-explorer";
+import type { FilePick } from "./types";
 
 interface FilePickerDialogProps {
   org: { slug: string; name: string };
-  /** Table the file is for (shown in the title). */
+  /** Table the files are for (shown in the title). */
   table: string;
   /** Folder opened first: the space's own folder. */
   folder: string;
-  onPick: (choice: { folder: string; file: string }) => void;
+  /** One or more files (Ctrl or Shift in the explorer): all of them feed the table. */
+  onPick: (choices: FilePick[]) => void;
   onClose: () => void;
 }
 
 /**
- * "Escolher arquivo" of a contract table: the organization's file explorer in pick mode, over the data
- * modal. Only data files (.parquet, .csv, .txt) can be chosen; uploading and organizing still work here.
+ * "Escolher arquivos" of a contract table: the organization's file explorer in pick mode, over the data
+ * modal. Only data files (.parquet, .csv, .txt) can be chosen, one or several at once; uploading and
+ * organizing still work here.
  */
 export function FilePickerDialog({ org, table, folder, onPick, onClose }: FilePickerDialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -30,7 +33,7 @@ export function FilePickerDialog({ org, table, folder, onPick, onClose }: FilePi
   return (
     <dialog
       ref={ref}
-      aria-label={`Escolher arquivo para ${table}`}
+      aria-label={`Escolher arquivos para ${table}`}
       onClose={(e) => {
         // Only this dialog's own closing counts, not one opened inside the explorer.
         if (e.target === e.currentTarget) onClose();
@@ -41,10 +44,11 @@ export function FilePickerDialog({ org, table, folder, onPick, onClose }: FilePi
     >
       <header className="flex items-center justify-between gap-3 px-5 pb-2 pt-4">
         <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-wide text-brand-2">Escolher arquivo</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-brand-2">Escolher arquivos</p>
           <h2 className="truncate text-lg font-bold">
             Para a tabela <code className="font-mono">{table}</code>
           </h2>
+          <p className="text-xs text-muted">Para escolher vários de uma vez, segure Ctrl ou Shift ao clicar. Todos alimentam a mesma tabela.</p>
         </div>
         <button type="button" onClick={() => ref.current?.close()} aria-label="Fechar" className="rounded-md px-2 py-1 text-lg leading-none text-muted hover:bg-text/5 hover:text-text">×</button>
       </header>
@@ -55,9 +59,10 @@ export function FilePickerDialog({ org, table, folder, onPick, onClose }: FilePi
           initialFolder={folder}
           pick={{
             label: table,
+            multiple: true,
             accept: (item: ExplorerItem) => !item.folder && fileKind(item.name).data,
-            onPick: (item: ExplorerItem) => {
-              onPick({ folder: parentOf(item.path), file: item.name });
+            onPick: (items: ExplorerItem[]) => {
+              onPick(items.map((item) => ({ folder: parentOf(item.path), file: item.name })));
               ref.current?.close();
             },
             onCancel: () => ref.current?.close(),

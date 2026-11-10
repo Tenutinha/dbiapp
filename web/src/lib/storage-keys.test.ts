@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  brandingKey, clientFolder, datasetKey, fiscalDocumentId, fiscalFileKey, fiscalFolder, isIssuedFiscalUploadKey, isIssuedUploadKey,
+  brandingKey, clientFolder, datasetKey, fiscalDocumentId, fiscalFileKey, fiscalFolder, isDatasetKey, isIssuedFiscalUploadKey, isIssuedUploadKey,
   isOrgLogoKey, isUserAvatarKey, isValidKey, orgFolder, spaceFolder, StorageKeyError, storableFileName, uploadKey, userAvatarKey,
 } from "./storage-keys";
 
@@ -97,6 +97,23 @@ describe("isIssuedUploadKey", () => {
     expect(isIssuedUploadKey(`orgs/acme/uploads/${INSTANCE}/${OTHER}.exe`, "acme", INSTANCE)).toBe(false);
     expect(isIssuedUploadKey(`orgs/acme/uploads/${INSTANCE}/x/${OTHER}.csv`, "acme", INSTANCE)).toBe(false);
     expect(isIssuedUploadKey(`incoming/${INSTANCE}/${OTHER}.csv`, "acme", INSTANCE)).toBe(false);
+  });
+});
+
+describe("isDatasetKey", () => {
+  it("accepts the keys the app writes for that table of that version", () => {
+    expect(isDatasetKey(datasetKey("acme", INSTANCE, 3, "nfe_itens"), "acme", INSTANCE, 3, "nfe_itens")).toBe(true);
+  });
+
+  it("rejects another org, dashboard, version, table or shape", () => {
+    const key = `orgs/acme/datasets/${INSTANCE}/v3/nfe_itens.1a2b3c4d.parquet`;
+    expect(isDatasetKey(key, "other", INSTANCE, 3, "nfe_itens")).toBe(false);
+    expect(isDatasetKey(key, "acme", OTHER, 3, "nfe_itens")).toBe(false);
+    expect(isDatasetKey(key, "acme", INSTANCE, 4, "nfe_itens")).toBe(false);
+    expect(isDatasetKey(key, "acme", INSTANCE, 3, "nfe")).toBe(false);
+    expect(isDatasetKey(`orgs/acme/datasets/${INSTANCE}/v3/nfe_itens.1a2b3c4d.parquet\nx`, "acme", INSTANCE, 3, "nfe_itens")).toBe(false);
+    expect(isDatasetKey(`orgs/acme/datasets/${INSTANCE}/v3/nfe_itens.../x.parquet`, "acme", INSTANCE, 3, "nfe_itens")).toBe(false);
+    expect(isDatasetKey(`orgs/acme/uploads/${INSTANCE}/${OTHER}.parquet`, "acme", INSTANCE, 3, "nfe_itens")).toBe(false);
   });
 });
 
