@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { DashboardView } from "@/components/dashboard/DashboardView";
+import { Suspense } from "react";
 import { DashboardArrival } from "@/components/workspace/DashboardArrival";
+import { DashboardBody, DashboardFallback } from "@/components/workspace/DashboardBody";
+import { DashboardSwitch } from "@/components/workspace/switching";
 import { NextDashboard } from "@/components/workspace/NextDashboard";
 import { SidebarNav } from "@/components/workspace/SidebarNav";
 import { DbiLogo, SidebarShell } from "@/components/workspace/SidebarShell";
@@ -13,9 +15,9 @@ import { getEffectiveBranding } from "@/lib/data/branding";
 import { getSpaceLayout } from "@/lib/data/layout";
 import { getPublishedDashboard, resolveSpaceLink } from "@/lib/data/space-links";
 import { formatDateLong, formatDateTime } from "@/lib/format";
-import { buildToc, nextItem } from "@/lib/layout/toc";
-import { loadDashboard } from "@/lib/services/dashboard";
+import { buildToc, nextItem, previousItem } from "@/lib/layout/toc";
 import { chooseDashboard, DASHBOARD_PARAM, spaceLinkPath } from "@/lib/space-link";
+import { getTemplate } from "@/lib/templates/registry";
 import { buildOutline } from "@/lib/templates/sections";
 
 export const dynamic = "force-dynamic";
@@ -49,11 +51,19 @@ export default async function PublicSpacePage({ params, searchParams }: Props) {
   const toc = buildToc(layout.sections, layout.dashboards, { includeUnpublished: false, includeEmptySections: false });
   const chosenId = chooseDashboard(toc.flatMap((g) => g.items.map((i) => i.id)), requested);
   const chosen = chosenId ? await getPublishedDashboard(link.orgId, link.clientId, chosenId) : null;
-  const [dashboard, outlines] = await Promise.all([
-    chosen ? loadDashboard(chosen.instanceId, chosen.templateId, chosen.activeVersionId, filters) : null,
-    loadOutlines(toc),
-  ]);
+  // Only what the frame of the page needs is awaited here; the data arrives inside the Suspense below.
+  const [template, outlines] = await Promise.all([chosen ? getTemplate(chosen.templateId) : null, loadOutlines(toc)]);
   const next = chosen ? nextItem(toc, chosen.instanceId) : null;
+  const previous = chosen ? previousItem(toc, chosen.instanceId) : null;
+
+  const header = chosen ? (
+    <MainHeader
+      kicker={link.clientName ? `${link.orgName} · ${link.clientName}` : link.orgName}
+      meta={chosen.publishedAt ? `Atualizado em ${formatDateLong(chosen.publishedAt)}` : undefined}
+      title={chosen.name}
+      lead={chosen.description ?? template?.description}
+    />
+  ) : null;
 
   const home = spaceLinkPath(token);
   const hrefFor = (id: string): string => `${home}?${DASHBOARD_PARAM}=${id}`;
@@ -82,19 +92,32 @@ export default async function PublicSpacePage({ params, searchParams }: Props) {
         footer={footer}
         content={
           <div className="mx-auto max-w-[1180px]">
-            {chosen && dashboard ? (
+            {chosen && header ? (
               <>
-                <DashboardArrival dashboardId={chosen.instanceId} anchorsKey={buildOutline(dashboard.template).map((i) => i.anchor).join("|")} />
+                <DashboardArrival dashboardId={chosen.instanceId} />
+                <DashboardSwitch>
                 <div key={chosen.instanceId} className="dash-enter">
-                  <MainHeader
-                    kicker={link.clientName ? `${link.orgName} · ${link.clientName}` : link.orgName}
-                    meta={chosen.publishedAt ? `Atualizado em ${formatDateLong(chosen.publishedAt)}` : undefined}
-                    title={chosen.name}
-                    lead={chosen.description ?? dashboard.template.description}
-                  />
-                  <DashboardView template={dashboard.template} data={dashboard.data} totalRows={dashboard.totalRows} />
-                  {next && <NextDashboard id={next.id} name={next.name} number={next.number} href={hrefFor(next.id)} />}
+                  {/* A new dashboard opens at once as a skeleton; a filter change keeps the page and only its cards wait. */}
+                  <Suspense fallback={<DashboardFallback header={header} hasPrevious={previous !== null} />}>
+                    <DashboardBody
+                      instanceId={chosen.instanceId}
+                      templateId={chosen.templateId}
+                      activeVersionId={chosen.activeVersionId}
+                      searchParams={filters}
+                      anchorsKey={template ? buildOutline(template).map((i) => i.anchor).join("|") : ""}
+                      before={
+                        <>
+                          {previous && (
+                            <NextDashboard direction="previous" id={previous.id} name={previous.name} number={previous.number} href={hrefFor(previous.id)} />
+                          )}
+                          {header}
+                        </>
+                      }
+                      after={next && <NextDashboard id={next.id} name={next.name} number={next.number} href={hrefFor(next.id)} />}
+                    />
+                  </Suspense>
                 </div>
+                </DashboardSwitch>
               </>
             ) : (
               <p className="py-24 text-center text-muted">Ainda não há dashboards publicados em {spaceName}.</p>

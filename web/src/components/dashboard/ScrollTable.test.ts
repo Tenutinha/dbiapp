@@ -1,7 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { nextVisible, PAGE_SIZE, ScrollTable, type ScrollColumn } from "./ScrollTable";
+import { nextSort, nextVisible, PAGE_SIZE, ScrollTable, sortOrder, type ScrollColumn } from "./ScrollTable";
 
 const columns: ScrollColumn[] = [
   { label: "Cliente", headClass: "", cellClass: "" },
@@ -19,6 +19,34 @@ describe("nextVisible", () => {
   it("não passa do total", () => {
     expect(nextVisible(175, 190)).toBe(190);
     expect(nextVisible(190, 190)).toBe(190);
+  });
+});
+
+describe("sortOrder", () => {
+  const values = [["b", 2], ["a", 10], ["c", null], ["A2", 1]];
+
+  it("sem classificação mantém a ordem original", () => {
+    expect(sortOrder(values, null)).toEqual([0, 1, 2, 3]);
+  });
+
+  it("classifica números como números e deixa vazios por último", () => {
+    expect(sortOrder(values, { column: 1, dir: "desc" })).toEqual([1, 0, 3, 2]);
+    expect(sortOrder(values, { column: 1, dir: "asc" })).toEqual([3, 0, 1, 2]);
+  });
+
+  it("classifica texto sem diferenciar maiúsculas", () => {
+    expect(sortOrder(values, { column: 0, dir: "asc" })).toEqual([1, 3, 0, 2]);
+  });
+});
+
+describe("nextSort", () => {
+  it("número começa do maior, texto de A; depois inverte e volta ao original", () => {
+    const first = nextSort(null, 1, true);
+    expect(first).toEqual({ column: 1, dir: "desc" });
+    const second = nextSort(first, 1, true);
+    expect(second).toEqual({ column: 1, dir: "asc" });
+    expect(nextSort(second, 1, true)).toBeNull();
+    expect(nextSort(second, 0, false)).toEqual({ column: 0, dir: "asc" });
   });
 });
 

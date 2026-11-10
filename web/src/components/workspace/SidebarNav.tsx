@@ -3,6 +3,7 @@ import type { TocGroup } from "@/lib/layout/toc";
 import type { SummaryItem } from "@/lib/templates/sections";
 import { DashboardNavItem } from "./DashboardNavItem";
 import { DashboardOutline } from "./DashboardOutline";
+import { LinkSwitchSignal } from "./switching";
 
 /** Analyses of each dashboard of the space, by dashboard id (absent = nothing to nest). */
 export type Outlines = Readonly<Record<string, SummaryItem[]>>;
@@ -27,6 +28,7 @@ function PublicNavItem({ href, name, number, active }: { href: string; name: str
         active ? "border-ink font-medium text-ink" : "border-transparent text-ink/80 hover:border-ink-muted hover:text-ink"
       }`}
     >
+      {!active && <LinkSwitchSignal name={name} />}
       <span>{name}</span>
       <span className="shrink-0 tabular-nums text-ink-muted">{number}</span>
     </Link>

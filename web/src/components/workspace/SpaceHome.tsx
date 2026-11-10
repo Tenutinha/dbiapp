@@ -1,16 +1,17 @@
-import { DashboardView } from "@/components/dashboard/DashboardView";
+import { Suspense } from "react";
 import { requireInstance, type ClientRef, type InstanceAccess, type OrgRef } from "@/lib/access";
 import { AccessError, type CurrentUser } from "@/lib/auth";
 import { formatDateLong } from "@/lib/format";
-import { firstItem, nextItem, type TocGroup } from "@/lib/layout/toc";
+import { firstItem, nextItem, previousItem, type TocGroup } from "@/lib/layout/toc";
 import type { Membership } from "@/lib/permissions";
-import { loadDashboard } from "@/lib/services/dashboard";
 import { loadSpace } from "@/lib/services/space";
 import { getTemplate } from "@/lib/templates/registry";
 import { buildOutline, type SummaryItem } from "@/lib/templates/sections";
 import { readViewSelection } from "@/lib/view-selection";
 import { DashboardArrival } from "./DashboardArrival";
+import { DashboardBody, DashboardFallback } from "./DashboardBody";
 import { NextDashboard } from "./NextDashboard";
+import { DashboardOpener, DashboardSwitch } from "./switching";
 import type { Outlines } from "./SidebarNav";
 import { MainHeader, Workspace } from "./Workspace";
 
@@ -77,15 +78,23 @@ export async function SpaceHome({ org, client, membership, user, searchParams }:
     return <Workspace space={space} currentId={null} userName={user.name}>{null}</Workspace>;
   }
 
-  const [dashboard, outlines] = await Promise.all([
-    loadDashboard(access.instanceId, access.templateId, access.activeVersionId, searchParams),
-    loadOutlines(space.toc),
-  ]);
-  const anchorsKey = buildOutline(dashboard.template).map((i) => i.anchor).join("|");
+  // Only what the frame of the page needs is awaited here; the data arrives inside the Suspense below.
+  const [template, outlines] = await Promise.all([getTemplate(access.templateId), loadOutlines(space.toc)]);
+  const anchorsKey = template ? buildOutline(template).map((i) => i.anchor).join("|") : "";
   const next = nextItem(space.toc, access.instanceId);
+  const previous = previousItem(space.toc, access.instanceId);
   const shareLink = access.actions.has("share")
     ? [{ href: `/${org.slug}/d/${access.instanceId}/compartilhar`, label: "Compartilhar" }]
     : [];
+  const header = (
+    <MainHeader
+      kicker={client ? `${org.name} · ${client.name}` : org.name}
+      meta={`Atualizado em ${formatDateLong(access.publishedAt)}`}
+      title={access.name}
+      lead={access.description ?? template?.description}
+      links={shareLink}
+    />
+  );
 
   return (
     <Workspace
@@ -94,19 +103,30 @@ export async function SpaceHome({ org, client, membership, user, searchParams }:
       userName={user.name}
       outlines={outlines}
     >
-      <DashboardArrival dashboardId={access.instanceId} anchorsKey={anchorsKey} />
+      <DashboardArrival dashboardId={access.instanceId} />
+      <DashboardSwitch>
       {/* Keyed by dashboard: a new one fades in (dash-enter) instead of patching the previous page. */}
       <div key={access.instanceId} className="dash-enter">
-        <MainHeader
-          kicker={client ? `${org.name} · ${client.name}` : org.name}
-          meta={`Atualizado em ${formatDateLong(access.publishedAt)}`}
-          title={access.name}
-          lead={access.description ?? dashboard.template.description}
-          links={shareLink}
-        />
-        <DashboardView template={dashboard.template} data={dashboard.data} totalRows={dashboard.totalRows} />
-        {next && <NextDashboard id={next.id} name={next.name} number={next.number} />}
+        <DashboardOpener />
+        {/* A new dashboard opens at once as a skeleton; a filter change keeps the page and only its cards wait. */}
+        <Suspense fallback={<DashboardFallback header={header} hasPrevious={previous !== null} />}>
+          <DashboardBody
+            instanceId={access.instanceId}
+            templateId={access.templateId}
+            activeVersionId={access.activeVersionId}
+            searchParams={searchParams}
+            anchorsKey={anchorsKey}
+            before={
+              <>
+                {previous && <NextDashboard direction="previous" id={previous.id} name={previous.name} number={previous.number} />}
+                {header}
+              </>
+            }
+            after={next && <NextDashboard id={next.id} name={next.name} number={next.number} />}
+          />
+        </Suspense>
       </div>
+      </DashboardSwitch>
     </Workspace>
   );
 }

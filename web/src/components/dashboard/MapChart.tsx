@@ -11,6 +11,7 @@ import type { FeatureCollection, Geometry } from "geojson";
 import { formatValue } from "@/lib/format";
 import { categoryLegend, mix, scaleRange, strengthWeights } from "@/lib/map-colors";
 import type { MapVisual, ValueFormat } from "@/lib/templates/schema";
+import { isAdditive, useCrossFilter } from "./useCrossFilter";
 
 echarts.use([EMapChart, TooltipComponent, VisualMapComponent, CanvasRenderer]);
 
@@ -86,7 +87,13 @@ function readColors(el: HTMLElement): Colors {
 
 const DIVERGING = ["#ea580c", "#f5f5f4", "#16a34a"];
 
-function buildOption(props: MapChartProps, mapName: string, c: Colors): echarts.EChartsCoreOption {
+/** Cross-filter look of an area: the picked ones get an outline, the others fade. */
+function pickStyle(picked: readonly string[], areaCode: string, c: Colors): { opacity?: number; borderColor?: string; borderWidth?: number } {
+  if (picked.length === 0) return {};
+  return picked.includes(areaCode) ? { borderColor: c.text, borderWidth: 1.2 } : { opacity: 0.3 };
+}
+
+function buildOption(props: MapChartProps, mapName: string, c: Colors, picked: readonly string[]): echarts.EChartsCoreOption {
   const { visual, rows, measures } = props;
   const fmt = (id: string, v: unknown): string => formatValue(v, measures[id]?.format ?? "number");
   const code = (r: Row): string => String(r[visual.field] ?? "");
@@ -129,7 +136,7 @@ function buildOption(props: MapChartProps, mapName: string, c: Colors): echarts.
           name: code(r),
           value: 1,
           row: r,
-          itemStyle: { areaColor: mix(r[color.colorMeasure], c.card, weights[i]) },
+          itemStyle: { areaColor: mix(r[color.colorMeasure], c.card, weights[i]), ...pickStyle(picked, code(r), c) },
         })),
       }],
     };
@@ -153,7 +160,7 @@ function buildOption(props: MapChartProps, mapName: string, c: Colors): echarts.
     },
     series: [{
       ...series,
-      data: rows.map((r) => ({ name: code(r), value: Number(r[color.measure]), row: r })),
+      data: rows.map((r) => ({ name: code(r), value: Number(r[color.measure]), row: r, itemStyle: pickStyle(picked, code(r), c) })),
     }],
   };
 }
@@ -166,7 +173,13 @@ export function MapChart(props: MapChartProps) {
   const el = useRef<HTMLDivElement>(null);
   const [mesh, setMesh] = useState<Areas | null>(null);
   const [failed, setFailed] = useState(false);
-  const { visual, rows } = props;
+  const { visual, rows, measures } = props;
+  const { own, pick, pending } = useCrossFilter(visual.id, [visual.field]);
+  const pickedKey = JSON.stringify(own[visual.field] ?? []);
+  const pickRef = useRef(pick);
+  useEffect(() => {
+    pickRef.current = pick;
+  }, [pick]);
 
   useEffect(() => {
     let alive = true;
@@ -196,7 +209,13 @@ export function MapChart(props: MapChartProps) {
         return;
       }
       chart = echarts.init(node, undefined, { renderer: "canvas" });
-      chart.setOption(buildOption(props, mapName, readColors(node)));
+      chart.setOption(buildOption({ visual, rows, measures }, mapName, readColors(node), JSON.parse(pickedKey) as string[]));
+      // Clicking an area cross-filters the other visuals by it.
+      chart.on("click", (p) => {
+        const row = (p.data as { row?: Row } | undefined)?.row;
+        if (!row) return;
+        pickRef.current([{ fieldId: visual.field, value: String(row[visual.field] ?? "") }], isAdditive(p.event?.event as MouseEvent | undefined));
+      });
     };
     draw();
     const observer = new ResizeObserver(draw);
@@ -205,7 +224,7 @@ export function MapChart(props: MapChartProps) {
       observer.disconnect();
       chart?.dispose();
     };
-  }, [props, mesh, rows, visual]);
+  }, [measures, mesh, rows, visual, pickedKey]);
 
   const legend = useMemo(() => {
     const c = visual.color;
@@ -218,7 +237,7 @@ export function MapChart(props: MapChartProps) {
   return (
     <div>
       {!mesh && <p className="py-2 text-sm text-muted">Carregando mapa…</p>}
-      <div ref={el} className="w-full md:!h-[520px]" style={{ height: 440 }} role="img" aria-label={visual.title} />
+      <div ref={el} className={`w-full transition-opacity md:!h-[520px] ${pending ? "opacity-60" : ""}`} style={{ height: 440 }} role="img" aria-label={visual.title} />
       {legend.length > 0 && (
         <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
           {legend.map((l) => (

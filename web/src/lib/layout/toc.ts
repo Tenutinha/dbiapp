@@ -74,6 +74,13 @@ export function nextItem(toc: readonly TocGroup[], currentId: string): TocItem |
   return at < 0 ? null : (items[at + 1] ?? null);
 }
 
+/** The dashboard before this one in the reading order (null for the first, or one that is not listed). */
+export function previousItem(toc: readonly TocGroup[], currentId: string): TocItem | null {
+  const items = toc.flatMap((g) => g.items);
+  const at = items.findIndex((i) => i.id === currentId);
+  return at <= 0 ? null : items[at - 1];
+}
+
 // ---------- admin draft ----------
 
 const uuid = z.string().uuid();

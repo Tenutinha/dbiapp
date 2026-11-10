@@ -2,13 +2,14 @@
 
 import { useEffect, useRef } from "react";
 import { BarChart, LineChart, PieChart } from "echarts/charts";
-import { GridComponent, LegendComponent, TooltipComponent } from "echarts/components";
+import { GridComponent, LegendComponent, MarkLineComponent, TooltipComponent } from "echarts/components";
 import * as echarts from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
 import { formatValue } from "@/lib/format";
 import type { ValueFormat } from "@/lib/templates/schema";
+import { isAdditive, useCrossFilter } from "./useCrossFilter";
 
-echarts.use([BarChart, LineChart, PieChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer]);
+echarts.use([BarChart, LineChart, PieChart, GridComponent, LegendComponent, MarkLineComponent, TooltipComponent, CanvasRenderer]);
 
 /** Extra series colours after the space's two brand colours. */
 const EXTRA_SERIES = ["#f5b83d", "#34d399", "#f472b6", "#60a5fa", "#a3e635", "#fb923c"];
@@ -45,6 +46,8 @@ export interface ChartMeasure {
 }
 
 export interface ChartProps {
+  /** Id of the visual in the template: names its cross-filter selection. */
+  visualId: string;
   type: "bar" | "line" | "donut";
   fieldId: string;
   measures: ChartMeasure[];
@@ -52,8 +55,14 @@ export interface ChartProps {
   horizontal?: boolean;
 }
 
-function buildOption({ type, fieldId, measures, rows, horizontal }: ChartProps, c: ChartColors): echarts.EChartsCoreOption {
+/** Opacity of the items left out of the selection. */
+const DIMMED = 0.28;
+
+function buildOption(
+  { type, fieldId, measures, rows, horizontal }: ChartProps, c: ChartColors, picked: readonly string[],
+): echarts.EChartsCoreOption {
   const categories = rows.map((r) => String(r[fieldId] ?? ""));
+  const opacity = (category: string): number => (picked.length === 0 || picked.includes(category) ? 1 : DIMMED);
   const PALETTE = c.palette;
   const AXIS = { axisLine: { lineStyle: { color: c.axis } }, axisLabel: { color: c.muted }, splitLine: { lineStyle: { color: c.grid } } };
   const tooltip = {
@@ -71,7 +80,9 @@ function buildOption({ type, fieldId, measures, rows, horizontal }: ChartProps, 
       series: [{
         type: "pie", radius: ["48%", "72%"], center: ["50%", "44%"], avoidLabelOverlap: true,
         itemStyle: { borderColor: c.card, borderWidth: 2 }, label: { show: false },
-        data: rows.map((r) => ({ name: String(r[fieldId] ?? ""), value: Number(r[m.id] ?? 0) })),
+        data: rows.map((r, i) => ({
+          name: categories[i], value: Number(r[m.id] ?? 0), itemStyle: { opacity: opacity(categories[i]) },
+        })),
       }],
     };
   }
@@ -86,7 +97,7 @@ function buildOption({ type, fieldId, measures, rows, horizontal }: ChartProps, 
     grid: { left: 8, right: 16, top: measures.length > 1 ? 32 : 12, bottom: 8, containLabel: true },
     xAxis: horizontal ? valueAxis : categoryAxis,
     yAxis: horizontal ? { ...categoryAxis, inverse: true } : valueAxis,
-    series: measures.map((m) => ({
+    series: measures.map((m, i) => ({
       name: m.label,
       type,
       smooth: type === "line",
@@ -94,25 +105,75 @@ function buildOption({ type, fieldId, measures, rows, horizontal }: ChartProps, 
       areaStyle: type === "line" ? { opacity: 0.08 } : undefined,
       barMaxWidth: 28,
       itemStyle: type === "bar" ? { borderRadius: horizontal ? [0, 4, 4, 0] : [4, 4, 0, 0] } : undefined,
-      data: rows.map((r) => Number(r[m.id] ?? 0)),
+      data: type === "bar"
+        ? rows.map((r, i) => ({ value: Number(r[m.id] ?? 0), itemStyle: { opacity: opacity(categories[i]) } }))
+        : rows.map((r) => Number(r[m.id] ?? 0)),
+      // A line has no item to dim: the picked points are marked on the axis instead.
+      markLine: type === "line" && i === 0 && picked.length > 0
+        ? {
+            symbol: "none", silent: true, animation: false, label: { show: false },
+            lineStyle: { color: c.text, type: "dashed", opacity: 0.6 },
+            data: picked.filter((p) => categories.includes(p)).map((p) => (horizontal ? { yAxis: p } : { xAxis: p })),
+          }
+        : undefined,
     })),
   };
 }
 
+interface ZrClick {
+  offsetX: number;
+  offsetY: number;
+  event?: MouseEvent;
+}
+
 export function Chart(props: ChartProps) {
+  const { visualId, type, fieldId, measures, rows, horizontal } = props;
   const el = useRef<HTMLDivElement>(null);
+  const { own, pick, pending } = useCrossFilter(visualId, [fieldId]);
+  const pickedKey = JSON.stringify(own[fieldId] ?? []);
+  // The chart is only rebuilt when its data or selection changes; clicks always reach the latest `pick`.
+  const pickRef = useRef(pick);
+  useEffect(() => {
+    pickRef.current = pick;
+  }, [pick]);
 
   useEffect(() => {
     if (!el.current) return;
+    const picked = JSON.parse(pickedKey) as string[];
     const chart = echarts.init(el.current, undefined, { renderer: "canvas" });
-    chart.setOption(buildOption(props, readColors(el.current)));
+    chart.setOption(buildOption({ visualId, type, fieldId, measures, rows, horizontal }, readColors(el.current), picked));
+
+    const choose = (value: string | undefined, e: MouseEvent | undefined): void => {
+      if (value !== undefined) pickRef.current([{ fieldId, value }], isAdditive(e));
+    };
+    if (type === "donut") {
+      chart.on("click", (p) => choose(typeof p.name === "string" ? p.name : undefined, p.event?.event as MouseEvent | undefined));
+    } else {
+      // Anywhere in the band of a category counts, not only the bar or the line itself.
+      chart.getZr().on("click", (e: ZrClick) => {
+        const point = [e.offsetX, e.offsetY];
+        if (!chart.containPixel({ gridIndex: 0 }, point)) return;
+        const at = chart.convertFromPixel({ gridIndex: 0 }, point);
+        const index = Math.round(Number(horizontal ? at[1] : at[0]));
+        const row = rows[index];
+        choose(row ? String(row[fieldId] ?? "") : undefined, e.event);
+      });
+    }
+
     const observer = new ResizeObserver(() => chart.resize());
     observer.observe(el.current);
     return () => {
       observer.disconnect();
       chart.dispose();
     };
-  }, [props]);
+  }, [visualId, type, fieldId, measures, rows, horizontal, pickedKey]);
 
-  return <div ref={el} className="h-72 w-full" role="img" aria-label="Gráfico" />;
+  return (
+    <div
+      ref={el}
+      className={`h-72 w-full cursor-pointer transition-opacity ${pending ? "opacity-60" : ""}`}
+      role="img"
+      aria-label="Gráfico: clique em um item para filtrar os outros visuais"
+    />
+  );
 }

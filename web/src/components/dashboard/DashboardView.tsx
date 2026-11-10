@@ -5,7 +5,9 @@ import { buildSections } from "@/lib/templates/sections";
 import { Chart, type ChartMeasure } from "./Chart";
 import { FilterBar } from "./FilterBar";
 import { MapChart, type MapMeasure } from "./MapChart";
-import { ScrollTable, type ScrollColumn } from "./ScrollTable";
+import { CrossTable } from "./CrossTable";
+import { ScrollTable, type ScrollColumn, type SortValue } from "./ScrollTable";
+import { VisualCard } from "./VisualCard";
 
 const SPAN: Record<number, string> = {
   1: "md:col-span-1", 2: "md:col-span-2", 3: "md:col-span-3", 4: "md:col-span-4",
@@ -52,14 +54,14 @@ function VisualBody({ template, result }: { template: Template; result: VisualRe
     case "bar":
     case "line":
       return (
-        <Chart type={visual.type} fieldId={visual.field} measures={visual.measures.map(measure)} rows={rows} horizontal={visual.horizontal} />
+        <Chart visualId={visual.id} type={visual.type} fieldId={visual.field} measures={visual.measures.map(measure)} rows={rows} horizontal={visual.horizontal} />
       );
     case "map": {
       const all: Record<string, MapMeasure> = Object.fromEntries(template.measures.map((m) => [m.id, measure(m.id)]));
       return <MapChart visual={visual} rows={rows} measures={all} />;
     }
     case "donut":
-      return <Chart type="donut" fieldId={visual.field} measures={[measure(visual.measure)]} rows={rows} />;
+      return <Chart visualId={visual.id} type="donut" fieldId={visual.field} measures={[measure(visual.measure)]} rows={rows} />;
     case "rows": {
       const columns: ScrollColumn[] = visual.columns.map((c) => ({
         label: c.label, headClass: "", cellClass: "max-w-64 truncate whitespace-nowrap font-mono", hint: true,
@@ -88,10 +90,20 @@ function VisualBody({ template, result }: { template: Template; result: VisualRe
         ...visual.fields.map((f) => String(r[f] ?? "")),
         ...ms.map((m) => formatValue(r[m.id], m.format)),
       ]);
+      const keys = rows.map((r) => visual.fields.map((f) => String(r[f] ?? "")));
+      const sortValues: SortValue[][] = rows.map((r, i) => [
+        ...keys[i],
+        ...ms.map((m) => {
+          const v = r[m.id];
+          return typeof v === "boolean" ? String(v) : v;
+        }),
+      ]);
       const note = rows.length >= visual.limit
         ? `Estas são as primeiras ${rows.length.toLocaleString("pt-BR")} linhas. Use os filtros para chegar às demais.`
         : undefined;
-      return <ScrollTable columns={columns} rows={cells} note={note} />;
+      return (
+        <CrossTable visualId={visual.id} fields={visual.fields} keys={keys} columns={columns} rows={cells} sortValues={sortValues} note={note} />
+      );
     }
   }
 }
@@ -112,13 +124,13 @@ function VisualGrid({ template, results: all }: VisualGridProps) {
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-12">
       {results.map((result) => (
-        <section
+        <VisualCard
           key={result.visual.id}
-          className={`card p-5 ${SPAN[result.visual.span]} ${result.visual.type === "kpi" ? "" : "sm:col-span-2"} ${result.visual.type === "text" ? "border-l-4 border-l-brand" : ""}`}
+          title={result.visual.title}
+          className={`${SPAN[result.visual.span]} ${result.visual.type === "kpi" ? "" : "sm:col-span-2"} ${result.visual.type === "text" ? "border-l-4 border-l-brand" : ""}`}
         >
-          <h2 className="text-xs font-medium text-muted">{result.visual.title}</h2>
           <VisualBody template={template} result={result} />
-        </section>
+        </VisualCard>
       ))}
     </div>
   );
@@ -128,7 +140,7 @@ export function DashboardView({ template, data, totalRows }: DashboardViewProps)
   const { loose, sections } = buildSections(template, data.visuals);
   return (
     <>
-      <FilterBar filters={data.filters} />
+      <FilterBar filters={data.filters} cross={data.cross} />
       <VisualGrid template={template} results={loose} />
       {sections.filter((s) => s.results.length === 0 || visibleResults(s.results).length > 0).map((s) => (
         <section key={s.analysis.id} id={s.anchor} aria-labelledby={`${s.anchor}-titulo`} className="mt-14 scroll-mt-24 first:mt-0">

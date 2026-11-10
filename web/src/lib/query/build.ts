@@ -7,6 +7,7 @@
  */
 import type { Field, Measure, Template, Visual } from "../templates/schema";
 import { readParquet } from "../duck/engine";
+import type { CrossSelection } from "./cross";
 import { factFilterSql, type FactFilter } from "./fact-filter";
 
 /** Selected values per filter field id. Empty / missing = no filter. */
@@ -66,22 +67,41 @@ function lookup<T extends { id: string }>(items: readonly T[], id: string, kind:
   return found;
 }
 
-/** WHERE of the on-screen filters; `params` may already hold values ($n continues after them). */
+/** The cross selection as one query sees it. */
+export interface CrossScope {
+  selection: CrossSelection;
+  /** Visual being queried: what was picked in it does not filter it (it highlights instead). */
+  visualId?: string;
+  /** Fields this query does not follow (the visual's `skipFilters`). */
+  skipFields?: readonly string[];
+}
+
+/**
+ * WHERE of the on-screen filters plus the cross selection (items picked in other visuals);
+ * `params` may already hold values ($n continues after them).
+ */
 export function buildWhere(
   t: Template, filters: FilterSelection, excludeField?: string | readonly string[], params: string[] = [],
+  cross: CrossScope = { selection: [] },
 ): BuiltQuery {
   const clauses: string[] = [];
   const excluded = excludeField === undefined ? [] : typeof excludeField === "string" ? [excludeField] : excludeField;
-  for (const fieldId of t.filters) {
-    if (excluded.includes(fieldId)) continue;
-    const values = (filters[fieldId] ?? []).slice(0, MAX_FILTER_VALUES);
-    if (values.length === 0) continue;
+  const add = (fieldId: string, picked: readonly string[]): void => {
+    const values = picked.slice(0, MAX_FILTER_VALUES);
+    if (values.length === 0) return;
     const field = lookup(t.fields, fieldId, "field");
     const placeholders = values.map((v) => {
       params.push(String(v));
       return `$${params.length}`;
     });
     clauses.push(`${fieldValue(field)} IN (${placeholders.join(", ")})`);
+  };
+  for (const fieldId of t.filters) {
+    if (!excluded.includes(fieldId)) add(fieldId, filters[fieldId] ?? []);
+  }
+  for (const entry of cross.selection) {
+    if (entry.visualId === cross.visualId || cross.skipFields?.includes(entry.fieldId)) continue;
+    add(entry.fieldId, entry.values);
   }
   return { sql: clauses.length ? `WHERE ${clauses.join(" AND ")}` : "", params };
 }
@@ -164,10 +184,13 @@ function selectFor(t: Template, visual: QueryVisual, filters: FilterSelection): 
 
 export function buildVisualQuery(
   t: Template, files: TableFiles, visual: QueryVisual, filters: FilterSelection, factFilter: FactFilter = [],
+  cross: CrossSelection = [],
 ): BuiltQuery {
   const { select, groupBy, tail } = selectFor(t, visual, filters);
   // Built apart first: the FROM only joins the dimensions the query mentions, and its parameters come first.
-  const where = buildWhere(t, filters, visual.skipFilters, []);
+  const where = buildWhere(t, filters, visual.skipFilters, [], {
+    selection: cross, visualId: visual.id, skipFields: visual.skipFilters,
+  });
   // The visual's own condition narrows the screen filters, never replaces them.
   const whereSql = visual.where ? (where.sql ? `${where.sql} AND (${visual.where})` : `WHERE (${visual.where})`) : where.sql;
   const mentioned = [...select, whereSql, tail].join("\n");
@@ -195,11 +218,13 @@ export function buildFilterOptionsQuery(
   fieldId: string,
   filters: FilterSelection,
   factFilter: FactFilter = [],
+  /** Items picked in the visuals narrow the options too (every visual's, this field included). */
+  cross: CrossSelection = [],
 ): BuiltQuery {
   const field = lookup(t.fields, fieldId, "field");
   const params: string[] = [];
   const from = buildFrom(t, files, factFilter, params);
-  const where = buildWhere(t, filters, fieldId, params);
+  const where = buildWhere(t, filters, fieldId, params, { selection: cross });
   const sql = [
     `SELECT DISTINCT ${fieldValue(field)} AS value`,
     from,

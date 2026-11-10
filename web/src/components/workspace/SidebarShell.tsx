@@ -137,6 +137,13 @@ export function SidebarShell({
           open ? "translate-x-0" : "-translate-x-full"
         } ${collapsed ? "lg:-translate-x-full" : "lg:translate-x-0"}`}
       >
+        {/* The space's logo opens the panel, centred; the collapse button sits beside the name below it. */}
+        {logoUrl && (
+          <div className="px-5 pb-1 pt-5">
+            <SpaceLogo url={logoUrl} className="mx-auto block max-h-14 max-w-[220px]" />
+          </div>
+        )}
+
         <div className="flex items-start justify-between gap-2 border-b border-paper-line px-5 py-3">
           <div className="min-w-0 pt-1">
             {org.href ? (
@@ -161,15 +168,10 @@ export function SidebarShell({
           </button>
         </div>
 
-        {logoUrl ? (
-          <div className="px-5 pb-4 pt-5">
-            <SpaceLogo url={logoUrl} className="max-h-12 max-w-[200px]" />
-          </div>
-        ) : (
-          <div className="pt-4" />
-        )}
+        <div className="pt-4" />
 
-        <div className="scroll-quiet min-h-0 flex-1 overflow-y-auto pb-6 pl-5 pr-3">{children}</div>
+        {/* data-summary-scroll: the outline scrolls this area to keep the analysis on screen in sight. */}
+        <div data-summary-scroll className="scroll-quiet min-h-0 flex-1 overflow-y-auto pb-6 pl-5 pr-3">{children}</div>
 
         <div className="border-t border-paper-line px-5 py-4 text-sm">{footer}</div>
       </aside>

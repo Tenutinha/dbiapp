@@ -1,4 +1,5 @@
 import "server-only";
+import { parseCross } from "../query/cross";
 import { parseSelection, runDashboard } from "../query/run";
 import { ensureSampleFiles } from "../samples/files";
 import { storage } from "../storage";
@@ -15,6 +16,6 @@ export async function loadSampleDashboard(
 ): Promise<LoadedDashboard> {
   const sample = await ensureSampleFiles(storage.workRoot, template);
   const selection = parseSelection(template, searchParams);
-  const data = await runDashboard(storage.workRoot, template, { ...sample.files }, selection);
+  const data = await runDashboard(storage.workRoot, template, { ...sample.files }, selection, [], parseCross(template, searchParams));
   return { template, data, totalRows: sample.factRows };
 }

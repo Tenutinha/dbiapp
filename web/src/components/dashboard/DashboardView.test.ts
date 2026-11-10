@@ -28,6 +28,7 @@ const template = templateSchema.parse({
 const data: DashboardData = {
   visuals: template.visuals.map((visual) => ({ visual, rows: [{ receita: 1000, margem: 0.3, ticket_medio: 50, pedidos: 20 }] })),
   filters: [],
+  cross: [],
   elapsedMs: 12,
 };
 
