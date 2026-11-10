@@ -1,6 +1,7 @@
 import "server-only";
 import { getDataFilterRaw } from "../data/instances";
 import { listFiles } from "../data/repository";
+import { parseCross } from "../query/cross";
 import { parseFactFilter } from "../query/fact-filter";
 import { parseSelection, runDashboard, type DashboardData } from "../query/run";
 import { storage } from "../storage";
@@ -35,6 +36,8 @@ export async function loadDashboard(
   const fact = template.tables.find((t) => t.kind === "fact")?.name;
   const totalRows = files.find((f) => f.tableName === fact)?.rowCount ?? 0;
   const local = await resolveLocalFiles(byTable);
-  const data = await runDashboard(storage.workRoot, template, local, parseSelection(template, searchParams), factFilter);
+  const data = await runDashboard(
+    storage.workRoot, template, local, parseSelection(template, searchParams), factFilter, parseCross(template, searchParams),
+  );
   return { template, data, totalRows };
 }
