@@ -2,13 +2,16 @@ import { DashboardView } from "@/components/dashboard/DashboardView";
 import { requireInstance, type ClientRef, type InstanceAccess, type OrgRef } from "@/lib/access";
 import { AccessError, type CurrentUser } from "@/lib/auth";
 import { formatDateLong } from "@/lib/format";
-import { firstItem } from "@/lib/layout/toc";
+import { firstItem, nextItem, type TocGroup } from "@/lib/layout/toc";
 import type { Membership } from "@/lib/permissions";
 import { loadDashboard } from "@/lib/services/dashboard";
 import { loadSpace } from "@/lib/services/space";
-import { buildSummary } from "@/lib/templates/sections";
+import { getTemplate } from "@/lib/templates/registry";
+import { buildOutline, type SummaryItem } from "@/lib/templates/sections";
 import { readViewSelection } from "@/lib/view-selection";
-import { DashboardSummary } from "./DashboardSummary";
+import { DashboardArrival } from "./DashboardArrival";
+import { NextDashboard } from "./NextDashboard";
+import type { Outlines } from "./SidebarNav";
 import { MainHeader, Workspace } from "./Workspace";
 
 type SearchParams = Record<string, string | string[] | undefined>;
@@ -35,6 +38,28 @@ async function openable(instanceId: string, org: OrgRef, client: ClientRef | nul
 }
 
 /**
+ * Analyses of every dashboard in the summary, for the sidebar. A template that cannot be read only
+ * leaves its dashboard without nested analyses; the page still opens.
+ */
+async function loadOutlines(toc: readonly TocGroup[]): Promise<Outlines> {
+  const items = toc.flatMap((g) => g.items);
+  const templateIds = [...new Set(items.map((i) => i.templateId))];
+  const loaded = await Promise.all(
+    templateIds.map(async (id): Promise<[string, SummaryItem[]]> => {
+      try {
+        const template = await getTemplate(id);
+        return [id, template ? buildOutline(template) : []];
+      } catch (err) {
+        console.error(`[space] could not read the summary of template ${id}`, err);
+        return [id, []];
+      }
+    }),
+  );
+  const byTemplate = new Map(loaded);
+  return Object.fromEntries(items.map((i) => [i.id, byTemplate.get(i.templateId) ?? []]));
+}
+
+/**
  * The viewing screen of a space, always on its own address (`/<org>` or `/<org>/<client>`):
  * the dashboard last opened here, else the first one of the summary. Only dashboards — no data
  * setup (that lives in the administration). Nothing published yet: an empty screen.
@@ -52,8 +77,12 @@ export async function SpaceHome({ org, client, membership, user, searchParams }:
     return <Workspace space={space} currentId={null} userName={user.name}>{null}</Workspace>;
   }
 
-  const dashboard = await loadDashboard(access.instanceId, access.templateId, access.activeVersionId, searchParams);
-  const summary = buildSummary(dashboard.template);
+  const [dashboard, outlines] = await Promise.all([
+    loadDashboard(access.instanceId, access.templateId, access.activeVersionId, searchParams),
+    loadOutlines(space.toc),
+  ]);
+  const anchorsKey = buildOutline(dashboard.template).map((i) => i.anchor).join("|");
+  const next = nextItem(space.toc, access.instanceId);
   const shareLink = access.actions.has("share")
     ? [{ href: `/${org.slug}/d/${access.instanceId}/compartilhar`, label: "Compartilhar" }]
     : [];
@@ -63,16 +92,21 @@ export async function SpaceHome({ org, client, membership, user, searchParams }:
       space={space}
       currentId={access.instanceId}
       userName={user.name}
-      pageSummary={summary.length > 0 ? <DashboardSummary title={access.name} groups={summary} /> : undefined}
+      outlines={outlines}
     >
-      <MainHeader
-        kicker={client ? `${org.name} · ${client.name}` : org.name}
-        meta={`Atualizado em ${formatDateLong(access.publishedAt)}`}
-        title={access.name}
-        lead={access.description ?? dashboard.template.description}
-        links={shareLink}
-      />
-      <DashboardView template={dashboard.template} data={dashboard.data} totalRows={dashboard.totalRows} />
+      <DashboardArrival dashboardId={access.instanceId} anchorsKey={anchorsKey} />
+      {/* Keyed by dashboard: a new one fades in (dash-enter) instead of patching the previous page. */}
+      <div key={access.instanceId} className="dash-enter">
+        <MainHeader
+          kicker={client ? `${org.name} · ${client.name}` : org.name}
+          meta={`Atualizado em ${formatDateLong(access.publishedAt)}`}
+          title={access.name}
+          lead={access.description ?? dashboard.template.description}
+          links={shareLink}
+        />
+        <DashboardView template={dashboard.template} data={dashboard.data} totalRows={dashboard.totalRows} />
+        {next && <NextDashboard id={next.id} name={next.name} number={next.number} />}
+      </div>
     </Workspace>
   );
 }

@@ -51,6 +51,11 @@ export function buildSummary(t: Template): SummaryGroupView[] {
     .filter((g) => g.items.length > 0);
 }
 
+/** The summary as one flat list, in reading order: the analyses shown under a dashboard in the sidebar. */
+export function buildOutline(t: Template): SummaryItem[] {
+  return buildSummary(t).flatMap((g) => g.items);
+}
+
 /** Splits computed visuals (anything carrying `visual`) into the page's loose block and its sections. */
 export function buildSections<R extends { visual: Pick<Visual, "id"> }>(t: Template, results: readonly R[]): PageSections<R> {
   const byId = new Map(results.map((r) => [r.visual.id, r]));

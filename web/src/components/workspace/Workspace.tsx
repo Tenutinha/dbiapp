@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { SpaceView } from "@/lib/services/space";
 import { SignOutButton } from "../SignOutButton";
-import { SidebarNav } from "./SidebarNav";
+import { SidebarNav, type Outlines } from "./SidebarNav";
 import { DbiLogo, SidebarShell } from "./SidebarShell";
 import { ThemeScope } from "./ThemeScope";
 
@@ -9,13 +9,13 @@ interface WorkspaceProps {
   space: SpaceView;
   currentId: string | null;
   userName: string;
-  /** Summary of the open dashboard, shown above the list of the space's dashboards. */
-  pageSummary?: React.ReactNode;
+  /** Analyses of each dashboard, nested under its name in the sidebar. */
+  outlines?: Outlines;
   children: React.ReactNode;
 }
 
 /** Two-pane layout: light table of contents on the left, the dashboard on the right. */
-export function Workspace({ space, currentId, userName, pageSummary, children }: WorkspaceProps) {
+export function Workspace({ space, currentId, userName, outlines = {}, children }: WorkspaceProps) {
   const { org, client } = space;
   // The organization's own page is linked only when this person can open it (client users may not).
   const orgHref = space.spaces.some((s) => s.kind === "org") ? `/${org.slug}` : null;
@@ -51,8 +51,7 @@ export function Workspace({ space, currentId, userName, pageSummary, children }:
         footer={footer}
         content={<div className="mx-auto max-w-[1180px]">{children}</div>}
       >
-        {pageSummary}
-        <SidebarNav toc={space.toc} currentId={currentId} />
+        <SidebarNav toc={space.toc} currentId={currentId} outlines={outlines} />
       </SidebarShell>
     </ThemeScope>
   );
