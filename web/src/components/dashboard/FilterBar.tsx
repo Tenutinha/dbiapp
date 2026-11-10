@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { CROSS_PREFIX, crossKey } from "@/lib/query/cross";
 
 type Filter = { fieldId: string; label: string; values: string[]; selected: string[]; single: boolean };
@@ -105,11 +105,10 @@ function FunnelIcon() {
 }
 
 /**
- * The filters of a dashboard. On the page there is only a "Filtros" button and what is in use (chosen
- * filters and the items picked in the visuals, each removable); the button opens a side panel listing
- * every filter the dashboard offers. The panel does not block the page, so the visuals can be watched —
- * and clicked — while filtering. Once the button scrolls away, a floating one follows the scroll at the
- * same left edge.
+ * The filters of a dashboard. A floating "Filtros" button stays in the bottom-left corner of the screen
+ * and opens, right above it, a floating panel listing every filter the dashboard offers. The panel does
+ * not block the page, so the visuals can be watched — and clicked — while filtering. On the page itself
+ * there is only what is in use (chosen filters and the items picked in the visuals, each removable).
  */
 export function FilterBar({ filters, cross = [] }: FilterBarProps) {
   const router = useRouter();
@@ -117,9 +116,6 @@ export function FilterBar({ filters, cross = [] }: FilterBarProps) {
   const params = useSearchParams();
   const [pending, start] = useTransition();
   const [open, setOpen] = useState(false);
-  const [rowInView, setRowInView] = useState(true);
-  const [floatLeft, setFloatLeft] = useState(16);
-  const row = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -129,23 +125,6 @@ export function FilterBar({ filters, cross = [] }: FilterBarProps) {
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [open]);
-
-  useEffect(() => {
-    const target = row.current;
-    if (!target || typeof IntersectionObserver === "undefined") return;
-    // The floating button sits at the left edge of the dashboard, right under where the fixed one was.
-    const align = (): void => setFloatLeft(Math.max(target.getBoundingClientRect().left, 8));
-    const observer = new IntersectionObserver((entries) => {
-      align();
-      setRowInView(entries.some((e) => e.isIntersecting));
-    });
-    observer.observe(target);
-    window.addEventListener("resize", align);
-    return () => {
-      observer.disconnect();
-      window.removeEventListener("resize", align);
-    };
-  }, []);
 
   function go(next: URLSearchParams): void {
     const query = next.toString();
@@ -175,7 +154,6 @@ export function FilterBar({ filters, cross = [] }: FilterBarProps) {
   const activeCount = chosen.length + cross.length;
   if (filters.length === 0 && cross.length === 0) return null;
 
-  const badge = activeCount > 0 && <span className="rounded-full bg-brand px-1.5 text-xs text-on-brand">{activeCount}</span>;
   const picks = cross.map((c) => (
     <Chip
       key={`${c.visualId}.${c.fieldId}`}
@@ -188,59 +166,50 @@ export function FilterBar({ filters, cross = [] }: FilterBarProps) {
 
   return (
     <>
-      <div ref={row} className={`mb-6 flex flex-wrap items-center gap-x-3 gap-y-2 transition-opacity ${pending ? "opacity-60" : ""}`}>
+      {(singles.length > 0 || activeCount > 0) && (
+        <div className={`mb-6 flex flex-wrap items-center gap-x-3 gap-y-2 transition-opacity ${pending ? "opacity-60" : ""}`}>
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+            {singles.map((f) => <Chip key={f.fieldId} label={f.label} value={f.selected[0]} />)}
+            {chosen.map((f) => (
+              <Chip key={f.fieldId} label={f.label} value={summarize(f.selected)} title={f.selected.join(", ")} onRemove={() => apply(f.fieldId, [])} />
+            ))}
+            {picks}
+          </div>
+          {pending && <span className="text-xs text-muted">atualizando…</span>}
+          {activeCount > 0 && (
+            <button type="button" onClick={clearAll} className="text-sm text-brand-2 hover:underline">
+              Limpar tudo
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Always on screen, like the "Inspecionar" button of the opposite corner (same box, mirrored). */}
+      <div className="fixed bottom-16 left-3 z-40 flex items-center gap-2 rounded-xl border border-brand/40 bg-card-2/95 px-2 py-1.5 text-xs shadow-2xl backdrop-blur">
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
           aria-expanded={open}
           aria-controls="painel-filtros"
-          className={`inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-sm font-medium transition ${
-            open || activeCount > 0 ? "border-brand bg-brand/15" : "border-line hover:border-brand"
+          className={`inline-flex items-center gap-1.5 rounded-lg px-2 py-1 font-semibold transition ${
+            open ? "bg-brand text-on-brand" : "text-brand hover:bg-brand/15"
           }`}
         >
           <FunnelIcon />
           Filtros
-          {badge}
+          {activeCount > 0 && (
+            <span className={`rounded-full px-1.5 ${open ? "bg-on-brand/25" : "bg-brand text-on-brand"}`}>{activeCount}</span>
+          )}
         </button>
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
-          {singles.map((f) => <Chip key={f.fieldId} label={f.label} value={f.selected[0]} />)}
-          {chosen.map((f) => (
-            <Chip key={f.fieldId} label={f.label} value={summarize(f.selected)} title={f.selected.join(", ")} onRemove={() => apply(f.fieldId, [])} />
-          ))}
-          {picks}
-        </div>
-        {pending && <span className="text-xs text-muted">atualizando…</span>}
-        {activeCount > 0 && (
-          <button type="button" onClick={clearAll} className="text-sm text-brand-2 hover:underline">
-            Limpar tudo
-          </button>
-        )}
+        {pending && <span className="pr-1 text-muted">atualizando…</span>}
       </div>
-
-      {/* The panel opens over this corner and has its own close button. */}
-      {!rowInView && !open && (
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          aria-label="Abrir filtros"
-          style={{ left: floatLeft }}
-          className={`card fixed top-20 z-40 inline-flex items-center gap-2 rounded-full px-3.5 py-2 text-sm font-medium shadow-xl hover:border-brand ${
-            activeCount > 0 ? "!border-brand" : ""
-          }`}
-        >
-          <FunnelIcon />
-          Filtros
-          {badge}
-        </button>
-      )}
 
       {open && (
         <aside
           id="painel-filtros"
           aria-label="Filtros"
-          // A floating card: clear of the top and the bottom of the page, as tall as its filters need.
-          style={{ left: floatLeft }}
-          className="card fixed top-20 z-50 flex max-h-[calc(100vh-7rem)] w-80 max-w-[calc(100vw-1rem)] flex-col overflow-hidden shadow-2xl"
+          // A floating card right above its button: clear of the top and the bottom of the page, as tall as its filters need.
+          className="card fixed bottom-28 left-3 z-50 flex max-h-[calc(100vh-9rem)] w-80 max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden shadow-2xl"
         >
           <header className="flex items-center gap-2 border-b border-line px-4 py-3">
             <FunnelIcon />
