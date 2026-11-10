@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import type { ColumnStatus } from "@/lib/ingest/schema-check";
-import type { ConnectorTable, Link } from "./types";
+import type { ConnectorTable, FilePick, FileState, Link, LinkFile } from "./types";
 
 const CONFETTI_COLORS = ["var(--color-brand)", "var(--color-brand-2)", "var(--color-ok)", "var(--color-accent)", "#f472b6"];
 
@@ -65,12 +65,48 @@ const STATUS_ICON: Record<ColumnStatus, { icon: string; tone: string; label: str
   optional: { icon: "–", tone: "text-muted", label: "opcional, ausente" },
 };
 
+const FILE_STATE: Record<FileState, { icon: string; tone: string; label: string }> = {
+  suggested: { icon: "?", tone: "text-muted", label: "sugestão pelo nome" },
+  checking: { icon: "…", tone: "animate-pulse text-brand-2", label: "lendo as colunas" },
+  ok: { icon: "✓", tone: "text-ok", label: "as colunas batem" },
+  diverge: { icon: "⚠", tone: "text-danger", label: "as colunas divergem" },
+  failed: { icon: "✕", tone: "text-danger", label: "não foi possível ler" },
+};
+
+const pathOf = (f: FilePick): string => [f.folder, f.file].filter(Boolean).join("/");
+const rows = (n: number): string => `${n.toLocaleString("pt-BR")} linhas`;
+
+/** The files that feed the table: where each one is in the check and, once engaged, how many rows it gave. */
+function Files({ link, busy, onRemove }: { link: Link; busy: boolean; onRemove: (file: FilePick) => void }) {
+  const given = new Map(link.report?.ok ? link.report.files?.map((f) => [f.name, f.rowCount]) : []);
+  return (
+    <ul className="mt-2 flex flex-col gap-0.5 font-mono text-[11px]" aria-label={`Arquivos de ${link.table}`}>
+      {link.files.map((f) => {
+        const state = FILE_STATE[f.state];
+        const count = given.get(f.file);
+        return (
+          <li key={pathOf(f)} className="flex items-center gap-1.5">
+            <span className={`w-3 shrink-0 text-center ${state.tone}`} title={state.label} aria-label={state.label}>{state.icon}</span>
+            <span className="min-w-0 flex-1 truncate text-muted" title={pathOf(f)}>{pathOf(f)}</span>
+            {count !== undefined && <span className="shrink-0 text-muted">{rows(count)}</span>}
+            {!busy && link.files.length > 1 && (
+              <button type="button" onClick={() => onRemove(f)} title="Tirar este arquivo" aria-label={`Tirar ${f.file} de ${link.table}`} className="shrink-0 px-0.5 text-muted hover:text-danger">×</button>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 function Columns({ table, link }: { table: ConnectorTable; link: Link | undefined }) {
-  const check = link?.check;
+  // With several files, the one that diverges is the one worth looking at.
+  const shown = link?.files.find((f) => f.state === "diverge") ?? link?.files.find((f) => f.check);
+  const check = shown?.check;
   return (
     <details className="mt-2 text-[11px]" open={link?.phase === "diverge"}>
       <summary className="cursor-pointer text-muted hover:text-text">
-        {check ? "Comparação de colunas" : `Contrato: ${table.columns.length} colunas`}
+        {check ? `Comparação de colunas${link && link.files.length > 1 ? ` · ${shown.file}` : ""}` : `Contrato: ${table.columns.length} colunas`}
       </summary>
       <ul className="mt-1.5 flex max-h-56 flex-col gap-0.5 overflow-y-auto font-mono">
         {(check?.columns ?? table.columns.map((c) => ({ ...c, source: null, sourceType: null, status: null }))).map((c) => {
@@ -91,43 +127,71 @@ function Columns({ table, link }: { table: ConnectorTable; link: Link | undefine
   );
 }
 
+/** What is wrong with each file that cannot be engaged (its columns diverge, or it could not be read). */
+function Refused({ link, onRetry }: { link: Link; onRetry: () => void }) {
+  const bad = link.files.filter((f) => f.state === "diverge" || f.state === "failed");
+  const many = link.files.length > 1;
+  const problems = (f: LinkFile): string[] => (f.state === "diverge" ? f.check?.errors ?? [] : [f.note ?? "Não foi possível ler o arquivo."]);
+  return (
+    <div className="text-xs text-danger">
+      <p className="font-semibold">
+        {many
+          ? `⚠ ${bad.length} de ${link.files.length} arquivos não servem — tire-os da lista ou corrija para engatar`
+          : link.phase === "diverge" ? `⚠ ${problems(bad[0]).length} divergência(s) — não dá para engatar` : `✕ ${problems(bad[0])[0]}`}
+      </p>
+      {bad.filter(() => many || link.phase === "diverge").map((f) => (
+        <div key={pathOf(f)}>
+          {many && <p className="mt-1 font-mono font-semibold">{f.file}</p>}
+          <ul className="list-disc pl-4">{problems(f).map((e) => <li key={e}>{e}</li>)}</ul>
+        </div>
+      ))}
+      {bad.some((f) => f.state === "failed") && <button type="button" onClick={onRetry} className="font-semibold hover:underline">Verificar de novo</button>}
+    </div>
+  );
+}
+
 function LinkStatus({ link, onEngage, onRetry }: { link: Link; onEngage: () => void; onRetry: () => void }) {
-  const total = link.check?.columns.filter((c) => c.required).length ?? 0;
-  const fine = link.check?.columns.filter((c) => c.required && c.status !== "missing").length ?? 0;
-  const converts = link.check?.columns.filter((c) => c.status === "convert").length ?? 0;
+  const [first] = link.files;
+  const many = link.files.length > 1;
   switch (link.phase) {
     case "suggested":
-      return <p className="text-xs text-muted">Sugestão pelo nome: <b className="font-mono">{link.file}</b>. <button type="button" onClick={onRetry} className="font-semibold text-brand-2 hover:underline">Verificar colunas</button></p>;
-    case "checking":
-      return <p className="animate-pulse text-xs text-brand-2">Lendo as colunas de {link.file}…</p>;
-    case "ok":
+      return <p className="text-xs text-muted">Sugestão pelo nome: <b className="font-mono">{first.file}</b>. <button type="button" onClick={onRetry} className="font-semibold text-brand-2 hover:underline">Verificar colunas</button></p>;
+    case "checking": {
+      const pending = link.files.filter((f) => f.state === "checking").length;
+      return <p className="animate-pulse text-xs text-brand-2">Lendo as colunas de {many ? `${pending} de ${link.files.length} arquivos` : first.file}…</p>;
+    }
+    case "ok": {
+      const required = first.check?.columns.filter((c) => c.required) ?? [];
+      const fine = required.filter((c) => c.status !== "missing").length;
+      const converts = first.check?.columns.filter((c) => c.status === "convert").length ?? 0;
       return (
         <div className="flex flex-wrap items-center gap-2">
-          <p className="text-xs text-ok">✓ {fine}/{total} colunas batem{converts > 0 ? ` · ${converts} serão convertidas` : ""}</p>
-          <button type="button" onClick={onEngage} className="btn btn-primary px-3 py-1 text-xs">⚡ Engatar</button>
+          <p className="text-xs text-ok">
+            ✓ {many ? `${link.files.length} arquivos conferidos: as colunas batem` : `${fine}/${required.length} colunas batem`}
+            {converts > 0 ? ` · ${converts} serão convertidas` : ""}
+          </p>
+          <button type="button" onClick={onEngage} className="btn btn-primary px-3 py-1 text-xs">⚡ {many ? `Engatar ${link.files.length} arquivos` : "Engatar"}</button>
         </div>
       );
-    case "diverge":
-      return (
-        <div className="text-xs text-danger">
-          <p className="font-semibold">⚠ {link.check?.errors.length ?? 0} divergência(s) — não dá para engatar</p>
-          <ul className="list-disc pl-4">{link.check?.errors.map((e) => <li key={e}>{e}</li>)}</ul>
-        </div>
-      );
+    }
     case "engaging":
-      return <p className="animate-pulse text-xs text-brand-2">{link.note ?? "Engatando"} {link.file}…</p>;
+      return <p className="animate-pulse text-xs text-brand-2">{link.note ?? `Engatando ${many ? `${link.files.length} arquivos` : first.file}`}…</p>;
     case "engaged":
       return (
         <p className="text-xs font-semibold text-ok">
-          🎉 Engatado! {link.report?.rowCount.toLocaleString("pt-BR")} linhas de {link.file}
+          🎉 Engatado! {link.report ? rows(link.report.rowCount) : ""} de {many ? `${link.files.length} arquivos` : first.file}
           {link.report && link.report.warnings.length > 0 && <span className="block font-normal text-accent">{link.report.warnings[0]}</span>}
         </p>
       );
+    case "diverge":
+      return <Refused link={link} onRetry={onRetry} />;
     case "failed":
+      // A note on the wire itself is a refused engage (the files had passed the check).
+      if (link.note === undefined) return <Refused link={link} onRetry={onRetry} />;
       return (
         <div className="text-xs text-danger">
           <p>✕ {link.note}</p>
-          {!link.uploaded && <button type="button" onClick={onRetry} className="font-semibold hover:underline">Verificar de novo</button>}
+          <button type="button" onClick={onEngage} className="font-semibold hover:underline">Engatar de novo</button>
         </div>
       );
   }
@@ -141,10 +205,12 @@ interface TableNodeProps {
   outPortRef?: (el: HTMLSpanElement | null) => void;
   /** The data filter has saved rules (lights the right-hand port). */
   filtered?: boolean;
-  /** Opens the organization's file explorer to choose this table's file. */
+  /** Opens the organization's file explorer to choose this table's file(s). */
   onChooseFile: () => void;
   onEngage: (link: Link) => void;
+  /** Checks again the files that are not ready (a suggestion, or one that could not be read). */
   onRetry: (link: Link) => void;
+  onRemoveFile: (file: FilePick) => void;
   onDisconnect: () => void;
 }
 
@@ -159,12 +225,13 @@ function Icon({ d }: { d: string }) {
 const ACTION = "flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold transition disabled:opacity-50";
 
 /**
- * One contract table: the stored file it is related to (chosen in the organization's file explorer —
- * files are sent there, not here), the column check and the contract.
+ * One contract table: the stored file(s) it is related to (chosen in the organization's file explorer —
+ * files are sent there, not here; several files are joined into the table), the column check and the contract.
  */
-export function TableNode({ table, link, canUpload, outPortRef, filtered, onChooseFile, onEngage, onRetry, onDisconnect }: TableNodeProps) {
+export function TableNode({ table, link, canUpload, outPortRef, filtered, onChooseFile, onEngage, onRetry, onRemoveFile, onDisconnect }: TableNodeProps) {
   const phase = link?.phase;
   const busy = phase === "engaging" || phase === "checking";
+  const chosen = link !== undefined && phase !== "suggested";
   const ring =
     phase === "engaged" ? "border-ok/70" : phase === "diverge" || phase === "failed" ? "border-danger/60" : "border-line";
 
@@ -176,7 +243,7 @@ export function TableNode({ table, link, canUpload, outPortRef, filtered, onChoo
       {outPortRef && (
         <span ref={outPortRef} className={`absolute -right-[7px] top-6 size-3 rounded-full border-2 bg-bg ${filtered ? "border-brand bg-brand" : "border-line"}`} aria-hidden />
       )}
-      {phase === "engaged" && <Confetti key={`${link?.file}-${link?.report?.rowCount}`} />}
+      {phase === "engaged" && <Confetti key={`${link?.files.length}-${link?.report?.rowCount}`} />}
 
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
@@ -191,15 +258,11 @@ export function TableNode({ table, link, canUpload, outPortRef, filtered, onChoo
 
       {link && (
         <>
-          {link.folder !== undefined && (
-            <p className="mt-2 truncate font-mono text-[11px] text-muted" title={[link.folder, link.file].filter(Boolean).join("/")}>
-              📄 {[link.folder, link.file].filter(Boolean).join("/")}
-            </p>
-          )}
+          <Files link={link} busy={busy} onRemove={onRemoveFile} />
           <div className="mt-1.5 flex items-start justify-between gap-2">
             <LinkStatus link={link} onEngage={() => onEngage(link)} onRetry={() => onRetry(link)} />
             {!busy && (
-              <button type="button" onClick={onDisconnect} title="Desconectar" aria-label={`Desconectar ${table.name}`} className="text-muted hover:text-danger">×</button>
+              <button type="button" onClick={onDisconnect} title={link.files.length > 1 ? "Tirar todos os arquivos" : "Desconectar"} aria-label={`Desconectar ${table.name}`} className="text-muted hover:text-danger">×</button>
             )}
           </div>
         </>
@@ -208,12 +271,13 @@ export function TableNode({ table, link, canUpload, outPortRef, filtered, onChoo
       {canUpload && (
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <button type="button" onClick={onChooseFile} disabled={busy} className={`${ACTION} border-brand/40 bg-brand/5 text-brand-2 hover:border-brand hover:bg-brand/10`}>
-            <Icon d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /> {link ? "Trocar arquivo" : "Escolher arquivo"}
+            <Icon d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /> {chosen ? "Adicionar arquivo" : "Escolher arquivos"}
           </button>
-          {!link && <span className="text-[11px] text-muted">Escolha o arquivo já guardado no armazenamento.</span>}
+          {!link && <span className="text-[11px] text-muted">Um ou mais arquivos já guardados no armazenamento; vários são unidos numa tabela só.</span>}
         </div>
       )}
       <Columns table={table} link={link} />
     </div>
   );
 }
+

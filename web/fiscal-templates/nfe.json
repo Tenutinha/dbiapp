@@ -68,6 +68,7 @@
         {
           "name": "emit_cnpj",
           "type": "text",
+          "required": false,
           "description": "EMIT_CNPJ"
         },
         {
@@ -241,6 +242,7 @@
         {
           "name": "prod_vprod",
           "type": "decimal",
+          "required": false,
           "description": "PROD_VPROD"
         },
         {
@@ -288,6 +290,7 @@
         {
           "name": "prod_item",
           "type": "integer",
+          "required": false,
           "description": "PROD_ITEM: Número do item na nota"
         },
         {

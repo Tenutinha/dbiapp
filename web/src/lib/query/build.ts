@@ -6,7 +6,7 @@
  * user-provided filter values are always bound as parameters.
  */
 import type { Field, Measure, Template, Visual } from "../templates/schema";
-import { quotePath } from "../duck/engine";
+import { readParquet } from "../duck/engine";
 import { factFilterSql, type FactFilter } from "./fact-filter";
 
 /** Selected values per filter field id. Empty / missing = no filter. */
@@ -17,7 +17,7 @@ export interface BuiltQuery {
   params: string[];
 }
 
-/** Physical file for each template table. */
+/** Physical file for each template table (several parts in one path when the table came from several files). */
 export type TableFiles = Readonly<Record<string, string>>;
 
 const MAX_FILTER_VALUES = 200;
@@ -46,7 +46,7 @@ export function buildFrom(
   const fileFor = (table: string): string => {
     const file = files[table];
     if (!file) throw new Error(`missing file for table ${table}`);
-    return `read_parquet(${quotePath(file)})`;
+    return readParquet(file);
   };
   const fact = factTable(t);
   const where = factFilterSql(factFilter, params);

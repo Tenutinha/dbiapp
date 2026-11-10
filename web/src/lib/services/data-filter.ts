@@ -2,12 +2,12 @@ import "server-only";
 import type { InstanceAccess } from "../access";
 import { DataFilterUnavailableError, getDataFilterRaw, setDataFilter } from "../data/instances";
 import { getDraft, listFiles } from "../data/repository";
-import { queryRows, quotePath, withConnection } from "../duck/engine";
+import { queryRows, readParquet, withConnection } from "../duck/engine";
 import { quoteIdent } from "../ingest/contract";
 import { EMPTY_VALUE, factFilterSql, parseFactFilter, type FactFilterRule } from "../query/fact-filter";
 import { storage } from "../storage";
 import { factColumns } from "./dashboard";
-import { requireTemplate, UserFacingError } from "./datasets";
+import { requireTemplate, resolveLocalFiles, UserFacingError } from "./datasets";
 
 /**
  * Data filter of a dashboard, as the data manager edits it: the fact table's columns, the distinct
@@ -43,7 +43,7 @@ async function factFile(access: InstanceAccess): Promise<string | null> {
     const file = (await listFiles(versionId)).find((f) => f.tableName === fact);
     if (file) {
       try {
-        return await storage.localPath(file.storagePath);
+        return (await resolveLocalFiles({ fact: file.storagePath })).fact;
       } catch (err) {
         console.error("[data-filter] could not open the fact file", access.instanceId, file.storagePath, err);
         throw new UserFacingError("Não foi possível abrir o arquivo da tabela fato. Engate ou suba a tabela fato de novo.");
@@ -59,7 +59,7 @@ async function countKept(file: string, filter: readonly FactFilterRule[]): Promi
     const where = factFilterSql(filter, params);
     const [row] = await queryRows(
       conn,
-      `SELECT COUNT(*) AS total, COUNT(*) FILTER (${where || "WHERE true"}) AS kept FROM read_parquet(${quotePath(file)})`,
+      `SELECT COUNT(*) AS total, COUNT(*) FILTER (${where || "WHERE true"}) AS kept FROM ${readParquet(file)}`,
       params,
     );
     return { total: Number(row.total), kept: Number(row.kept) };
@@ -98,7 +98,7 @@ export async function columnValues(access: InstanceAccess, column: string): Prom
     const rows = await queryRows(
       conn,
       `SELECT COALESCE(CAST(${quoteIdent(column)} AS VARCHAR), '${EMPTY_VALUE}') AS value, COUNT(*) AS n
-       FROM read_parquet(${quotePath(file)}) GROUP BY 1 ORDER BY n DESC, value LIMIT ${MAX_LISTED_VALUES + 1}`,
+       FROM ${readParquet(file)} GROUP BY 1 ORDER BY n DESC, value LIMIT ${MAX_LISTED_VALUES + 1}`,
     );
     return {
       column,

@@ -6,6 +6,7 @@ import {
   fileKind,
   isProtectedFolder,
   isSystemPath,
+  pickableItems,
   joinPath,
   parentOf,
   renamedFileName,
@@ -97,6 +98,12 @@ describe("usageFor", () => {
     expect(usageFor(uses, "preparado", "f_vendas.parquet")).toEqual([{ dashboard: "Vendas", state: "active" }]);
     expect(usageFor(uses, "clientes/martinello", "f_vendas.parquet")).toEqual([]);
   });
+
+  it("matches each file of a table fed by several files", () => {
+    const several = [{ file: "nfe_2022.txt, nfe_2023.txt", clientSlug: "martinello", dashboard: "NF-e", state: "draft" as const }];
+    expect(usageFor(several, "clientes/martinello", "nfe_2023.txt")).toEqual([{ dashboard: "NF-e", state: "draft" }]);
+    expect(usageFor(several, "clientes/martinello", "nfe_2024.txt")).toEqual([]);
+  });
 });
 
 describe("sortEntries", () => {
@@ -174,5 +181,32 @@ describe("decorate", () => {
       { ...entries[1], client: "Martinello", usedIn: [{ dashboard: "EFD", state: "active" }] },
     ]);
     expect(decorate(entries, "clientes/martinello", null)[1]).toEqual({ ...entries[1], client: "martinello", usedIn: [] });
+  });
+});
+
+describe("pickableItems", () => {
+  const item = (name: string, folder = false) => ({ name, folder });
+  const data = (i: { name: string }): boolean => /\.(csv|txt|parquet)$/.test(i.name);
+
+  it("chooses the single selected file", () => {
+    expect(pickableItems([item("a.csv")], data, false)).toEqual([item("a.csv")]);
+  });
+
+  it("chooses every selected file when several are allowed, in the order shown", () => {
+    const selected = [item("2022.txt"), item("2023.txt"), item("2024.txt")];
+    expect(pickableItems(selected, data, true)).toEqual(selected);
+  });
+
+  it("chooses nothing with several files when only one is allowed", () => {
+    expect(pickableItems([item("a.csv"), item("b.csv")], data, false)).toEqual([]);
+  });
+
+  it("chooses nothing when a folder or a file that does not serve is in the selection", () => {
+    expect(pickableItems([item("a.csv"), item("pasta", true)], data, true)).toEqual([]);
+    expect(pickableItems([item("a.csv"), item("leia.pdf")], data, true)).toEqual([]);
+  });
+
+  it("chooses nothing without a selection", () => {
+    expect(pickableItems([], data, true)).toEqual([]);
   });
 });

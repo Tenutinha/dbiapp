@@ -18,23 +18,35 @@ export interface ConnectorFile {
   engageable: boolean;
 }
 
+/** A file of the organization's storage: its folder (relative to the organization's) and its name. */
+export interface FilePick {
+  folder: string;
+  file: string;
+}
+
+/** Where one file of a wire is: suggested (by name) → checking → ok | diverge | failed (could not be read). */
+export type FileState = "suggested" | "checking" | "ok" | "diverge" | "failed";
+
+export interface LinkFile extends FilePick {
+  state: FileState;
+  check?: SchemaCheck;
+  /** Why the file could not be read. */
+  note?: string;
+}
+
 /**
- * One wire file → table. Lifecycle: suggested (by name) → checking → ok | diverge → engaging →
- * engaged | failed. An upload through the table's plug goes straight to engaging (file = the upload).
+ * The wire of one table: the files that feed it (one, or several that are joined) and where it is.
+ * Lifecycle: suggested (by name) → checking → ok | diverge | failed → engaging → engaged | failed.
+ * Until it is engaging, the phase follows the files (see `phaseOfFiles`).
  */
 export type LinkPhase = "suggested" | "checking" | "ok" | "diverge" | "engaging" | "engaged" | "failed";
 
 export interface Link {
   table: string;
-  file: string;
-  /** Folder of the file in the organization's storage (relative to its folder); absent for plug uploads. */
-  folder?: string;
-  /** The file came from the computer (plug upload), not from the storage folder. */
-  uploaded?: boolean;
+  files: LinkFile[];
   phase: LinkPhase;
-  check?: SchemaCheck;
   report?: TableReport;
-  /** Upload step ("Enviando", "Validando") or an error message. */
+  /** Step of the engage ("Convertendo 2 de 5…") or why it was refused. */
   note?: string;
 }
 

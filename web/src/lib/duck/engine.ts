@@ -7,6 +7,7 @@
  */
 import { mkdir } from "node:fs/promises";
 import { DuckDBInstance, type DuckDBConnection, type DuckDBValue } from "@duckdb/node-api";
+import { splitParts } from "../storage-parts";
 
 export type Row = Record<string, string | number | boolean | null>;
 
@@ -24,6 +25,15 @@ export function toDuckPath(p: string): string {
 /** Quote a path as a DuckDB string literal. Paths are server-generated, quoting is defence in depth. */
 export function quotePath(p: string): string {
   return `'${toDuckPath(p).replace(/'/g, "''")}'`;
+}
+
+/**
+ * `read_parquet(...)` over a table's file — or over all its parts, read together as one table when the
+ * table came from several files (see storage-parts.ts). Every part has the contract's columns and types.
+ */
+export function readParquet(file: string): string {
+  const parts = splitParts(file);
+  return parts.length === 1 ? `read_parquet(${quotePath(parts[0])})` : `read_parquet([${parts.map(quotePath).join(", ")}])`;
 }
 
 /** Memory cap for all queries in this process (DuckDB's default is 80% of RAM). Big sorts spill to disk. */

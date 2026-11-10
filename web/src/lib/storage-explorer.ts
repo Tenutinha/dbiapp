@@ -2,6 +2,8 @@
  * Pure rules of the organization's file explorer (safe in client and server code). Paths are always
  * relative to the organization's folder (orgs/<slug>/), "/"-separated, without leading/trailing "/".
  */
+import { namesIn } from "./ingest/joined-name";
+
 /** Folder that holds one sub-folder per client (orgs/<org>/clientes/<cliente>/). */
 export const CLIENTS_DIR = "clientes";
 
@@ -134,7 +136,7 @@ export function canMoveTo(item: { path: string; folder: boolean }, target: strin
   return null;
 }
 
-/** A dashboard that engaged a file (by its stored name) in one space. */
+/** A dashboard that engaged a file (by its stored name; several names when a table is fed by several files) in one space. */
 export interface FileUse {
   file: string;
   /** Client of the dashboard, or null for the organization's own dashboards. */
@@ -147,7 +149,7 @@ export interface FileUse {
 export function usageFor(uses: readonly FileUse[], folder: string, name: string): { dashboard: string; state: FileUse["state"] }[] {
   const client = clientSlugOf(folder);
   return uses
-    .filter((u) => u.file === name && u.clientSlug === client)
+    .filter((u) => u.clientSlug === client && namesIn(u.file).includes(name))
     .map((u) => ({ dashboard: u.dashboard, state: u.state }));
 }
 
@@ -197,4 +199,14 @@ export function decorate(entries: readonly ExplorerEntry[], folder: string, meta
     client: clientOf(e.folder ? e.path : folder),
     usedIn: e.folder || !meta ? [] : usageFor(meta.uses, folder, e.name),
   }));
+}
+
+/**
+ * What a selection chooses in pick mode: the selected items, when every one of them is a file that can be
+ * chosen — one at most unless several are allowed. A selection with a folder or a file that does not
+ * serve chooses nothing, so it is never connected by half.
+ */
+export function pickableItems<T extends { folder: boolean }>(selected: readonly T[], accept: (item: T) => boolean, multiple: boolean): T[] {
+  if (selected.length === 0 || (!multiple && selected.length > 1)) return [];
+  return selected.every((i) => !i.folder && accept(i)) ? [...selected] : [];
 }
