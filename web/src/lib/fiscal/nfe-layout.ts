@@ -31,7 +31,12 @@ export function columnName(header: string): string {
 
 type Spec = readonly [header: string, type?: ColumnType, description?: string];
 
-const REQUIRED: ReadonlySet<string> = new Set(["chNFe_xml", "EMIT_CNPJ", "PROD_VPROD", "PROD_ITEM", "EMISSÃO_DATA"]);
+/**
+ * What every row must bring: the note it belongs to and when it was issued. The rest can be empty in real
+ * extractions — a note issued by a person has a CPF and no EMIT_CNPJ, and some notes of third parties come
+ * with the note's data only, without the item fields (PROD_ITEM, PROD_VPROD).
+ */
+const REQUIRED: ReadonlySet<string> = new Set(["chNFe_xml", "EMISSÃO_DATA"]);
 
 const GROUPS: Readonly<Record<NfeGroup, readonly Spec[]>> = {
   nota: [
