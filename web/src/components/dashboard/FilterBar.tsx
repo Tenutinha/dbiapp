@@ -108,7 +108,8 @@ function FunnelIcon() {
  * The filters of a dashboard. On the page there is only a "Filtros" button and what is in use (chosen
  * filters and the items picked in the visuals, each removable); the button opens a side panel listing
  * every filter the dashboard offers. The panel does not block the page, so the visuals can be watched —
- * and clicked — while filtering. Once the button scrolls away, a floating one takes its place.
+ * and clicked — while filtering. Once the button scrolls away, a floating one follows the scroll at the
+ * same left edge.
  */
 export function FilterBar({ filters, cross = [] }: FilterBarProps) {
   const router = useRouter();
@@ -117,6 +118,7 @@ export function FilterBar({ filters, cross = [] }: FilterBarProps) {
   const [pending, start] = useTransition();
   const [open, setOpen] = useState(false);
   const [rowInView, setRowInView] = useState(true);
+  const [floatLeft, setFloatLeft] = useState(16);
   const row = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -131,9 +133,18 @@ export function FilterBar({ filters, cross = [] }: FilterBarProps) {
   useEffect(() => {
     const target = row.current;
     if (!target || typeof IntersectionObserver === "undefined") return;
-    const observer = new IntersectionObserver((entries) => setRowInView(entries.some((e) => e.isIntersecting)));
+    // The floating button sits at the left edge of the dashboard, right under where the fixed one was.
+    const align = (): void => setFloatLeft(Math.max(target.getBoundingClientRect().left, 8));
+    const observer = new IntersectionObserver((entries) => {
+      align();
+      setRowInView(entries.some((e) => e.isIntersecting));
+    });
     observer.observe(target);
-    return () => observer.disconnect();
+    window.addEventListener("resize", align);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", align);
+    };
   }, []);
 
   function go(next: URLSearchParams): void {
@@ -206,12 +217,16 @@ export function FilterBar({ filters, cross = [] }: FilterBarProps) {
         )}
       </div>
 
-      {!rowInView && !open && (
+      {!rowInView && (
         <button
           type="button"
-          onClick={() => setOpen(true)}
-          aria-label="Abrir filtros"
-          className="card fixed right-4 top-20 z-40 inline-flex items-center gap-2 rounded-full px-3.5 py-2 text-sm font-medium shadow-xl hover:border-brand"
+          onClick={() => setOpen((o) => !o)}
+          aria-label={open ? "Fechar filtros" : "Abrir filtros"}
+          aria-expanded={open}
+          style={{ left: floatLeft }}
+          className={`card fixed top-20 z-40 inline-flex items-center gap-2 rounded-full px-3.5 py-2 text-sm font-medium shadow-xl hover:border-brand ${
+            open || activeCount > 0 ? "!border-brand" : ""
+          }`}
         >
           <FunnelIcon />
           Filtros
