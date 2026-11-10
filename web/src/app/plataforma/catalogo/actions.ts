@@ -5,8 +5,6 @@ import { z } from "zod";
 import { AccessError, getCurrentUser, type CurrentUser } from "@/lib/auth";
 import {
   deleteUnusedTemplate,
-  DuplicateTemplateError,
-  insertTemplate,
   listCatalog,
   setStatus,
   TEMPLATE_STATUSES,
@@ -56,26 +54,6 @@ function failure(err: unknown, json?: string): TemplateFormState {
 function revalidateCatalog(id?: string): void {
   if (id) revalidatePath(`/plataforma/catalogo/${id}`);
   revalidatePath("/", "layout");
-}
-
-export async function registerTemplateAction(_prev: TemplateFormState, formData: FormData): Promise<TemplateFormState> {
-  let json = "";
-  try {
-    const user = await requirePlatformAdmin();
-    json = await readSubmittedJson(formData);
-    const parsed = parseTemplateJson(json);
-    if (!parsed.ok) return { ok: false, message: "O dashboard tem problemas:", errors: parsed.errors, json };
-    const status = statusSchema.parse(formData.get("status") ?? "draft");
-    await insertTemplate(parsed.template, status, user.id);
-    console.info(`[catalog] template registered: ${parsed.template.id} v${parsed.template.version} (${status})`);
-    revalidateCatalog(parsed.template.id);
-    return { ok: true, message: `Dashboard "${parsed.template.name}" cadastrado.` };
-  } catch (err) {
-    if (err instanceof DuplicateTemplateError) {
-      return { ok: false, message: `Já existe um dashboard com o id "${err.message}". Edite o existente pela vitrine.`, json };
-    }
-    return failure(err, json);
-  }
 }
 
 /** What the edit form needs to open an existing dashboard. */
