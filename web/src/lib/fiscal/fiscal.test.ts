@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { csvLine, toCsv } from "./csv";
 import { fiscalImporterFor, mergeByKey, readSpedFile } from "./importers";
 import { parseNfe } from "./nfe";
+import { columnName, NFE_COLUMNS } from "./nfe-layout";
 import { parseLine, readSped, spedDate, spedNumber, type Cell } from "./sped";
 import { factColumns, spedKindFor, SPED_KINDS, type SpedKind } from "./sped-kinds";
 import { asLatin1 as latin1, ECD, EFD_CONTRIB, EFD_ICMS, nfeXml as NFE } from "./test-fixtures";
@@ -120,11 +121,26 @@ describe("NF-e", () => {
     const t = parseNfe(NFE());
     expect(t.nfe_itens).toHaveLength(2);
     expect(t.nfe_itens[0]).toMatchObject({
-      chave: "1".repeat(44), n_item: "1", numero: "321", dt_emissao: "2025-02-14", tp_nf: "1", cnpj_emit: "11222333000181",
-      doc_dest: "12345678909", cfop: "6102", v_prod: "300.00", v_desc: "10.00", cst_icms: "00", v_icms: "34.80", v_pis: "4.79",
+      chnfe_xml: "1".repeat(44), chave_de_acesso2: `NFe${"1".repeat(44)}`, xml_versao: "4.00", prod_item: "1", nnf: "321", ide_nnf: "321", ide_mod: "55",
+      emissao_data: "2025-02-14", emissao_ano: "2025", emissao_mes: "fev", emissao_dia: "14", emissao_hora: "10:00", arquivo_competencia: "202502",
+      emit_cnpj: "11222333000181", emit_nome: "AUTO PEÇAS & CIA", dest_cnpj: "12345678909", dest_nome: "CONSUMIDOR",
+      prod_cfop: "6102", prod_qcom: "2.0000", prod_vprod: "300.00", prod_vdesc: "10.00",
+      imposto_icms_cst: "00", imposto_icms_vbc: "290.00", imposto_icms_picms: "12.00", imposto_icms_vicms: "34.80", prod_vicms: "34.80",
+      imposto_pis_cst: "01", imposto_pis_vpis: "4.79", imposto_cofins_vcofins: "22.04",
     });
-    expect(t.nfe_itens[1]).toMatchObject({ cst_icms: "500", v_icms: null });
-    expect(t.emitentes[0]).toEqual({ cnpj_emit: "11222333000181", nome: "AUTO PEÇAS & CIA", uf: "SP", municipio: "Sao Paulo" });
+    expect(t.nfe_itens[1]).toMatchObject({ prod_item: "2", imposto_icms_cst: "500", imposto_icms_vicms: null, imposto_pis_cst: null });
+    // What only the field extraction knows stays empty when the row comes from a single XML.
+    expect(t.nfe_itens[0]).toMatchObject({ registro: null, empresa: null, emitente: null, ncm_monofasico: null, contem_sped_icms: null });
+  });
+
+  it("gives every row the columns of the layout, in the order of the extraction file", () => {
+    const names = NFE_COLUMNS.map((c) => c.name);
+    expect(names).toHaveLength(106);
+    expect(new Set(names).size).toBe(106);
+    expect(names.slice(0, 3)).toEqual(["registro", "nome_arquivo_txt", "xml_versao"]);
+    expect(names[names.length - 1]).toBe("arquivo_competencia");
+    expect(columnName("EMISSÃO_MÊS_SAI")).toBe("emissao_mes_sai");
+    expect(Object.keys(parseNfe(NFE()).nfe_itens[0])).toEqual(names);
   });
 
   it("refuses rejected documents and events", () => {
