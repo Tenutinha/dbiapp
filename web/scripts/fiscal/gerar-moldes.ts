@@ -74,7 +74,10 @@ function rawSections(kind: SpedKind, opts: { skipFilters?: (reg: string) => stri
     }],
   }];
   const known = Object.keys(kind.layout);
-  for (const [block, name] of Object.entries(blocks)) {
+  // File order: block 0 first, the lettered ones, then 1 and 9 (object keys alone would put the digits first).
+  const rank = (b: string): number => (b === "0" ? 0 : b === "1" ? 2 : b === "9" ? 3 : 1);
+  const ordered = Object.entries(blocks).sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b));
+  for (const [block, name] of ordered) {
     const visuals: Json[] = known.filter((code) => code[0] === block).map((code) => {
       const rec = kind.layout[code];
       const isChild = rootBlocks.has(block) && !(code in kind.roots) && !/^.(001|010|990)$/.test(code);
@@ -489,12 +492,12 @@ function ecd(): Json {
     { id: "creditos", label: "Créditos", sql: sumWhen(i155, cre), format: "currency" },
     { id: "saldo_final", label: "Saldo final", sql: sumWhen(i155, fin), format: "currency" },
     { id: "ativo", label: "Ativo", sql: sumWhen(nat("01"), fin), format: "currency" },
-    { id: "passivo", label: "Passivo", sql: `-${sumWhen(nat("02"), fin)}`, format: "currency" },
-    { id: "patrimonio_liquido", label: "Patrimônio líquido", sql: `-${sumWhen(nat("03"), fin)}`, format: "currency" },
-    { id: "resultado_acumulado", label: "Resultado acumulado", sql: `-${sumWhen(nat("04"), fin)}`, format: "currency" },
+    { id: "passivo", label: "Passivo", sql: `0 - ${sumWhen(nat("02"), fin)}`, format: "currency" },
+    { id: "patrimonio_liquido", label: "Patrimônio líquido", sql: `0 - ${sumWhen(nat("03"), fin)}`, format: "currency" },
+    { id: "resultado_acumulado", label: "Resultado acumulado", sql: `0 - ${sumWhen(nat("04"), fin)}`, format: "currency" },
     { id: "resultado_mes", label: "Resultado do mês", sql: sumWhen(nat("04"), `${cre} - ${deb}`), format: "currency" },
     { id: "contas_movimentadas", label: "Contas movimentadas", sql: `COUNT(DISTINCT CASE WHEN ${i155} AND (${deb} <> 0 OR ${cre} <> 0) THEN ${F}.id_cta END)`, format: "integer" },
-    { id: "resultado_antes_encerramento", label: "Resultado antes do encerramento", sql: `-${sumWhen(i355, signed("I355", "VL_CTA", "IND_DC"))}`, format: "currency" },
+    { id: "resultado_antes_encerramento", label: "Resultado antes do encerramento", sql: `0 - ${sumWhen(i355, signed("I355", "VL_CTA", "IND_DC"))}`, format: "currency" },
     { id: "receitas_antes_encerramento", label: "Contas credoras (receitas)", sql: sumWhen(`${i355} AND ${col(k, "I355", "IND_DC")} = 'C'`, num(col(k, "I355", "VL_CTA"))), format: "currency" },
     { id: "despesas_antes_encerramento", label: "Contas devedoras (custos e despesas)", sql: sumWhen(`${i355} AND ${col(k, "I355", "IND_DC")} = 'D'`, num(col(k, "I355", "VL_CTA"))), format: "currency" },
     { id: "lancamentos", label: "Lançamentos", sql: countWhen(i200), format: "integer" },
@@ -558,7 +561,7 @@ function ecd(): Json {
       ],
     },
   ];
-  measures.push({ id: "saldo_credor", label: "Saldo", sql: `-${sumWhen(i155, fin)}`, format: "currency" });
+  measures.push({ id: "saldo_credor", label: "Saldo", sql: `0 - ${sumWhen(i155, fin)}`, format: "currency" });
   /** Records that carry a month of their own follow the month filter; the others always show. */
   const monthly = new Set(["I150", "I155", "I200", "I250", "I300", "I310", "I350", "I355", "C150", "C155"]);
   return build(k, {
