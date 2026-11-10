@@ -4,7 +4,6 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import type { TableReport } from "@/lib/ingest/ingest";
 import type { SchemaCheck } from "@/lib/ingest/schema-check";
-import { sendFile } from "../upload-client";
 import type { ConnectorFile, Envelope, Link } from "./types";
 
 interface FolderData {
@@ -32,10 +31,12 @@ function put(links: Link[], link: Link): Link[] {
   return [...links.filter((l) => l.table !== link.table), link];
 }
 
-/** State and server calls of the data connector: folder listing, wires, checks, engage and plug uploads. */
-export function useConnector(instanceId: string, initialFolder: string) {
+/**
+ * State and server calls of the data connector: name-based suggestions from the space's folder, wires
+ * (each file with its own folder, chosen in the file explorer), checks, engage and plug uploads.
+ */
+export function useConnector(instanceId: string, folder: string) {
   const router = useRouter();
-  const [folder, setFolder] = useState(initialFolder);
   const [data, setData] = useState<FolderData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -61,7 +62,7 @@ export function useConnector(instanceId: string, initialFolder: string) {
         ...prev.filter((l) => l.phase === "engaged" || l.uploaded),
         ...res.data!.suggestions
           .filter((s) => !prev.some((l) => l.table === s.table && (l.phase === "engaged" || l.uploaded)))
-          .map((s): Link => ({ table: s.table, file: s.file, phase: "suggested" })),
+          .map((s): Link => ({ table: s.table, folder, file: s.file, phase: "suggested" })),
       ]);
     });
     return () => {
@@ -69,19 +70,19 @@ export function useConnector(instanceId: string, initialFolder: string) {
     };
   }, [instanceId, folder, version]);
 
-  /** Lists the open folder again (after the Upload step stored files in it). */
+  /** Lists the space's folder again (fresh suggestions after files were added). */
   const reload = useCallback(() => setVersion((v) => v + 1), []);
 
   /** Wires a storage file to a table and checks its columns right away. */
-  const connect = useCallback(async (file: string, table: string) => {
-    setLinks((prev) => put(prev, { table, file, phase: "checking" }));
-    const res = await post<SchemaCheck>(instanceId, { action: "check", folder, file, table });
+  const connect = useCallback(async (from: string, file: string, table: string) => {
+    setLinks((prev) => put(prev, { table, folder: from, file, phase: "checking" }));
+    const res = await post<SchemaCheck>(instanceId, { action: "check", folder: from, file, table });
     setLinks((prev) => {
-      if (!prev.some((l) => l.table === table && l.file === file)) return prev; // disconnected meanwhile
-      if (!res.success || !res.data) return put(prev, { table, file, phase: "failed", note: res.error ?? "Não foi possível ler o arquivo." });
-      return put(prev, { table, file, phase: res.data.ok ? "ok" : "diverge", check: res.data });
+      if (!prev.some((l) => l.table === table && l.file === file && l.folder === from)) return prev; // disconnected meanwhile
+      if (!res.success || !res.data) return put(prev, { table, folder: from, file, phase: "failed", note: res.error ?? "Não foi possível ler o arquivo." });
+      return put(prev, { table, folder: from, file, phase: res.data.ok ? "ok" : "diverge", check: res.data });
     });
-  }, [instanceId, folder]);
+  }, [instanceId]);
 
   const disconnect = useCallback((table: string) => {
     setLinks((prev) => prev.filter((l) => l.table !== table));
@@ -101,21 +102,8 @@ export function useConnector(instanceId: string, initialFolder: string) {
   /** Converts the wired file into the dashboard's draft (same validation as an upload). */
   const engage = useCallback(async (link: Link) => {
     setLinks((prev) => put(prev, { ...link, phase: "engaging", note: undefined }));
-    finish(link, await post<TableReport>(instanceId, { action: "engage", folder, file: link.file, table: link.table }));
+    finish(link, await post<TableReport>(instanceId, { action: "engage", folder: link.folder ?? folder, file: link.file, table: link.table }));
   }, [instanceId, folder, finish]);
 
-  /** The table's plug: a file from the computer goes straight in. */
-  const upload = useCallback(async (table: string, file: File) => {
-    const link: Link = { table, file: file.name, uploaded: true, phase: "engaging", note: "Enviando" };
-    setLinks((prev) => put(prev, link));
-    let res: Envelope<TableReport>;
-    try {
-      res = await sendFile(instanceId, table, file, (step) => setLinks((prev) => put(prev, { ...link, note: step })));
-    } catch {
-      res = { success: false, error: "Não foi possível enviar o arquivo. Verifique a conexão." };
-    }
-    finish(link, res);
-  }, [instanceId, finish]);
-
-  return { folder, setFolder, data, loading, error, links, connect, disconnect, engage, upload, reload };
+  return { folder, data, loading, error, links, connect, disconnect, engage, reload };
 }

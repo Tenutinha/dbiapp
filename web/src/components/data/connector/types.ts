@@ -27,6 +27,8 @@ export type LinkPhase = "suggested" | "checking" | "ok" | "diverge" | "engaging"
 export interface Link {
   table: string;
   file: string;
+  /** Folder of the file in the organization's storage (relative to its folder); absent for plug uploads. */
+  folder?: string;
   /** The file came from the computer (plug upload), not from the storage folder. */
   uploaded?: boolean;
   phase: LinkPhase;

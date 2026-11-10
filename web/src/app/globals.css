@@ -216,6 +216,20 @@ body {
 .dbi-pop { animation: dbi-pop 0.7s ease-out both; }
 .dbi-shake { animation: dbi-shake 0.35s ease-in-out 2; }
 .dbi-confetti { animation: dbi-confetti 1.1s cubic-bezier(0.2, 0.7, 0.3, 1) forwards; }
+
+/* Top bar while a page loads (NavigationProgress): grows fast, then creeps, never quite reaching the end. */
+@keyframes dbi-nav-progress {
+  0% { width: 0; }
+  20% { width: 45%; }
+  60% { width: 75%; }
+  100% { width: 92%; }
+}
+.dbi-nav-progress { width: 0; animation: dbi-nav-progress 8s cubic-bezier(0.1, 0.7, 0.2, 1) forwards; box-shadow: 0 0 10px var(--color-brand); }
+
+/* Small spinner (loading states inside buttons and rows). */
+@keyframes dbi-spin { to { transform: rotate(360deg); } }
+.dbi-spin { animation: dbi-spin 0.7s linear infinite; }
+
 @media (prefers-reduced-motion: reduce) {
   .dbi-wire-flow, .dbi-plug-in, .dbi-plug-wiggle, .dbi-pop, .dbi-shake, .dbi-confetti { animation: none; }
 }

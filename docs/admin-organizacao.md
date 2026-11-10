@@ -45,27 +45,68 @@ o que vai para aquele espaço:
 
 Esc, × ou clique fora fecham. Depois de adicionar, o diálogo fecha e o dashboard aparece no bloco.
 
+## Arquivos da organização (explorador)
+
+Tudo o que a organização guarda no armazenamento (`orgs/<org>/…`) fica num **explorador no estilo do Windows**,
+num modal com endereço próprio (`?arquivos=<pasta>`). Abre pelo botão **📁 Arquivos** no cabeçalho da coluna
+"3 · Dados" ou pelo **ícone de pasta** ao lado da engrenagem de cada espaço (já na pasta do cliente,
+`clientes/<cliente>`). Só a equipe que gerencia dados (admins e editores de dados) acessa.
+
+- **Árvore à esquerda** (clientes pelo nome) e trilha clicável no topo, com ← → ↑ e busca na pasta.
+- **Detalhes** (Nome, Cliente, Tipo, Tamanho, Modificado, **Usado em**) ou **ícones grandes**; colunas ordenáveis.
+  "Usado em" mostra os dashboards do mesmo espaço que engataram um arquivo com esse nome (verde = publicado,
+  laranja = rascunho).
+- **Seleção** como no Windows (clique, Ctrl+clique, Shift+clique, Ctrl+A) e **menu do botão direito**: abrir,
+  renomear (F2), mover para…, copiar caminho, excluir (Del, com confirmação).
+- **Mover** arrastando itens para uma pasta da lista ou da árvore. A raiz, `clientes/` e a pasta de cada
+  cliente não podem ser renomeadas, movidas nem excluídas aqui (a pasta do cliente acompanha o endereço dele).
+- **Enviar**: soltar arquivos **ou pastas inteiras** em qualquer ponto da janela (a estrutura de pastas é
+  recriada), ou "Enviar arquivos" / "Enviar pasta". Uma **fila no canto** mostra o progresso e a velocidade de
+  cada arquivo, envia 3 por vez, permite cancelar e tentar de novo. No bucket, o navegador envia direto com URL
+  assinada — por isso a origem precisa estar no **CORS do bucket** (hoje: dbi.app.br, www, localhost:3000/3014/3020).
+- Nomes nunca são sobrescritos: um arquivo com nome já usado vira `nome-2.ext`.
+- **Rapidez:** "Arquivos" abre no navegador, sem pedir a página de novo ao servidor. Cada pasta vista fica em cache
+  (aparece na hora e se atualiza por trás), passar o mouse numa pasta já a carrega, e clientes e "Usado em" são
+  buscados uma vez por organização (`action: meta`). As pastas da plataforma (`datasets`, `uploads`, `branding`)
+  não aparecem nem podem ser alteradas.
+- **Envios sempre visíveis:** a fila fica fixa no canto da tela, acima de qualquer modal, e continua com o
+  explorador fechado; sair da página com envios em andamento pede confirmação.
+- **Carregando:** qualquer link que vá ao servidor mostra uma barra no topo e o cursor de espera (`NavigationProgress`).
+
+### Inteligência nos arquivos (layout, situação e "Organizar pasta")
+
+Cada arquivo da pasta aberta é **analisado automaticamente** (lendo só o começo dele) e o resultado fica guardado
+(`storage_file_analysis`, migração 013); só é refeito quando o arquivo muda (tamanho ou data).
+
+- **Layout**: SPED reconhecido pelo registro 0000 ("EFD Contribuições · CNPJ · 07/2026", também EFD ICMS/IPI e ECD),
+  NF-e pelo XML, CSV/Parquet pelo cabeçalho ("CSV · 19 colunas"), documentos (PDF, Excel, ZIP, PBIX).
+- **Situação**, conferida contra os dashboards **do espaço do arquivo** (pasta do cliente → dashboards dele):
+  - **Pronto** — CSV/Parquet com todas as colunas obrigatórias de uma tabela ("Pronto para EFD › itens");
+  - **Precisa de tratamento** — fiscais brutos ("Montar tabelas em …") e CSV que não batem (mostra a tabela mais
+    próxima e as colunas que faltam); fiscais fora de `fiscal/<molde>/<CNPJ>/<período>` ganham "fora do padrão";
+  - **Não reconhecido**, **Documento** e **Conferido no engate** (Parquet acima de 50 MB, que não é baixado só para análise).
+- **Filtro** na barra: todos, prontos, precisam de tratamento, fora da pasta padrão, não reconhecidos.
+- **Organizar pasta**: prévia "arquivo → destino" dos fiscais soltos da pasta e subpastas (com "substitui o existente"
+  quando o mesmo documento já está arquivado); só move o que for confirmado. Usa a mesma regra do "Montar tabelas"
+  (`fileFiscal` em `web/src/lib/services/fiscal.ts`). CSV, Parquet e documentos nunca são movidos.
+- No **Escolher arquivo** do engate, os arquivos prontos para aquela tabela aparecem primeiro, destacados.
+
 ## Engate dos dados (dentro de "Gerenciar dados")
 
-O modal de dados mostra um **mapa de conexões** no estilo de um diagrama de processo:
+O modal de dados mostra **o que o dashboard precisa** (um cartão por tabela do contrato) e, ligado à tabela
+fato por um fio, o **filtro dos dados**. Os arquivos ficam no explorador acima; o engate só os escolhe.
 
-- **À esquerda, os arquivos** de uma pasta do armazenamento da organização (`.parquet`, `.csv`). Abre na
-  pasta preparada com o nome do dashboard (ex.: `preparado/presidente`) ou na primeira de `preparado/`;
-  o caminho e as subpastas no topo permitem navegar.
-- **À direita, as tabelas** que o dashboard precisa (fatos e dimensões), cada uma com uma **tomada**.
-- **Conectar**: arraste a bolinha de um arquivo até uma tabela, ou clique no arquivo e depois na tabela.
-  Arquivos com o nome de uma tabela já aparecem como **sugestão** (fio tracejado cinza); "Verificar N
-  sugestões" confere todas.
+- **Escolher arquivo**: abre o explorador em modo seleção, já na pasta do espaço. Só `.parquet`, `.csv` e
+  `.txt` podem ser escolhidos (os demais aparecem apagados); dá para enviar e organizar dali mesmo. O cartão
+  mostra o caminho do arquivo conectado e permite **Trocar arquivo**.
+- **Do computador** (ou soltar o arquivo sobre o cartão): envia direto para a tabela, sem passar pelo explorador.
+- Arquivos da pasta do espaço com o nome de uma tabela aparecem como **sugestão**; "Verificar N sugestões"
+  confere todas.
 - **Conferência antes de engatar**: o servidor lê só as colunas do arquivo (nada é gravado) e compara
-  com o contrato. Fio **verde** = tudo certo ("✓ 6/6 colunas batem", com aviso de colunas que serão
-  convertidas). Fio **vermelho** = divergência (coluna obrigatória faltando, cabeçalho duplicado…): o
-  cartão treme e a comparação coluna a coluna abre sozinha (✓ ok, ↻ será convertida, ✕ não encontrada,
-  – opcional ausente; colunas sobrando são listadas).
+  com o contrato ("✓ 6/6 colunas batem", com aviso de colunas que serão convertidas). Divergência (coluna
+  obrigatória faltando, cabeçalho duplicado…): o cartão treme e a comparação coluna a coluna abre sozinha.
 - **⚡ Engatar** (ou "Engatar N prontas"): converte o arquivo para o rascunho do dashboard, com a mesma
-  validação de um upload. O fio fica animado enquanto engata, a tomada encaixa e soltam **confetes** com
-  "🎉 Engatado! N linhas". Depois é só **Publicar dados**.
-- **Tomada = upload**: clicar na tomada de uma tabela abre o seletor de arquivos do computador e envia
-  direto para ela, com a mesma animação.
+  validação de um upload; a tomada encaixa e soltam **confetes**. Depois é só **Publicar dados**.
 
 ## Filtro dos dados (tabela fato)
 
@@ -94,6 +135,19 @@ vê "sem filtro" e salvar avisa que falta a migração.
 - Cada dashboard de um bloco é uma linha em `dashboard_instances` daquele espaço, com seus próprios arquivos e versões. O mesmo dashboard do catálogo em dois clientes são duas cópias, cada uma com seus dados.
 - O × de um dashboard **arquiva** a cópia (`archived_at`): ela some da visualização, mas os dados ficam. Adicionar de novo o mesmo dashboard ao mesmo espaço traz os dados de volta.
 
+## Acesso por link (coluna Acessos)
+
+Na última linha de cada espaço, abaixo de "Gerenciar usuários", o bloco **🔗 Acesso por link** libera o espaço
+para **qualquer pessoa com o link**, sem conta: `dbi.app.br/l/<token>` abre a tela do espaço como um leitor
+(tema, barra lateral com o sumário, dashboards **publicados** e filtros), sem área de dados, administração,
+outros espaços nem menu do usuário.
+
+- **Liberar link**: validade de 1, 7 ou 30 dias (padrão) ou sem expiração. Um link ativo por espaço: liberar de novo
+  troca o link (o anterior para de abrir). **Copiar** e **Revogar** (com confirmação) ficam no mesmo bloco.
+- Só admins da organização; a ação confere o espaço no servidor. Link revogado, expirado ou desconhecido → 404.
+- Tabela `space_share_links` (migração **014**). Sem ela, a coluna avisa que a migração falta e nenhum link abre.
+- Os links por dashboard (`/s/<token>`, página "Compartilhar" de cada dashboard) continuam existindo.
+
 ## Regras de acesso (o que a coluna Acessos conta)
 
 O acesso é dado **por espaço**, não por dashboard — quem entra num espaço vê todos os dashboards publicados dele:
@@ -119,7 +173,10 @@ As regras vivem em `web/src/lib/permissions.ts` (veja também `docs/arquitetura.
 | Modal de dados (abre por `?dados=<id>`) | `web/src/components/admin/DataModal.tsx` |
 | Modal de tema (abre por `?tema=<org \| cliente>`) | `web/src/components/admin/ThemeModal.tsx` |
 | Modal "Organizar sumário" (seções e ordem dos dashboards na barra lateral; abre por `?sumario=<org \| cliente>`, link na coluna Dashboard de cada espaço) | `web/src/components/admin/SummaryModal.tsx`, `SummaryEditorPanel.tsx` (reusa `workspace/SidebarEditor.tsx`) |
-| Engate dos dados (mapa de conexões, animações, tomada de upload) | `web/src/components/data/connector/` |
+| Explorador de arquivos (árvore, detalhes/ícones, seleção, mover, fila de envio) | `web/src/components/storage/`; modal `web/src/components/admin/FilesModal.tsx` |
+| Regras puras do explorador (tipo, cliente pela pasta, nomes, destinos protegidos; testadas) | `web/src/lib/storage-explorer.ts` + teste |
+| API e serviço do explorador (listar, enviar, nova pasta, renomear, mover, excluir; testado) | `web/src/app/api/orgs/[org]/storage/` → `web/src/lib/services/org-storage.ts` + teste |
+| Engate dos dados (cartões das tabelas, escolher arquivo no explorador, animações) | `web/src/components/data/connector/` |
 | Conferência de colunas arquivo × contrato (pura, testada) | `web/src/lib/ingest/schema-check.ts` + teste |
 | API do engate (listar pasta, conferir, engatar) | `web/src/app/api/instances/[id]/connector/route.ts` → `web/src/lib/services/data-connector.ts` |
 | Gerenciador de dados (publicar + engate + filtro) — usado no modal e na página `/dados` | `web/src/components/data/DataManager.tsx` |
@@ -145,6 +202,10 @@ em etapas, cada uma conferida no servidor com dados reais (porta 3020):
 6. Indicador **Fatos x/y · Dimensões x/y** por dashboard; avatares na coluna de acessos.
 7. **Filtro dos dados** da tabela fato, como terceira coluna do mapa de engate.
 8. **Fundo do dashboard** no tema de cada espaço; botão claro/escuro da plataforma.
+
+**2026-11-10 — arquivos num explorador próprio.** Envio e armazenamento saíram do engate para o modal
+"Arquivos" (estilo Windows, com fila de envio, organizar e "Usado em"); o engate ficou com as tabelas e o
+filtro, escolhendo cada arquivo no explorador.
 9. Migrações **010** (filtro) e **011** (fundo) aplicadas no Supabase de produção.
 
 Próxima etapa: melhorar a **criação dos dashboards** (cadastro de modelos no catálogo).

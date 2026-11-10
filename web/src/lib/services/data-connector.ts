@@ -4,10 +4,10 @@ import type { InstanceAccess } from "../access";
 import { describeSource, type TableReport } from "../ingest/ingest";
 import { checkSchema, type SchemaCheck } from "../ingest/schema-check";
 import { storage, StorageKeyError } from "../storage";
-import { browsePrefix, type BrowseEntryFile } from "../storage-browse";
-import { STORABLE_EXTENSIONS, storableFileName } from "../storage-keys";
+import type { BrowseEntryFile } from "../storage-browse";
 import type { TemplateTable } from "../templates/schema";
 import { checkSize, detectFormat, ingestIntoDraft, requireTemplate, UserFacingError } from "./datasets";
+import { planUpload, storeUpload, type FolderUploadPlan } from "./org-storage";
 import { matchFolderFiles } from "./storage-import-match";
 
 /**
@@ -102,42 +102,15 @@ export async function checkConnection(
 
 // ---------- storing files in the folder (kept in the bucket; engaging is a separate step) ----------
 
-export type FolderUploadPlan =
-  | { mode: "direct"; name: string }
-  | { mode: "signed"; name: string; signedUrl: string };
+export type { FolderUploadPlan };
 
-/** A free name in the folder: "notas.xml", then "notas-2.xml", "notas-3.xml"… (stored files are never overwritten). */
-function freeName(taken: ReadonlySet<string>, name: string): string {
-  if (!taken.has(name)) return name;
-  const dot = name.lastIndexOf(".");
-  for (let i = 2; i < 10_000; i += 1) {
-    const candidate = `${name.slice(0, dot)}-${i}${name.slice(dot)}`;
-    if (!taken.has(candidate)) return candidate;
-  }
-  throw new UserFacingError("Já existem arquivos demais com esse nome nesta pasta.");
-}
-
-/** Key for a new file in the folder, after validating its name, size and the folder itself. */
-async function newFileKey(access: InstanceAccess, folder: string, fileName: string, size: number): Promise<{ key: string; name: string }> {
-  checkSize(size);
-  const safe = storableFileName(fileName);
-  if (!safe) throw new UserFacingError(`Tipo de arquivo não aceito. Envie ${STORABLE_EXTENSIONS.map((e) => `.${e}`).join(", ")}.`);
-  const list = await listing(access, folder);
-  const name = freeName(new Set(list.files.map((f) => f.name)), safe);
-  return { key: `${browsePrefix(access.org.slug, folder)}${name}`, name };
-}
-
-export async function planFolderUpload(access: InstanceAccess, folder: string, fileName: string, size: number): Promise<FolderUploadPlan> {
-  const { key, name } = await newFileKey(access, folder, fileName, size);
-  const target = await storage.createUploadTarget(key);
-  return target ? { mode: "signed", name, signedUrl: target.signedUrl } : { mode: "direct", name };
+export function planFolderUpload(access: InstanceAccess, folder: string, fileName: string, size: number): Promise<FolderUploadPlan> {
+  return planUpload(access.org, folder, fileName, size);
 }
 
 /** Local storage: the file comes in the request body. */
-export async function storeFolderFile(access: InstanceAccess, folder: string, file: File): Promise<{ name: string }> {
-  const { key, name } = await newFileKey(access, folder, file.name, file.size);
-  await storage.putBytes(key, new Uint8Array(await file.arrayBuffer()), file.type || "application/octet-stream");
-  return { name };
+export function storeFolderFile(access: InstanceAccess, folder: string, file: File): Promise<{ name: string }> {
+  return storeUpload(access.org, folder, file);
 }
 
 /** Engages one file into one table of the draft, with the same validation as an upload. */

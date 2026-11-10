@@ -129,3 +129,40 @@ A barra lateral de `/<org>` e `/<org>/<cliente>` (a tela onde os dashboards abre
   "Organizar sumário →" na coluna Dashboard de cada espaço, abrindo um modal central (`?sumario=<org | cliente>`).
 
 Código: `web/src/components/workspace/SidebarShell.tsx`, `SpaceSwitcher.tsx` e `Workspace.tsx`.
+
+## ✅ Decisão (2026-11-10): arquivos da organização num explorador, separados do engate
+
+O armazenamento de cada organização (`orgs/<org>/…`, com `clientes/<cliente>/` por cliente) ganhou um
+**explorador no estilo do Windows** na admin (`?arquivos=<pasta>`): árvore, detalhes ou ícones, seleção e
+menu de contexto, mover arrastando, renomear, excluir, e envio de arquivos e pastas inteiras com fila. Mostra
+o **cliente** de cada arquivo (pela pasta) e em quais **dashboards** ele foi usado (pelo nome gravado em
+`dataset_files.original_name`).
+
+- O **engate** deixou de ter upload e lista de pastas: ficou com as tabelas do contrato e o filtro da fato,
+  e cada tabela escolhe o arquivo no explorador (modo seleção) ou recebe um direto do computador.
+- API por organização: `/api/orgs/<org>/storage` (permissão `manageData` no escopo da organização); os
+  caminhos passam sempre por `browsePrefix` e os nomes são buscados na listagem do servidor.
+- Mover e renomear são cópia + exclusão (GCS não tem rename); a raiz, `clientes/` e a pasta de cada cliente
+  são protegidas. Envio direto do navegador ao bucket exige a origem no CORS do bucket.
+- Detalhes de uso: [admin-organizacao.md](admin-organizacao.md).
+
+## ✅ Decisão (2026-11-10): análise automática dos arquivos e "Organizar pasta"
+
+O explorador identifica o **layout** de cada arquivo (SPED pelo registro 0000, NF-e pelo XML, CSV/Parquet pelo
+cabeçalho) e diz se está **pronto para engatar** num dashboard do espaço ou se **precisa de tratamento**.
+
+- Os **fatos** lidos do arquivo ficam em `storage_file_analysis` (migração **013**); o **veredito** é calculado a cada
+  visualização contra os dashboards atuais do espaço, para acompanhar mudanças. Sem a migração, tudo funciona,
+  só sem memória (erro 42P01 tolerado).
+- "Organizar pasta" move apenas fiscais reconhecidos para `<espaço>/fiscal/<molde>/<CNPJ>/<período>/`, com prévia e
+  confirmação, pela mesma função do "Montar tabelas" (`fileFiscal`).
+- Código: `web/src/lib/storage-analysis.ts` (regras puras), `web/src/lib/services/file-analysis.ts`,
+  `web/src/lib/data/file-analysis.ts`, `web/src/components/storage/` (StatusBadge, OrganizeDialog).
+
+## ✅ Decisão (2026-11-10): acesso por link a um espaço inteiro
+
+Além do link de convidado por dashboard (`/s/<token>`), cada espaço (a organização ou um cliente) pode ter **um link
+público** (`/l/<token>`, tabela `space_share_links`, migração **014**), gerido na coluna Acessos da admin. Quem abre
+vê os dashboards publicados daquele espaço, somente leitura, com a mesma tela do leitor; o dashboard aberto vai em
+`?painel=<id>` e só pode ser um do sumário publicado do espaço. Token de 192 bits, validade opcional, revogável; o
+middleware de sessão ignora `/l/` como já ignorava `/s/`.

@@ -37,9 +37,10 @@ export function supabaseBucket(url: string, serviceRoleKey: string, bucketName: 
       // Supabase Storage has no ranged read in this client: fetch the object and keep its start.
       return (await this.download(key)).subarray(0, bytes);
     },
-    async remove(keys) {
+    async remove(keys, strict) {
       const { error } = await bucket().remove([...keys]);
       if (error) console.error("[storage] remove failed", error.message);
+      if (error && strict) throw new Error(`storage remove failed: ${error.message}`);
     },
     async signedUploadUrl(key) {
       const { data, error } = await bucket().createSignedUploadUrl(key);

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { FilesLink } from "./FilesModal";
 import {
   ORG_SCOPE,
   type SpaceDashboard,
@@ -16,6 +17,7 @@ import {
   CatalogPickerProvider,
 } from "./catalog-picker/CatalogPicker";
 import { ManageUsersModal, NewClientModal } from "./SetupTableControls";
+import { SpaceLinkControl, type SpaceLinkView } from "./SpaceLinkControl";
 
 export interface AdminSetupTableProps {
   org: { slug: string; name: string };
@@ -23,6 +25,8 @@ export interface AdminSetupTableProps {
   people: OrgPerson[];
   /** Published catalog dashboards, browsed in the "+ Adicionar dashboard" picker. */
   catalog: PickerItem[];
+  /** Each space's public link in use (by scope: "org" or the client's id). */
+  spaceLinks: Readonly<Record<string, SpaceLinkView | null>>;
 }
 
 const TH = "px-4 py-3 text-left text-xs font-medium text-muted";
@@ -80,6 +84,14 @@ function TableMeter({
   );
 }
 
+function FolderIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+    </svg>
+  );
+}
+
 function GearIcon() {
   return (
     <svg
@@ -114,14 +126,9 @@ function SpaceCell({
   // Opens the theme form of this space in a centered modal over the table (?tema=org | <client slug>).
   const themeHref = `/${org.slug}/admin?tema=${group.slug ?? "org"}`;
   const spaceName = isOrg ? org.name : group.name;
+  const iconLink = "grid size-6 shrink-0 place-items-center rounded-md text-muted hover:bg-text/5 hover:text-text";
   const themeGear = (
-    <Link
-      href={themeHref}
-      scroll={false}
-      title={`Editar o tema de ${spaceName}`}
-      aria-label={`Editar o tema de ${spaceName}`}
-      className="grid size-6 shrink-0 place-items-center rounded-md text-muted hover:bg-text/5 hover:text-text"
-    >
+    <Link href={themeHref} scroll={false} title={`Editar o tema de ${spaceName}`} aria-label={`Editar o tema de ${spaceName}`} className={iconLink}>
       <GearIcon />
     </Link>
   );
@@ -229,10 +236,12 @@ function SpaceBlock({
   org,
   group,
   people,
+  link,
 }: {
   org: AdminSetupTableProps["org"];
   group: SpaceGroup;
   people: OrgPerson[];
+  link: SpaceLinkView | null;
 }) {
   const n = group.dashboards.length;
   const spaceName = group.scope === ORG_SCOPE ? org.name : group.name;
@@ -271,19 +280,30 @@ function SpaceBlock({
           </div>
         </td>
         <td className={TD}>
-          {firstDashboard ? (
-            <Link
-              href={`/${org.slug}/admin?dados=${firstDashboard.instanceId}`}
-              scroll={false}
-              className={SUBTLE_LINK}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+            {firstDashboard ? (
+              <Link
+                href={`/${org.slug}/admin?dados=${firstDashboard.instanceId}`}
+                scroll={false}
+                className={SUBTLE_LINK}
+              >
+                Gerenciar dados →
+              </Link>
+            ) : (
+              <span className="text-xs text-muted">
+                Escolha um dashboard para subir os dados.
+              </span>
+            )}
+            {/* The space's own folder in the file explorer (opens at once, in the browser). */}
+            <FilesLink
+              orgSlug={org.slug}
+              folder={group.scope === ORG_SCOPE ? "" : `clientes/${group.slug}`}
+              title={`Arquivos de ${group.scope === ORG_SCOPE ? org.name : group.name}`}
+              className={`flex items-center gap-1 ${SUBTLE_LINK}`}
             >
-              Gerenciar dados →
-            </Link>
-          ) : (
-            <span className="text-xs text-muted">
-              Escolha um dashboard para subir os dados.
-            </span>
-          )}
+              <FolderIcon /> Arquivos
+            </FilesLink>
+          </div>
         </td>
         <td className={`${TD} border-l border-line/60`}>
           {n === 0 && (
@@ -299,6 +319,13 @@ function SpaceBlock({
               people={people}
             />
           </ManageUsersModal>
+          <SpaceLinkControl
+            orgSlug={org.slug}
+            clientId={group.scope === ORG_SCOPE ? "" : group.scope}
+            spaceName={spaceName}
+            link={link}
+            published={group.dashboards.filter((d) => d.published).length}
+          />
         </td>
       </tr>
     </tbody>
@@ -314,6 +341,7 @@ export function AdminSetupTable({
   groups,
   people,
   catalog,
+  spaceLinks,
 }: AdminSetupTableProps) {
   return (
     <CatalogPickerProvider orgSlug={org.slug} items={catalog}>
@@ -327,12 +355,23 @@ export function AdminSetupTable({
             <tr>
               <th className={`${TH} ${STICKY_TOP} w-[24%]`}>1 · Cliente / organização</th>
               <th className={`${TH} ${STICKY_TOP} w-[26%]`}>2 · Dashboard</th>
-              <th className={`${TH} ${STICKY_TOP} w-[26%]`}>3 · Dados</th>
+              <th className={`${TH} ${STICKY_TOP} w-[26%]`}>
+                <span className="flex items-center justify-between gap-2">
+                  3 · Dados
+                  <FilesLink
+                    orgSlug={org.slug}
+                    folder=""
+                    className="flex items-center gap-1.5 rounded-md border border-line px-2 py-0.5 text-xs font-medium normal-case tracking-normal text-text hover:border-brand hover:text-brand-2"
+                  >
+                    <FolderIcon /> Arquivos
+                  </FilesLink>
+                </span>
+              </th>
               <th className={`${TH} ${STICKY_TOP} w-[24%]`}>4 · Acessos</th>
             </tr>
           </thead>
           {groups.map((g) => (
-            <SpaceBlock key={g.scope} org={org} group={g} people={people} />
+            <SpaceBlock key={g.scope} org={org} group={g} people={people} link={spaceLinks[g.scope] ?? null} />
           ))}
           <tbody>
             <tr>

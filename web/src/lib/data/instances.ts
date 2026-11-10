@@ -107,6 +107,17 @@ export async function listFilesInUse(orgId: string): Promise<FileInUse[]> {
     ORDER BY c.name NULLS FIRST, i.position, i.name, v.status, f.table_name`;
 }
 
+/** Every file name engaged by the organization's dashboards (active or draft), with the space it belongs to — the explorer's "Usado em". */
+export async function listFileUses(orgId: string): Promise<{ file: string; clientSlug: string | null; dashboard: string; state: "active" | "draft" }[]> {
+  return sql<{ file: string; clientSlug: string | null; dashboard: string; state: "active" | "draft" }[]>`
+    SELECT DISTINCT f.original_name AS file, c.slug AS "clientSlug", i.name AS dashboard, v.status::text AS state
+    FROM dashboard_instances i
+    JOIN dataset_versions v ON v.instance_id = i.id AND v.status IN ('active', 'draft')
+    JOIN dataset_files f ON f.version_id = v.id
+    LEFT JOIN org_clients c ON c.id = i.client_id
+    WHERE i.organization_id = ${orgId} AND i.archived_at IS NULL`;
+}
+
 /**
  * The dashboard's data filter as stored (validated later against the fact table). Read through
  * to_jsonb so it also works on a database where migration 010 has not run yet (then: no filter).

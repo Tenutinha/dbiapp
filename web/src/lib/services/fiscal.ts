@@ -136,17 +136,22 @@ export interface FiscalPeriod {
 /** Every stored file, walking company → period folders. */
 async function walk(access: InstanceAccess): Promise<{ period: Omit<FiscalPeriod, "files" | "sizeBytes">; keys: { key: string; name: string; sizeBytes: number }[] }[]> {
   const base = relativeToOrg(access.org.slug, folderOf(access)).replace(/\/$/, "");
+  // Companies, then their periods, then each period's files: each level in parallel (one listing at a
+  // time took ~0.2 s per folder, seconds for a year of periods).
   const companies = await storage.listOrgFolder(access.org.slug, base);
-  const out = [];
-  for (const cnpj of companies.folders) {
-    const periods = await storage.listOrgFolder(access.org.slug, `${base}/${cnpj}`);
-    for (const periodo of periods.folders) {
-      const files = await storage.listOrgFolder(access.org.slug, `${base}/${cnpj}/${periodo}`, MAX_FILES_PER_FOLDER);
-      if (files.files.length === 0) continue;
-      out.push({ period: { cnpj, periodo }, keys: files.files.map((f) => ({ key: f.key, name: f.name, sizeBytes: f.sizeBytes })) });
-    }
-  }
-  return out;
+  const periods = (await Promise.all(
+    companies.folders.map(async (cnpj) =>
+      (await storage.listOrgFolder(access.org.slug, `${base}/${cnpj}`)).folders.map((periodo) => ({ cnpj, periodo }))),
+  )).flat();
+  const listed = await Promise.all(
+    periods.map(async (period) => ({
+      period,
+      files: (await storage.listOrgFolder(access.org.slug, `${base}/${period.cnpj}/${period.periodo}`, MAX_FILES_PER_FOLDER)).files,
+    })),
+  );
+  return listed
+    .filter((l) => l.files.length > 0)
+    .map(({ period, files }) => ({ period, keys: files.map((f) => ({ key: f.key, name: f.name, sizeBytes: f.sizeBytes })) }));
 }
 
 export async function listFiscalPeriods(access: InstanceAccess): Promise<FiscalPeriod[]> {
@@ -178,15 +183,28 @@ export async function adoptLooseFiles(access: InstanceAccess): Promise<number> {
       if (!(err instanceof FiscalFileError)) console.error("[fiscal] could not identify", file.key, err);
       continue; // another dashboard's file (or not a fiscal file at all)
     }
-    const ext = file.name.toLowerCase().endsWith(".xml") ? "xml" : "txt";
-    const periodFolder = relativeToOrg(access.org.slug, `${folder}${id.cnpj}/${id.periodo}`);
-    const existing = await storage.listOrgFolder(access.org.slug, periodFolder, MAX_FILES_PER_FOLDER);
-    const older = existing.files.filter((f) => fiscalDocumentId(f.name) === id.documentId).map((f) => f.key);
-    await storage.move(file.key, fiscalFileKey(folder, id.cnpj, id.periodo, id.documentId, ext));
-    await storage.remove(older);
+    await fileFiscal(access.org.slug, folder, file.key, file.name, id);
     adopted += 1;
   }
   return adopted;
+}
+
+/**
+ * Files one raw fiscal file in its standard place: <folder><cnpj>/<período>/<documento>.<rand>.<ext>
+ * (`folder` = fiscalFolder of its space and template), replacing an older copy of the same document.
+ * Shared by the importer ("Montar tabelas") and the file explorer ("Organizar pasta").
+ */
+export async function fileFiscal(
+  orgSlug: string, folder: string, key: string, fileName: string, id: FiscalIdentity,
+): Promise<{ key: string; replaced: number; replacedKeys: string[] }> {
+  const ext = fileName.toLowerCase().endsWith(".xml") ? "xml" : "txt";
+  const periodFolder = relativeToOrg(orgSlug, `${folder}${id.cnpj}/${id.periodo}`);
+  const existing = await storage.listOrgFolder(orgSlug, periodFolder, MAX_FILES_PER_FOLDER);
+  const older = existing.files.filter((f) => fiscalDocumentId(f.name) === id.documentId && f.key !== key).map((f) => f.key);
+  const to = fiscalFileKey(folder, id.cnpj, id.periodo, id.documentId, ext);
+  await storage.move(key, to);
+  await storage.remove(older);
+  return { key: to, replaced: older.length, replacedKeys: older };
 }
 
 export interface RebuildResult {

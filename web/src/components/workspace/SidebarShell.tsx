@@ -18,6 +18,8 @@ interface SidebarShellProps {
   logoUrl: string | null;
   orgSlug: string;
   clientSlug: string | null;
+  /** Where the space's name leads (default: the space's own address; a public link keeps its own). */
+  homeHref?: string;
   footer: React.ReactNode;
   /** The page itself, shown to the right of the panel (full width when the panel is collapsed). */
   content: React.ReactNode;
@@ -73,12 +75,12 @@ const ICON_BUTTON = "grid size-9 place-items-center rounded-lg border border-lin
  * mobile. The summary is organized in the admin (/<org>/admin?sumario=…), not here.
  */
 export function SidebarShell({
-  title, org, spaces, logoUrl, orgSlug, clientSlug, footer, content, children,
+  title, org, spaces, logoUrl, orgSlug, clientSlug, homeHref, footer, content, children,
 }: SidebarShellProps) {
   const [open, setOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const pathname = usePathname();
-  const spaceHref = `/${orgSlug}${clientSlug ? `/${clientSlug}` : ""}`;
+  const spaceHref = homeHref ?? `/${orgSlug}${clientSlug ? `/${clientSlug}` : ""}`;
 
   useEffect(() => setCollapsed(readCollapsed()), []);
   // Close the mobile drawer after navigating, including jumps to a section of the same page.

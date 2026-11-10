@@ -1,12 +1,15 @@
 "use server";
 
+import { randomBytes } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getOrgContext, orgActions, requireAction, type OrgContext } from "@/lib/access";
 import { AccessError } from "@/lib/auth";
 import {
-  countAdmins, DuplicateSlugError, grantAccess, listOrgPeople, revokeClientRole, revokeOrgRole,
+  countAdmins, DuplicateSlugError, grantAccess, listClients, listOrgPeople, revokeClientRole, revokeOrgRole,
 } from "@/lib/data/organizations";
+import { createSpaceLink, revokeSpaceLinks, SpaceLinksUnavailableError } from "@/lib/data/space-links";
+import { EXPIRY_CHOICES, expiryDate, type ExpiryChoice } from "@/lib/space-link";
 import { createClientWithFolder, renameClientWithFolder } from "@/lib/services/client-folders";
 import { clientNameSchema } from "@/lib/client-name";
 import { CLIENT_ROLES, isValidSlug, ROLES, slugify } from "@/lib/permissions";
@@ -142,4 +145,57 @@ export async function revokeAccessAction(formData: FormData): Promise<void> {
     await revokeOrgRole(ctx.org.id, input.userId);
   }
   revalidatePath(`/${ctx.org.slug}`, "layout");
+}
+
+// ---------- public link of a whole space ("Acessos" column) ----------
+
+const spaceLinkSchema = z.object({
+  org: orgSlugSchema,
+  /** "" = the organization's own space. */
+  clientId: z.union([z.literal(""), z.string().uuid()]),
+});
+
+const expirySchema = z.enum(EXPIRY_CHOICES.map((c) => c.id) as [ExpiryChoice, ...ExpiryChoice[]]);
+
+/** The space (organization or one of its clients) an admin acts on; a client id from another org is refused. */
+async function spaceOf(formData: FormData): Promise<{ ctx: OrgContext; clientId: string | null }> {
+  const input = spaceLinkSchema.parse({ org: formData.get("org"), clientId: formData.get("clientId") ?? "" });
+  const ctx = await requireAdmin(input.org);
+  if (input.clientId === "") return { ctx, clientId: null };
+  const clients = await listClients(ctx.org.id);
+  if (!clients.some((c) => c.id === input.clientId)) throw new AccessError(404, "Cliente não encontrado.");
+  return { ctx, clientId: input.clientId };
+}
+
+function linkFailure(err: unknown): FormState {
+  if (err instanceof SpaceLinksUnavailableError) {
+    return { ok: false, message: "Acesso por link indisponível: aplique a migração 014 no banco." };
+  }
+  return failure(err);
+}
+
+/** Anyone with the link sees the space's published dashboards (read-only). A new link revokes the previous one. */
+export async function createSpaceLinkAction(_prev: FormState, formData: FormData): Promise<FormState> {
+  try {
+    const { ctx, clientId } = await spaceOf(formData);
+    const expiry = expirySchema.parse(formData.get("expiry") ?? "30");
+    // 192 bits of entropy, URL-safe (same as the dashboards' guest links).
+    const token = randomBytes(24).toString("base64url");
+    await createSpaceLink(ctx.org.id, clientId, ctx.user.id, token, expiryDate(expiry));
+    revalidatePath(`/${ctx.org.slug}/admin`);
+    return { ok: true, message: "Link liberado." };
+  } catch (err) {
+    return linkFailure(err);
+  }
+}
+
+export async function revokeSpaceLinkAction(_prev: FormState, formData: FormData): Promise<FormState> {
+  try {
+    const { ctx, clientId } = await spaceOf(formData);
+    await revokeSpaceLinks(ctx.org.id, clientId);
+    revalidatePath(`/${ctx.org.slug}/admin`);
+    return { ok: true, message: "Link revogado: ele não abre mais." };
+  } catch (err) {
+    return linkFailure(err);
+  }
 }

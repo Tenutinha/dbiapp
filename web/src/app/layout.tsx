@@ -2,6 +2,9 @@ import type { Metadata } from "next";
 import { Inter, JetBrains_Mono, Newsreader } from "next/font/google";
 import { DevUserSwitcher } from "@/components/DevUserSwitcher";
 import { ElementInspector } from "@/components/dev/ElementInspector";
+import { NavigationProgress } from "@/components/NavigationProgress";
+import { UploadCenterProvider } from "@/components/storage/UploadCenter";
+import { Suspense } from "react";
 import { defaultUiTheme, themeBootScript } from "@/lib/theme/ui-theme";
 import "./globals.css";
 
@@ -22,7 +25,12 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <script dangerouslySetInnerHTML={{ __html: themeBootScript(defaultUiTheme(process.env.NODE_ENV, process.env.DBI_TEMA_PADRAO)) }} />
       </head>
       <body className="min-h-screen antialiased">
-        {children}
+        {/* Uploads keep going (and stay visible) across pages and modals. */}
+        <UploadCenterProvider>{children}</UploadCenterProvider>
+        {/* Feedback while a clicked link loads (useSearchParams needs its own Suspense boundary). */}
+        <Suspense>
+          <NavigationProgress />
+        </Suspense>
         <DevUserSwitcher />
         <ElementInspector />
       </body>

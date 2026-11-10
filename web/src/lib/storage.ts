@@ -97,6 +97,34 @@ export const storage = {
     }
   },
 
+  /** Creates an empty folder (a prefix ending with "/"); succeeds if it already exists. */
+  async createFolder(prefix: string): Promise<void> {
+    assertKey(prefix.replace(/\/$/, ""));
+    const folder = prefix.endsWith("/") ? prefix : `${prefix}/`;
+    if (isRemote()) await bucket().createFolder(folder);
+    else await mkdir(path.resolve(env.workRoot, ...folder.split("/").filter(Boolean)), { recursive: true });
+  },
+
+  /** Deletes a folder and everything under it (objects, folder markers, local copies). Returns how many objects went. */
+  async removeFolder(prefix: string): Promise<number> {
+    assertKey(prefix.replace(/\/$/, ""));
+    const folder = prefix.endsWith("/") ? prefix : `${prefix}/`;
+    const objects = await this.listAll(folder);
+    if (isRemote()) {
+      // Folder markers of every sub-folder too, or empty "ghost" folders would stay behind.
+      const markers: string[] = [];
+      const walk = async (p: string): Promise<void> => {
+        markers.push(p, `${p}.emptyFolderPlaceholder`);
+        for (const f of (await bucket().list(p, 10_000)).folders) await walk(`${p}${f}/`);
+      };
+      await walk(folder);
+      if (objects.length > 0) await bucket().remove(objects, true); // throws: never claim a folder is gone when it is not
+      await bucket().remove(markers);
+    }
+    await rm(path.resolve(env.workRoot, ...folder.split("/").filter(Boolean)), { recursive: true, force: true }).catch(() => undefined);
+    return objects.length;
+  },
+
   /** Every object under a prefix (all levels), as keys. */
   async listAll(prefix: string): Promise<string[]> {
     assertKey(prefix.replace(/\/$/, ""));
@@ -217,11 +245,15 @@ export const storage = {
     await rename(workPath(fromKey), workPath(toKey));
   },
 
-  /** Deletes objects (remote + local copy). Never throws: cleanup must not break the request. */
-  async remove(list: readonly string[]): Promise<void> {
+  /**
+   * Deletes objects (remote + local copy). Never throws by default: cleanup must not break the request.
+   * strict: throws when the bucket could not delete something (user-asked deletions).
+   */
+  async remove(list: readonly string[], strict = false): Promise<void> {
     const valid = list.filter((k) => (path.isAbsolute(k) && !isRemote()) || keys.isValidKey(k));
     await Promise.all(valid.map((k) => rm(workPath(k), { force: true }).catch(() => undefined)));
-    if (isRemote() && valid.length > 0) await bucket().remove(valid);
+    if (strict && valid.length < list.length) throw new StorageKeyError("invalid key in remove");
+    if (isRemote() && valid.length > 0) await bucket().remove(valid, strict);
   },
 
   /**

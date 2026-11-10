@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo } from "react";
 import type { ColumnStatus } from "@/lib/ingest/schema-check";
 import type { ConnectorTable, Link } from "./types";
 
@@ -136,65 +136,43 @@ function LinkStatus({ link, onEngage, onRetry }: { link: Link; onEngage: () => v
 interface TableNodeProps {
   table: ConnectorTable;
   link: Link | undefined;
-  /** A file is picked (click-to-connect) or dragged: this node is a drop target. */
-  awaiting: boolean;
   canUpload: boolean;
-  portRef: (el: HTMLSpanElement | null) => void;
   /** Fact table only: right-hand port wired to the data filter column. */
   outPortRef?: (el: HTMLSpanElement | null) => void;
   /** The data filter has saved rules (lights the right-hand port). */
   filtered?: boolean;
-  onPick: () => void;
+  /** Opens the organization's file explorer to choose this table's file. */
+  onChooseFile: () => void;
   onEngage: (link: Link) => void;
   onRetry: (link: Link) => void;
   onDisconnect: () => void;
-  onUpload: (file: File) => void;
 }
 
-function UploadIcon() {
+function Icon({ d }: { d: string }) {
   return (
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M12 16V4M7 9l5-5 5 5M5 20h14" />
+      <path d={d} />
     </svg>
   );
 }
 
-/** Right column: one contract table with its socket (port), plug (upload), wire status and columns. */
-export function TableNode({ table, link, awaiting, canUpload, portRef, outPortRef, filtered, onPick, onEngage, onRetry, onDisconnect, onUpload }: TableNodeProps) {
-  const input = useRef<HTMLInputElement>(null);
+const ACTION = "flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold transition disabled:opacity-50";
+
+/**
+ * One contract table: the stored file it is related to (chosen in the organization's file explorer —
+ * files are sent there, not here), the column check and the contract.
+ */
+export function TableNode({ table, link, canUpload, outPortRef, filtered, onChooseFile, onEngage, onRetry, onDisconnect }: TableNodeProps) {
   const phase = link?.phase;
-  // A file from the computer is being dragged over this table.
-  const [dropping, setDropping] = useState(false);
-  const canDrop = canUpload && phase !== "engaging";
-  const pickFile = (e: React.MouseEvent): void => {
-    e.stopPropagation();
-    input.current?.click();
-  };
+  const busy = phase === "engaging" || phase === "checking";
   const ring =
-    dropping ? "border-brand border-dashed bg-brand/5" : phase === "engaged" ? "border-ok/70" : phase === "diverge" || phase === "failed" ? "border-danger/60" : awaiting ? "border-brand border-dashed" : "border-line";
+    phase === "engaged" ? "border-ok/70" : phase === "diverge" || phase === "failed" ? "border-danger/60" : "border-line";
 
   return (
     <div
       data-table={table.name}
-      onClick={awaiting ? onPick : undefined}
-      onDragOver={(e) => {
-        if (!canDrop || !e.dataTransfer.types.includes("Files")) return;
-        e.preventDefault();
-        e.dataTransfer.dropEffect = "copy";
-        setDropping(true);
-      }}
-      onDragLeave={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropping(false);
-      }}
-      onDrop={(e) => {
-        if (!canDrop || e.dataTransfer.files.length === 0) return;
-        e.preventDefault();
-        setDropping(false);
-        onUpload(e.dataTransfer.files[0]);
-      }}
-      className={`relative rounded-xl border bg-card p-3 transition ${ring} ${awaiting ? "cursor-copy hover:bg-brand/5" : ""} ${phase === "engaged" ? "dbi-pop" : ""} ${phase === "diverge" ? "dbi-shake" : ""}`}
+      className={`relative rounded-xl border bg-card p-3 transition ${ring} ${phase === "engaged" ? "dbi-pop" : ""} ${phase === "diverge" ? "dbi-shake" : ""}`}
     >
-      <span ref={portRef} className={`absolute -left-[7px] top-6 size-3 rounded-full border-2 bg-bg ${phase === "engaged" ? "border-ok bg-ok" : link ? "border-brand" : "border-line"}`} aria-hidden />
       {outPortRef && (
         <span ref={outPortRef} className={`absolute -right-[7px] top-6 size-3 rounded-full border-2 bg-bg ${filtered ? "border-brand bg-brand" : "border-line"}`} aria-hidden />
       )}
@@ -208,51 +186,31 @@ export function TableNode({ table, link, awaiting, canUpload, portRef, outPortRe
           </div>
           <p className={`text-[11px] ${table.status.tone === "ok" ? "text-ok" : table.status.tone === "draft" ? "text-brand-2" : "text-muted"}`}>{table.status.label}</p>
         </div>
-        <button
-          type="button"
-          disabled={!canUpload || phase === "engaging"}
-          onClick={pickFile}
-          title="Enviar um arquivo do computador para esta tabela"
-          aria-label={`Enviar um arquivo para ${table.name}`}
-          className="shrink-0 rounded-lg p-1 transition hover:bg-text/5 disabled:opacity-50"
-        >
-          <Coupler phase={phase} />
-        </button>
-        <input
-          ref={input}
-          type="file"
-          accept=".parquet,.csv,.txt"
-          className="hidden"
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) onUpload(file);
-            e.target.value = "";
-          }}
-        />
+        <span className="shrink-0 p-1"><Coupler phase={phase} /></span>
       </div>
 
-      {link ? (
-        <div className="mt-2 flex items-start justify-between gap-2">
-          <LinkStatus link={link} onEngage={() => onEngage(link)} onRetry={() => onRetry(link)} />
-          {phase !== "engaging" && phase !== "checking" && (
-            <button type="button" onClick={(e) => { e.stopPropagation(); onDisconnect(); }} title="Desconectar" aria-label={`Desconectar ${table.name}`} className="text-muted hover:text-danger">×</button>
+      {link && (
+        <>
+          {link.folder !== undefined && (
+            <p className="mt-2 truncate font-mono text-[11px] text-muted" title={[link.folder, link.file].filter(Boolean).join("/")}>
+              📄 {[link.folder, link.file].filter(Boolean).join("/")}
+            </p>
           )}
-        </div>
-      ) : (
-        <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-          <p className="text-[11px] text-muted">
-            {awaiting ? "Clique para conectar aqui" : dropping ? "Solte para enviar este arquivo" : "Solte aqui um arquivo do computador ou da pasta ao lado"}
-          </p>
-          {canUpload && !awaiting && (
-            <button
-              type="button"
-              onClick={pickFile}
-              disabled={phase === "engaging"}
-              className="flex shrink-0 items-center gap-1.5 rounded-lg border border-brand/40 bg-brand/5 px-2.5 py-1 text-xs font-semibold text-brand-2 transition hover:border-brand hover:bg-brand/10 disabled:opacity-50"
-            >
-              <UploadIcon /> Enviar arquivo
-            </button>
-          )}
+          <div className="mt-1.5 flex items-start justify-between gap-2">
+            <LinkStatus link={link} onEngage={() => onEngage(link)} onRetry={() => onRetry(link)} />
+            {!busy && (
+              <button type="button" onClick={onDisconnect} title="Desconectar" aria-label={`Desconectar ${table.name}`} className="text-muted hover:text-danger">×</button>
+            )}
+          </div>
+        </>
+      )}
+
+      {canUpload && (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <button type="button" onClick={onChooseFile} disabled={busy} className={`${ACTION} border-brand/40 bg-brand/5 text-brand-2 hover:border-brand hover:bg-brand/10`}>
+            <Icon d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /> {link ? "Trocar arquivo" : "Escolher arquivo"}
+          </button>
+          {!link && <span className="text-[11px] text-muted">Escolha o arquivo já guardado no armazenamento.</span>}
         </div>
       )}
       <Columns table={table} link={link} />

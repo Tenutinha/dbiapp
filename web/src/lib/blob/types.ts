@@ -8,8 +8,11 @@ export interface RemoteBucket {
   download(key: string): Promise<Uint8Array>;
   /** The first `bytes` of an object (to identify a big file without fetching it whole). */
   downloadHead(key: string, bytes: number): Promise<Uint8Array>;
-  /** Best effort: logs and swallows errors (cleanup must not break the request). */
-  remove(keys: readonly string[]): Promise<void>;
+  /**
+   * Best effort by default: logs and swallows errors (cleanup must not break the request).
+   * With strict, throws when any object could not be deleted (the explorer must not report a false success).
+   */
+  remove(keys: readonly string[], strict?: boolean): Promise<void>;
   /** URL the browser PUTs the file to, valid for a short time. */
   signedUploadUrl(key: string): Promise<string>;
   /** Creates an empty folder marker (e.g. "orgs/acme/"); succeeds if it already exists. */

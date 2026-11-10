@@ -24,6 +24,11 @@ interface RouteModalProps {
   tabsLabel?: string;
   /** Max width in px (capped to the viewport). */
   width?: number;
+  /**
+   * Closing without asking the server for the page again (a modal opened in the browser only, like
+   * "Arquivos"): replaces the address in place instead of navigating to closeHref.
+   */
+  onClosed?: () => void;
   children: React.ReactNode;
 }
 
@@ -32,7 +37,7 @@ interface RouteModalProps {
  * its own link and its content renders on the server. Native <dialog>: focus is trapped and Esc closes;
  * closing (×, Esc or a click outside) drops the param.
  */
-export function RouteModal({ closeHref, eyebrow, title, subtitle, actions, tabs = [], tabsLabel, width = 1320, children }: RouteModalProps) {
+export function RouteModal({ closeHref, eyebrow, title, subtitle, actions, tabs = [], tabsLabel, width = 1320, onClosed, children }: RouteModalProps) {
   const ref = useRef<HTMLDialogElement>(null);
   const router = useRouter();
 
@@ -45,7 +50,7 @@ export function RouteModal({ closeHref, eyebrow, title, subtitle, actions, tabs 
     <dialog
       ref={ref}
       aria-label={`${eyebrow} — ${title}`}
-      onClose={() => router.replace(closeHref, { scroll: false })}
+      onClose={() => (onClosed ? onClosed() : router.replace(closeHref, { scroll: false }))}
       onClick={(e) => {
         if (e.target === e.currentTarget) ref.current?.close();
       }}

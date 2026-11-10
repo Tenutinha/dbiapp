@@ -13,6 +13,7 @@
  * previous layout (datasets/…, incoming/…, branding/… at the root); those stay readable.
  */
 import { randomUUID } from "node:crypto";
+import { CLIENTS_DIR } from "./storage-explorer";
 
 const SLUG = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/;
 const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
@@ -66,7 +67,8 @@ const TAX_ID = /^\d{11,14}$/;
 const PERIOD = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 /** Sub-folder of the organization that holds one folder per client. */
-export const CLIENTS_DIR = "clientes";
+// Defined with the explorer rules, which also run in the browser (this module needs node:crypto).
+export { CLIENTS_DIR };
 
 /** "orgs/<slug>/clientes/<cliente>/" — a client's files, named by its address (moved when the address changes). */
 export function clientFolder(orgSlug: string, clientSlug: string): string {

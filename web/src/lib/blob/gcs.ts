@@ -106,9 +106,11 @@ export function gcsBucket(cfg: GcsConfig): RemoteBucket {
         throw new Error(`storage download failed for ${key}: ${errMsg(e)}`);
       }
     },
-    async remove(keys) {
+    async remove(keys, strict) {
       const results = await Promise.allSettled(keys.map((k) => bucket.file(k).delete({ ignoreNotFound: true })));
-      for (const r of results) if (r.status === "rejected") console.error("[storage] remove failed", errMsg(r.reason));
+      const failed = results.filter((r): r is PromiseRejectedResult => r.status === "rejected");
+      for (const r of failed) console.error("[storage] remove failed", errMsg(r.reason));
+      if (strict && failed.length > 0) throw new Error(`storage remove failed for ${failed.length} object(s): ${errMsg(failed[0].reason)}`);
     },
     async signedUploadUrl(key) {
       try {

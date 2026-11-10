@@ -34,18 +34,18 @@ function statusFor(table: string, draft: DatasetFile[], active: DatasetFile[]): 
  * Uploads and imports call router.refresh(), so whichever page hosts it re-renders with the new status.
  */
 export async function DataManager({ access }: { access: InstanceAccess }) {
-  const template = await requireTemplate(access.templateId);
-  const draft = await getDraft(access.instanceId);
-  const [draftFiles, activeFiles, suggestions] = await Promise.all([
-    draft ? listFiles(draft.id) : Promise.resolve([]),
+  const canUpload = access.actions.has("manageData");
+  const fiscal = fiscalImporter(access);
+  // Everything at once (database and storage), not one after the other: this is what the modal waits for.
+  const [template, { draft, draftFiles }, activeFiles, suggestions, periods] = await Promise.all([
+    requireTemplate(access.templateId),
+    getDraft(access.instanceId).then(async (d) => ({ draft: d, draftFiles: d ? await listFiles(d.id) : [] })),
     access.activeVersionId ? listFiles(access.activeVersionId) : Promise.resolve([]),
-    access.actions.has("manageData") ? storageFolderSuggestions(access.org.slug) : Promise.resolve([]),
+    canUpload ? storageFolderSuggestions(access.org.slug) : Promise.resolve([]),
+    fiscal && canUpload ? fiscalPeriods(access) : Promise.resolve([]),
   ]);
   const has = (t: string): boolean => [...draftFiles, ...activeFiles].some((f) => f.tableName === t);
   const pending = template.tables.filter((t) => !has(t.name)).map((t) => t.name);
-  const canUpload = access.actions.has("manageData");
-  const fiscal = fiscalImporter(access);
-  const periods = fiscal && canUpload ? await fiscalPeriods(access) : [];
   // Prepared folder named after the dashboard (eleicoes-presidente → preparado/presidente); else the
   // client's own folder (clientes/<cliente>) for a client's dashboard; else the first prepared folder.
   const words = template.id.split("-");
@@ -70,10 +70,12 @@ export async function DataManager({ access }: { access: InstanceAccess }) {
           extensions={fiscal.extensions}
           initialPeriods={periods}
           canUpload={canUpload}
+          files={{ orgSlug: access.org.slug, folder: startFolder }}
         />
       )}
 
       <DataConnector
+        org={{ slug: access.org.slug, name: access.org.name }}
         instanceId={access.instanceId}
         initialFolder={startFolder}
         canUpload={canUpload}
