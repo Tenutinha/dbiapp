@@ -7,6 +7,7 @@ import { FilterBar } from "./FilterBar";
 import { MapChart, type MapMeasure } from "./MapChart";
 import { CrossTable } from "./CrossTable";
 import { ScrollTable, type ScrollColumn, type SortValue } from "./ScrollTable";
+import { VisualCard } from "./VisualCard";
 
 const SPAN: Record<number, string> = {
   1: "md:col-span-1", 2: "md:col-span-2", 3: "md:col-span-3", 4: "md:col-span-4",
@@ -123,13 +124,13 @@ function VisualGrid({ template, results: all }: VisualGridProps) {
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-12">
       {results.map((result) => (
-        <section
+        <VisualCard
           key={result.visual.id}
-          className={`card p-5 ${SPAN[result.visual.span]} ${result.visual.type === "kpi" ? "" : "sm:col-span-2"} ${result.visual.type === "text" ? "border-l-4 border-l-brand" : ""}`}
+          title={result.visual.title}
+          className={`${SPAN[result.visual.span]} ${result.visual.type === "kpi" ? "" : "sm:col-span-2"} ${result.visual.type === "text" ? "border-l-4 border-l-brand" : ""}`}
         >
-          <h2 className="text-xs font-medium text-muted">{result.visual.title}</h2>
           <VisualBody template={template} result={result} />
-        </section>
+        </VisualCard>
       ))}
     </div>
   );

@@ -4,6 +4,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { CROSS_PREFIX, crossKey } from "@/lib/query/cross";
+import { useBusySignal } from "./busy";
 
 type Filter = { fieldId: string; label: string; values: string[]; selected: string[]; single: boolean };
 
@@ -129,6 +130,7 @@ export function FilterBar({ filters, cross = [] }: FilterBarProps) {
   const pathname = usePathname();
   const params = useSearchParams();
   const [pending, start] = useTransition();
+  useBusySignal(pending);
   const [open, setOpen] = useState(false);
   const hidden = filters.length === 0 && cross.length === 0;
   const anchor = useRef<HTMLDivElement>(null);

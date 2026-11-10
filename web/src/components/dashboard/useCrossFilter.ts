@@ -3,6 +3,7 @@
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useMemo, useTransition } from "react";
 import { ownCross, toggleCross, type CrossPick } from "@/lib/query/cross";
+import { useBusySignal } from "./busy";
 
 export interface CrossFilter {
   /** Values picked in this visual, per field. */
@@ -19,6 +20,7 @@ export function useCrossFilter(visualId: string, fields: readonly string[]): Cro
   const pathname = usePathname();
   const params = useSearchParams();
   const [pending, start] = useTransition();
+  useBusySignal(pending);
   const fieldsKey = fields.join(",");
 
   const own = useMemo(
