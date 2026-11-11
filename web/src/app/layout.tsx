@@ -17,6 +17,7 @@ export const metadata: Metadata = {
   title: { default: APP_NAME, template: `%s · ${APP_NAME}` },
   description: APP_DESCRIPTION,
   applicationName: APP_NAME,
+  manifest: "/manifest.webmanifest",
   // iPhone/iPad: opens full screen from the home screen (the manifest covers Android and desktop).
   appleWebApp: { capable: true, title: APP_NAME, statusBarStyle: "default" },
 };
