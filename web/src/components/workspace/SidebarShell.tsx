@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { DEFAULT_THEME } from "@/lib/theme/theme";
+import { DbiMark } from "@/components/brand/DbiMark";
 import type { SpaceOption } from "@/lib/space-options";
 import { SidebarContext, type SidebarState } from "./sidebar-context";
 import { SpaceSwitcher } from "./SpaceSwitcher";
@@ -56,14 +56,9 @@ export function HamburgerIcon() {
 
 /** DBI mark with the platform's own colours (the space theme recolours brand variables). */
 export function DbiLogo() {
-  const gradient = `linear-gradient(135deg, ${DEFAULT_THEME.primaryColor}, ${DEFAULT_THEME.secondaryColor})`;
   return (
     <span className="flex items-center gap-2 text-base font-extrabold tracking-tight">
-      <span className="grid size-7 place-items-center rounded-lg" style={{ background: gradient }} aria-hidden>
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.8" strokeLinecap="round">
-          <path d="M5 20V10M12 20V4M19 20v-7" />
-        </svg>
-      </span>
+      <DbiMark />
       DBI
     </span>
   );
