@@ -8,7 +8,7 @@ import { Workspace } from "@/components/workspace/Workspace";
 import { mergeEntries } from "@/lib/controle/entries";
 import { receiptReaderEnabled } from "@/lib/controle/extract";
 import { formatMoney } from "@/lib/controle/money";
-import { lastMonth, parsePeriod, periodDays } from "@/lib/controle/period";
+import { parsePeriod, periodDays } from "@/lib/controle/period";
 import { todayInBrazil } from "@/lib/controle/schema";
 import { cumulative, lastDrawnDay } from "@/lib/controle/series";
 import { dailySeries, listPurchases, listSales, monthlySeries, periodTotals } from "@/lib/data/controle";
@@ -69,7 +69,7 @@ export default async function ControlePage({ params, searchParams }: Props) {
     loadSpace(ctx.org, ctx.client, ctx.membership),
     periodTotals(entries.clientId, days),
     dailySeries(entries.clientId, days),
-    monthlySeries(entries.clientId, lastMonth(period, today)),
+    monthlySeries(entries.clientId, days),
     listPurchases(entries.clientId, days),
     listSales(entries.clientId, days),
   ]);

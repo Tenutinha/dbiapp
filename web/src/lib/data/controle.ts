@@ -191,15 +191,17 @@ export async function dailySeries(clientId: string, days: readonly string[]): Pr
     ORDER BY d`;
 }
 
-/** Sales and purchases of each of the `months` months that end in `month`, oldest first. */
-export async function monthlySeries(clientId: string, month: string, months = 6): Promise<SeriesPoint[]> {
-  const start = `${month}-01`;
+/**
+ * Sales and purchases of each month the given days touch, counting only those days (the last
+ * 15 days that cross into October show the October part only), oldest first.
+ */
+export async function monthlySeries(clientId: string, days: readonly string[]): Promise<SeriesPoint[]> {
+  const list = dayList(days);
   return sql<SeriesPoint[]>`
-    SELECT to_char(m, 'YYYY-MM') AS period,
-      COALESCE((SELECT SUM(total_cents) FROM controle_sales
-        WHERE client_id = ${clientId} AND sold_on >= m::date AND sold_on < (m + interval '1 month')::date), 0)::float8 AS "salesCents",
-      COALESCE((SELECT SUM(total_cents) FROM controle_purchases
-        WHERE client_id = ${clientId} AND purchased_on >= m::date AND purchased_on < (m + interval '1 month')::date), 0)::float8 AS "purchasesCents"
-    FROM generate_series(${start}::date - make_interval(months => ${months - 1}::int), ${start}::date, interval '1 month') m
-    ORDER BY m`;
+    SELECT to_char(date_trunc('month', d), 'YYYY-MM') AS period,
+      COALESCE(SUM((SELECT SUM(total_cents) FROM controle_sales WHERE client_id = ${clientId} AND sold_on = d)), 0)::float8 AS "salesCents",
+      COALESCE(SUM((SELECT SUM(total_cents) FROM controle_purchases WHERE client_id = ${clientId} AND purchased_on = d)), 0)::float8 AS "purchasesCents"
+    FROM unnest(${list}::date[]) AS d
+    GROUP BY 1
+    ORDER BY 1`;
 }

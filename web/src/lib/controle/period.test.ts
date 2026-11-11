@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  lastMonth, monthChoices, monthDays, parseMonths, parsePeriod, periodDays, periodLabel, periodQuery, singleMonth, MAX_MONTHS,
+  monthChoices, monthDays, parseMonths, parsePeriod, periodDays, periodLabel, periodQuery, singleMonth, MAX_MONTHS,
 } from "./period";
 
 const NOW = new Date("2026-11-11T15:00:00Z");
@@ -53,12 +53,10 @@ describe("labels and address", () => {
     expect(periodQuery({ kind: "months", months: ["2026-10", "2026-11"] }, "2026-11")).toBe("mes=2026-10,2026-11");
     expect(periodQuery({ kind: "days", days: 7 }, "2026-11")).toBe("dias=7");
   });
-  it("knows when the arrows apply and where the monthly chart ends", () => {
+  it("knows when the arrows apply", () => {
     expect(singleMonth({ kind: "months", months: ["2026-10"] })).toBe("2026-10");
     expect(singleMonth({ kind: "months", months: ["2026-10", "2026-11"] })).toBeNull();
     expect(singleMonth({ kind: "days", days: 7 })).toBeNull();
-    expect(lastMonth({ kind: "months", months: ["2026-08", "2026-09"] }, "2026-11-11")).toBe("2026-09");
-    expect(lastMonth({ kind: "days", days: 30 }, "2026-11-11")).toBe("2026-11");
   });
   it("offers the past year and a couple of months ahead, newest first", () => {
     const choices = monthChoices("2026-11-11");

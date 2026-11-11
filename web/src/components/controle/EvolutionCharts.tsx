@@ -81,7 +81,7 @@ function useChart(build: (c: Colors) => echarts.EChartsCoreOption, deps: readonl
 interface EvolutionChartsProps {
   /** Running totals of the month on screen, day by day (empty after today). */
   month: RunningPoint[];
-  /** Totals of the last months, oldest first. */
+  /** Totals of each month of the period (only its days), oldest first. */
   months: SeriesPoint[];
   /** "no mês" or "no período" (several months, last days). */
   scope?: string;
@@ -115,9 +115,9 @@ export function EvolutionCharts({ month, months, scope = "no mês" }: EvolutionC
         <div ref={daily} className="mt-2 h-52 w-full" role="img" aria-label={`Gráfico de linhas: vendas e despesas acumuladas ${scope}, dia a dia`} />
       </section>
       <section className="card p-4">
-        <h2 className="text-sm font-semibold">Últimos {months.length} meses</h2>
-        <p className="text-xs text-muted">Total de cada mês</p>
-        <div ref={monthly} className="mt-2 h-52 w-full" role="img" aria-label="Gráfico de barras: vendas e despesas de cada um dos últimos meses" />
+        <h2 className="text-sm font-semibold">{months.length === 1 ? "Total do mês" : "Por mês"}</h2>
+        <p className="text-xs text-muted">{months.length === 1 ? "Vendas e despesas" : `Total de cada mês ${scope}`}</p>
+        <div ref={monthly} className="mt-2 h-52 w-full" role="img" aria-label={`Gráfico de barras: vendas e despesas de cada mês ${scope}`} />
       </section>
     </div>
   );

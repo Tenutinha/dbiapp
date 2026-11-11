@@ -52,11 +52,6 @@ export function singleMonth(period: Period): string | null {
   return period.kind === "months" && period.months.length === 1 ? period.months[0] : null;
 }
 
-/** The month the "últimos meses" chart ends on: the last chosen month, or today's. */
-export function lastMonth(period: Period, today: string): string {
-  return period.kind === "months" ? period.months[period.months.length - 1] : today.slice(0, 7);
-}
-
 const SHORT_MONTHS = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
 const shortMonth = (month: string): string => `${SHORT_MONTHS[Number(month.slice(5, 7)) - 1]}/${month.slice(2, 4)}`;
 
