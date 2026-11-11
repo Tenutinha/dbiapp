@@ -57,7 +57,7 @@ export async function ingestIntoDraft(
   const format = detectFormat(originalName);
   const draft = await getOrCreateDraft(access.instanceId);
   // Unique per upload: concurrent uploads never share a file, and published files are never overwritten.
-  const key = storage.datasetKey(access.org.slug, access.instanceId, draft.version, table.name);
+  const key = storage.datasetKey(access.org.slug, access.client?.slug ?? null, access.instanceId, draft.version, table.name);
   const targetPath = storage.pathFor(key);
 
   const report = await ingestTable({ storageRoot: storage.workRoot, table, sourcePath: incomingPath, format, targetPath });
@@ -123,7 +123,7 @@ export async function convertToPart(
 ): Promise<TableReport & { key?: string }> {
   const format = detectFormat(originalName);
   const draft = await getOrCreateDraft(access.instanceId);
-  const key = storage.datasetKey(access.org.slug, access.instanceId, draft.version, table.name);
+  const key = storage.datasetKey(access.org.slug, access.client?.slug ?? null, access.instanceId, draft.version, table.name);
   const report = await ingestTable({
     storageRoot: storage.workRoot, table, sourcePath: incomingPath, format, targetPath: storage.pathFor(key),
   });
@@ -155,7 +155,7 @@ export async function registerParts(access: InstanceAccess, table: TemplateTable
   });
   const draft = await getDraft(access.instanceId);
   const keys = parts.map((p) => p.key);
-  const mine = draft !== null && keys.every((k) => isDatasetKey(k, access.org.slug, access.instanceId, draft.version, table.name));
+  const mine = draft !== null && keys.every((k) => isDatasetKey(k, access.org.slug, access.client?.slug ?? null, access.instanceId, draft.version, table.name));
   if (!draft || !mine || new Set(keys).size !== keys.length) return failed([NEW_VERSION]);
 
   let local: { name: string; path: string }[];
@@ -196,7 +196,7 @@ export async function registerParts(access: InstanceAccess, table: TemplateTable
 export async function discardParts(access: InstanceAccess, table: TemplateTable, keys: readonly string[]): Promise<void> {
   const draft = await getDraft(access.instanceId);
   if (!draft) return;
-  const mine = keys.filter((k) => isDatasetKey(k, access.org.slug, access.instanceId, draft.version, table.name));
+  const mine = keys.filter((k) => isDatasetKey(k, access.org.slug, access.client?.slug ?? null, access.instanceId, draft.version, table.name));
   await storage.remove(await unregistered(draft.id, mine));
 }
 
@@ -298,6 +298,12 @@ export async function publishDraft(access: InstanceAccess): Promise<PublishResul
         ? `Faltam tabelas: ${(result.tables ?? []).join(", ")}.`
         : "Os arquivos mudaram enquanto publicávamos. Confira e publique de novo.";
     return { ok: false, errors: [error], orphans: [] };
+  }
+  // Only the published version stays in the dashboard's folder: the files it replaced go away.
+  if (result.superseded.length > 0) {
+    await storage.remove(result.superseded).catch((err: unknown) =>
+      console.error(`[datasets] ${result.superseded.length} file(s) of the previous version of ${access.instanceId} were not deleted`, err),
+    );
   }
   return { ok: true, errors: [], orphans };
 }

@@ -6,6 +6,8 @@ import { namesIn } from "./ingest/joined-name";
 
 /** Folder that holds one sub-folder per client (orgs/<org>/clientes/<cliente>/). */
 export const CLIENTS_DIR = "clientes";
+/** Folder of the dashboards' definitive Parquet files, in each space (see storage-keys.ts). */
+export const DASHBOARDS_DIR = "dashboards";
 
 export type FileKindId = "parquet" | "csv" | "text" | "xml" | "json" | "zip" | "excel" | "pdf" | "pbix" | "other";
 
@@ -76,10 +78,26 @@ export function isSystemPath(path: string): boolean {
   return first !== undefined && SYSTEM_DIRS.includes(first);
 }
 
+/**
+ * The dashboards' definitive data: <espaço>/dashboards/… (the organization's or a client's). Shown in the
+ * explorer, but only the platform writes there — publishing a dashboard replaces it.
+ */
+export function isDashboardsPath(path: string): boolean {
+  const parts = path.split("/").filter(Boolean);
+  return parts[0] === DASHBOARDS_DIR || (parts[0] === CLIENTS_DIR && parts[2] === DASHBOARDS_DIR);
+}
+
+const DASHBOARDS_PROBLEM = "Esta pasta guarda os dados publicados dos dashboards: só muda ao publicar.";
+
+/** Not the user's to change: the platform's hidden folders and the dashboards' data. */
+export function isReadOnlyPath(path: string): boolean {
+  return isSystemPath(path) || isDashboardsPath(path);
+}
+
 /** The organization root, "clientes", each client's own folder and the platform's folders are not the user's to change. */
 export function isProtectedFolder(path: string): boolean {
   const parts = path.split("/").filter(Boolean);
-  return parts.length === 0 || (parts[0] === CLIENTS_DIR && parts.length <= 2) || isSystemPath(path);
+  return parts.length === 0 || (parts[0] === CLIENTS_DIR && parts.length <= 2) || isReadOnlyPath(path);
 }
 
 function clean(text: string, max: number): string {
@@ -109,6 +127,7 @@ export function safeDroppedDir(dir: string): string {
  */
 export function targetProblem(folder: string, clientSlugs: ReadonlySet<string>): string | null {
   if (isSystemPath(folder)) return SYSTEM_PROBLEM;
+  if (isDashboardsPath(folder)) return DASHBOARDS_PROBLEM;
   const parts = folder.split("/").filter(Boolean);
   if (parts[0] !== CLIENTS_DIR) return null;
   if (parts.length === 1) return "Dentro de “clientes” só ficam as pastas dos clientes. Escolha a pasta de um cliente.";
@@ -128,6 +147,7 @@ export function renamedFileName(original: string, wanted: string): string | null
 /** Why an item cannot go to a folder, or null when it can. */
 export function canMoveTo(item: { path: string; folder: boolean }, target: string): string | null {
   if (isSystemPath(item.path) || isSystemPath(target)) return SYSTEM_PROBLEM;
+  if (isDashboardsPath(item.path) || isDashboardsPath(target)) return DASHBOARDS_PROBLEM;
   if (item.folder && isProtectedFolder(item.path)) return "Pastas de cliente não podem ser movidas.";
   if (parentOf(item.path) === target) return "Já está nessa pasta.";
   if (item.folder && (target === item.path || target.startsWith(`${item.path}/`))) {

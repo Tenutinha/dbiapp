@@ -69,6 +69,11 @@ num modal com endereço próprio (`?arquivos=<pasta>`). Abre pelo botão **📁 
   (aparece na hora e se atualiza por trás), passar o mouse numa pasta já a carrega, e clientes e "Usado em" são
   buscados uma vez por organização (`action: meta`). As pastas da plataforma (`datasets`, `uploads`, `branding`)
   não aparecem nem podem ser alteradas.
+- **Pasta final `dashboards/`:** cada cliente (e a própria organização) tem `dashboards/<id do dashboard>/v<n>/`
+  com os Parquet que o dashboard lê. Só a versão publicada fica lá (e um rascunho em andamento): ao publicar,
+  os arquivos que a versão nova não usa são apagados. Aparece no explorador **só para leitura**; renomear o
+  cliente move a pasta e o banco acompanha. O resto da pasta do cliente (brutos, fiscal, preparado…) é o
+  armazenamento de apoio. Os dados antigos em `orgs/<org>/datasets/` saem com `scripts/migrar-dashboards.ts`.
 - **Envios sempre visíveis:** a fila fica fixa no canto da tela, acima de qualquer modal, e continua com o
   explorador fechado; sair da página com envios em andamento pede confirmação.
 - **Carregando:** qualquer link que vá ao servidor mostra uma barra no topo e o cursor de espera (`NavigationProgress`).

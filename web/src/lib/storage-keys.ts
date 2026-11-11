@@ -1,7 +1,10 @@
 /**
  * Storage key layout — one folder per organization, named by its address (slug):
  *
- *   orgs/<slug>/datasets/<dashboard>/v<n>/<table>.<rand>.parquet   published/draft data
+ *   <espaço>/dashboards/<dashboard>/v<n>/<table>.<rand>.parquet    the dashboard's data: only the published version
+ *                                                                 (and a draft in progress); <espaço> is the client's
+ *                                                                 folder or the organization's. Read-only in the explorer.
+ *   orgs/<slug>/datasets/…                                        former place of the data (moved by scripts/migrar-dashboards.ts)
  *   orgs/<slug>/uploads/<dashboard>/<uuid>.<csv|parquet>          raw file, deleted after ingest
  *   orgs/<slug>/branding/<uuid>.<ext>                             logos
  *   orgs/<slug>/clientes/<cliente>/…                              files of one client (folder follows its address)
@@ -13,7 +16,7 @@
  * previous layout (datasets/…, incoming/…, branding/… at the root); those stay readable.
  */
 import { randomUUID } from "node:crypto";
-import { CLIENTS_DIR } from "./storage-explorer";
+import { CLIENTS_DIR, DASHBOARDS_DIR } from "./storage-explorer";
 
 const SLUG = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/;
 const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
@@ -37,14 +40,29 @@ export function orgFolder(orgSlug: string): string {
 
 const rand8 = (): string => randomUUID().slice(0, 8);
 
-export function datasetKey(orgSlug: string, instanceId: string, version: number, table: string): string {
-  return `${orgFolder(orgSlug)}datasets/${instanceId}/v${version}/${table}.${rand8()}.parquet`;
+/** "<espaço>/dashboards/<dashboard>/" — the definitive data of one dashboard, in its client's folder (or the organization's). */
+export function dashboardFolder(orgSlug: string, clientSlug: string | null, instanceId: string): string {
+  if (!UUID_ONLY.test(instanceId)) throw new StorageKeyError("invalid dashboard id");
+  return `${spaceFolder(orgSlug, clientSlug)}${DASHBOARDS_DIR}/${instanceId}/`;
 }
 
-/** Whether `key` is a data file this app wrote for that table in that version of the dashboard. */
-export function isDatasetKey(key: string, orgSlug: string, instanceId: string, version: number, table: string): boolean {
-  const prefix = `${orgFolder(orgSlug)}datasets/${instanceId}/v${version}/${table}.`;
-  return key.startsWith(prefix) && /^[0-9a-f]{8}\.parquet$/.test(key.slice(prefix.length));
+/** Where a table of a version of a dashboard is written: <espaço>/dashboards/<dashboard>/v<n>/<tabela>.<rand>.parquet. */
+export function datasetKey(orgSlug: string, clientSlug: string | null, instanceId: string, version: number, table: string): string {
+  return `${dashboardFolder(orgSlug, clientSlug, instanceId)}v${version}/${table}.${rand8()}.parquet`;
+}
+
+/**
+ * Whether `key` is a data file this app wrote for that table in that version of the dashboard — in the
+ * space's dashboards folder, or in the organization's former datasets/ folder (drafts started before the move).
+ */
+export function isDatasetKey(
+  key: string, orgSlug: string, clientSlug: string | null, instanceId: string, version: number, table: string,
+): boolean {
+  const prefixes = [
+    `${dashboardFolder(orgSlug, clientSlug, instanceId)}v${version}/${table}.`,
+    `${orgFolder(orgSlug)}datasets/${instanceId}/v${version}/${table}.`,
+  ];
+  return prefixes.some((p) => key.startsWith(p) && /^[0-9a-f]{8}.parquet$/.test(key.slice(p.length)));
 }
 
 export function uploadKey(orgSlug: string, instanceId: string, ext: string): string {

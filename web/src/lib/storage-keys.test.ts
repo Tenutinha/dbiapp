@@ -58,15 +58,19 @@ describe("storableFileName", () => {
 
 describe("key builders", () => {
   it("builds dataset, upload and branding keys inside the org folder", () => {
-    expect(datasetKey("acme", INSTANCE, 3, "fato_vendas")).toMatch(
-      new RegExp(`^orgs/acme/datasets/${INSTANCE}/v3/fato_vendas\\.[0-9a-f]{8}\\.parquet$`),
+    expect(datasetKey("acme", null, INSTANCE, 3, "fato_vendas")).toMatch(
+      new RegExp(`^orgs/acme/dashboards/${INSTANCE}/v3/fato_vendas\\.[0-9a-f]{8}\\.parquet$`),
+    );
+    expect(datasetKey("acme", "cliente-1", INSTANCE, 3, "fato_vendas")).toMatch(
+      new RegExp(`^orgs/acme/clientes/cliente-1/dashboards/${INSTANCE}/v3/fato_vendas\\.[0-9a-f]{8}\\.parquet$`),
     );
     expect(uploadKey("acme", INSTANCE, "csv")).toMatch(new RegExp(`^orgs/acme/uploads/${INSTANCE}/[0-9a-f-]{36}\\.csv$`));
     expect(brandingKey("acme", OTHER, "png")).toBe(`orgs/acme/branding/${OTHER}.png`);
   });
 
   it("produces valid storage keys", () => {
-    expect(isValidKey(datasetKey("acme", INSTANCE, 1, "t"))).toBe(true);
+    expect(isValidKey(datasetKey("acme", "cliente-1", INSTANCE, 1, "t"))).toBe(true);
+    expect(() => datasetKey("acme", null, "../x", 1, "t")).toThrow();
     expect(isValidKey(uploadKey("acme", INSTANCE, "parquet"))).toBe(true);
     expect(isValidKey(brandingKey("acme", OTHER, "svg"))).toBe(true);
   });
@@ -102,18 +106,25 @@ describe("isIssuedUploadKey", () => {
 
 describe("isDatasetKey", () => {
   it("accepts the keys the app writes for that table of that version", () => {
-    expect(isDatasetKey(datasetKey("acme", INSTANCE, 3, "nfe_itens"), "acme", INSTANCE, 3, "nfe_itens")).toBe(true);
+    expect(isDatasetKey(datasetKey("acme", "c1", INSTANCE, 3, "nfe_itens"), "acme", "c1", INSTANCE, 3, "nfe_itens")).toBe(true);
+    expect(isDatasetKey(datasetKey("acme", null, INSTANCE, 3, "nfe_itens"), "acme", null, INSTANCE, 3, "nfe_itens")).toBe(true);
   });
 
-  it("rejects another org, dashboard, version, table or shape", () => {
-    const key = `orgs/acme/datasets/${INSTANCE}/v3/nfe_itens.1a2b3c4d.parquet`;
-    expect(isDatasetKey(key, "other", INSTANCE, 3, "nfe_itens")).toBe(false);
-    expect(isDatasetKey(key, "acme", OTHER, 3, "nfe_itens")).toBe(false);
-    expect(isDatasetKey(key, "acme", INSTANCE, 4, "nfe_itens")).toBe(false);
-    expect(isDatasetKey(key, "acme", INSTANCE, 3, "nfe")).toBe(false);
-    expect(isDatasetKey(`orgs/acme/datasets/${INSTANCE}/v3/nfe_itens.1a2b3c4d.parquet\nx`, "acme", INSTANCE, 3, "nfe_itens")).toBe(false);
-    expect(isDatasetKey(`orgs/acme/datasets/${INSTANCE}/v3/nfe_itens.../x.parquet`, "acme", INSTANCE, 3, "nfe_itens")).toBe(false);
-    expect(isDatasetKey(`orgs/acme/uploads/${INSTANCE}/${OTHER}.parquet`, "acme", INSTANCE, 3, "nfe_itens")).toBe(false);
+  it("still accepts drafts written in the former datasets/ folder", () => {
+    expect(isDatasetKey(`orgs/acme/datasets/${INSTANCE}/v3/nfe_itens.1a2b3c4d.parquet`, "acme", "c1", INSTANCE, 3, "nfe_itens")).toBe(true);
+  });
+
+  it("rejects another org, client, dashboard, version, table or shape", () => {
+    const key = `orgs/acme/clientes/c1/dashboards/${INSTANCE}/v3/nfe_itens.1a2b3c4d.parquet`;
+    expect(isDatasetKey(key, "acme", "c1", INSTANCE, 3, "nfe_itens")).toBe(true);
+    expect(isDatasetKey(key, "other", "c1", INSTANCE, 3, "nfe_itens")).toBe(false);
+    expect(isDatasetKey(key, "acme", "c2", INSTANCE, 3, "nfe_itens")).toBe(false);
+    expect(isDatasetKey(key, "acme", "c1", OTHER, 3, "nfe_itens")).toBe(false);
+    expect(isDatasetKey(key, "acme", "c1", INSTANCE, 4, "nfe_itens")).toBe(false);
+    expect(isDatasetKey(key, "acme", "c1", INSTANCE, 3, "nfe")).toBe(false);
+    expect(isDatasetKey(`${key}\nx`, "acme", "c1", INSTANCE, 3, "nfe_itens")).toBe(false);
+    expect(isDatasetKey(`orgs/acme/datasets/${INSTANCE}/v3/nfe_itens.../x.parquet`, "acme", null, INSTANCE, 3, "nfe_itens")).toBe(false);
+    expect(isDatasetKey(`orgs/acme/uploads/${INSTANCE}/${OTHER}.parquet`, "acme", null, INSTANCE, 3, "nfe_itens")).toBe(false);
   });
 });
 

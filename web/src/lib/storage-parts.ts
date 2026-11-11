@@ -13,3 +13,9 @@ export function joinParts(paths: readonly string[]): string {
 export function splitParts(path: string): string[] {
   return path.split(SEPARATOR).filter((p) => p !== "");
 }
+
+/** Files of the version being replaced that the new one does not use any more (each part is one key). */
+export function supersededParts(previous: readonly string[], current: readonly string[]): string[] {
+  const kept = new Set(current.flatMap(splitParts));
+  return [...new Set(previous.flatMap(splitParts))].filter((p) => !kept.has(p));
+}

@@ -12,7 +12,7 @@ import {
   type CopyCandidate, type FileFacts, type SpaceDashboard, type Verdict,
 } from "../storage-analysis";
 import { relativeToOrg, type BrowseEntryFile } from "../storage-browse";
-import { clientSlugOf, CLIENTS_DIR, isSystemPath, joinPath, parentOf } from "../storage-explorer";
+import { clientSlugOf, CLIENTS_DIR, isReadOnlyPath, isSystemPath, joinPath, parentOf } from "../storage-explorer";
 import { fiscalDocumentId, fiscalFolder } from "../storage-keys";
 import { getCatalogEntry } from "../templates/registry";
 import { inputTable } from "../templates/schema";
@@ -230,7 +230,7 @@ async function walkFiles(ctx: OrgContext, folder: string): Promise<{ files: { pa
       }
       for (const sub of list.folders) {
         const path = joinPath(f, sub.replace(/\/$/, ""));
-        if (!isSystemPath(path)) level.push(path);
+        if (!isReadOnlyPath(path)) level.push(path);
       }
     }
   }

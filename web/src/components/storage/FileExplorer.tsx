@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatBytes } from "@/lib/format";
 import { matchesQuery } from "@/lib/text-search";
-import { canMoveTo, decorate, isProtectedFolder, parentOf, pickableItems, sortEntries, type SortDir, type SortKey } from "@/lib/storage-explorer";
+import { canMoveTo, decorate, isDashboardsPath, isProtectedFolder, parentOf, pickableItems, sortEntries, type SortDir, type SortKey } from "@/lib/storage-explorer";
 import type { ExplorerItem } from "./api";
 import { ContextMenu, type MenuAction } from "./ContextMenu";
 import { droppedFiles, hasExternalFiles, INTERNAL_DRAG, type DroppedFile } from "./dropped";
@@ -157,7 +157,8 @@ export function FileExplorer({ org, orgName, initialFolder, onFolderChange, pick
         { label: "Atualizar", shortcut: "F5", onClick: ex.reload },
       ];
     }
-    const locked = item.folder && isProtectedFolder(item.path);
+    // Client folders and everything in the dashboards' published data cannot be renamed, moved or deleted.
+    const locked = (item.folder && isProtectedFolder(item.path)) || isDashboardsPath(item.path);
     const many = ex.selected.size > 1;
     return [
       { label: item.folder ? "Abrir" : pick?.accept(item) ? "Escolher este arquivo" : "Abrir", disabled: !item.folder && !pick?.accept(item), onClick: () => open(item) },
@@ -173,8 +174,8 @@ export function FileExplorer({ org, orgName, initialFolder, onFolderChange, pick
   const onKeyDown = (e: React.KeyboardEvent): void => {
     if (ex.renaming || dialog || (e.target as HTMLElement).tagName === "INPUT") return;
     const one = selectedItems.length === 1 ? selectedItems[0] : null;
-    if (e.key === "Delete" && selectedItems.length > 0 && !selectedItems.some((i) => i.folder && isProtectedFolder(i.path))) setDialog("delete");
-    else if (e.key === "F2" && one && !(one.folder && isProtectedFolder(one.path))) ex.setRenaming(one.path);
+    if (e.key === "Delete" && selectedItems.length > 0 && !selectedItems.some((i) => (i.folder && isProtectedFolder(i.path)) || isDashboardsPath(i.path))) setDialog("delete");
+    else if (e.key === "F2" && one && !((one.folder && isProtectedFolder(one.path)) || isDashboardsPath(one.path))) ex.setRenaming(one.path);
     else if (e.key === "Enter" && one) open(one);
     else if (e.key === "Backspace" || (e.altKey && e.key === "ArrowUp")) ex.goUp();
     else if (e.altKey && e.key === "ArrowLeft") ex.goBack();

@@ -1,6 +1,7 @@
 import "server-only";
 import type { TransactionSql } from "postgres";
 import { sql } from "../db";
+import { supersededParts } from "../storage-parts";
 
 export interface DatasetFile {
   tableName: string;
@@ -103,7 +104,9 @@ export async function registerDraftFile(instanceId: string, versionId: string, f
   });
 }
 
-export type PromoteResult = { ok: true } | { ok: false; reason: "draft_changed" | "missing_tables"; tables?: string[] };
+export type PromoteResult =
+  | { ok: true; superseded: string[] }
+  | { ok: false; reason: "draft_changed" | "missing_tables"; tables?: string[] };
 
 /**
  * Atomically promotes the draft to active and archives the previous active version.
@@ -123,6 +126,10 @@ export async function promoteDraft(
     const [draft] = await tx<{ status: string }[]>`
       SELECT status FROM dataset_versions WHERE id = ${draftId} AND instance_id = ${instanceId}`;
     if (draft?.status !== "draft") return { ok: false, reason: "draft_changed" };
+
+    const previous = await tx<{ storagePath: string }[]>`
+      SELECT f.storage_path AS "storagePath" FROM dataset_files f
+      JOIN dashboard_instances i ON i.active_version_id = f.version_id WHERE i.id = ${instanceId}`;
 
     await tx`
       INSERT INTO dataset_files (version_id, table_name, storage_path, row_count, size_bytes, original_name)
@@ -144,8 +151,21 @@ export async function promoteDraft(
     await tx`UPDATE dataset_versions SET status = 'active', published_at = now(), report = ${tx.json(report as never)}
              WHERE id = ${draftId}`;
     await tx`UPDATE dashboard_instances SET active_version_id = ${draftId} WHERE id = ${instanceId}`;
-    return { ok: true };
+    return { ok: true, superseded: supersededParts(previous.map((p) => p.storagePath), files.map((f) => f.storagePath)) };
   });
+}
+
+/**
+ * A folder of the bucket moved (a client changed its address): the dashboards' files registered under it
+ * now live under `toPrefix`. Both prefixes end with "/", so "clientes/a/" never touches "clientes/ab/".
+ * Returns how many tables were updated.
+ */
+export async function rewriteDatasetPaths(fromPrefix: string, toPrefix: string): Promise<number> {
+  if (!fromPrefix.endsWith("/") || !toPrefix.endsWith("/")) throw new Error("folder prefixes must end with /");
+  const updated = await sql`
+    UPDATE dataset_files SET storage_path = replace(storage_path, ${fromPrefix}, ${toPrefix})
+    WHERE strpos(storage_path, ${fromPrefix}) > 0`;
+  return updated.count;
 }
 
 // ---------- share links ----------

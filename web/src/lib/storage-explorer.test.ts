@@ -5,6 +5,8 @@ import {
   decorate,
   fileKind,
   isProtectedFolder,
+  isDashboardsPath,
+  isReadOnlyPath,
   isSystemPath,
   pickableItems,
   joinPath,
@@ -208,5 +210,24 @@ describe("pickableItems", () => {
 
   it("chooses nothing without a selection", () => {
     expect(pickableItems([], data, true)).toEqual([]);
+  });
+});
+
+describe("dashboards folder", () => {
+  it("is read-only in the organization and in each client, without hiding it", () => {
+    expect(isDashboardsPath("dashboards")).toBe(true);
+    expect(isDashboardsPath("dashboards/abc/v1/t.parquet")).toBe(true);
+    expect(isDashboardsPath("clientes/martinello/dashboards")).toBe(true);
+    expect(isDashboardsPath("clientes/martinello/dashboards/abc/v1/t.parquet")).toBe(true);
+    expect(isDashboardsPath("clientes/martinello/fiscal/dashboards")).toBe(false);
+    expect(isDashboardsPath("clientes/dashboards")).toBe(false);
+    expect(isSystemPath("clientes/martinello/dashboards")).toBe(false);
+    expect(isProtectedFolder("clientes/martinello/dashboards/abc")).toBe(true);
+    expect(isReadOnlyPath("datasets/x")).toBe(true);
+  });
+  it("takes no uploads and nothing moves in or out", () => {
+    expect(targetProblem("clientes/martinello/dashboards", new Set(["martinello"]))).toMatch(/publicar/);
+    expect(canMoveTo({ path: "clientes/martinello/dashboards/abc/v1/t.parquet", folder: false }, "clientes/martinello")).toMatch(/publicar/);
+    expect(canMoveTo({ path: "clientes/martinello/a.csv", folder: false }, "clientes/martinello/dashboards")).toMatch(/publicar/);
   });
 });

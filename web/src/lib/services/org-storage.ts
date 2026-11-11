@@ -6,7 +6,7 @@ import { listClients } from "../data/organizations";
 import { storage, StorageKeyError } from "../storage";
 import { browsePrefix } from "../storage-browse";
 import {
-  canMoveTo, isProtectedFolder, isSystemPath, joinPath, parentOf, renamedFileName, safeFolderName, targetProblem,
+  canMoveTo, isDashboardsPath, isProtectedFolder, isSystemPath, joinPath, parentOf, renamedFileName, safeFolderName, targetProblem,
   type ExplorerEntry, type ExplorerMeta,
 } from "../storage-explorer";
 import { STORABLE_EXTENSIONS, storableFileName } from "../storage-keys";
@@ -150,6 +150,9 @@ export async function createFolder(ctx: OrgContext, folder: string, name: string
 /** The item at `path` as the server sees it (a request never names an object directly). */
 async function find(ctx: OrgContext, path: string): Promise<{ folder: boolean; name: string; parent: string }> {
   if (isSystemPath(cleanFolder(path))) throw new UserFacingError("Esta pasta é da plataforma e não pode ser alterada.");
+  if (isDashboardsPath(cleanFolder(path))) {
+    throw new UserFacingError("Os dados publicados dos dashboards só mudam ao publicar de novo.");
+  }
   const parent = parentOf(cleanFolder(path));
   const name = cleanFolder(path).slice(parent ? parent.length + 1 : 0);
   const list = await listing(ctx.org.slug, parent);
