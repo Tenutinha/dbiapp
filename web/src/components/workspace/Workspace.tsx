@@ -11,13 +11,11 @@ interface WorkspaceProps {
   userName: string;
   /** Analyses of each dashboard, nested under its name in the sidebar. */
   outlines?: Outlines;
-  /** Links of the screen itself (e.g. the "controle" entries), shown in the sidebar above the dashboards. */
-  nav?: React.ReactNode;
   children: React.ReactNode;
 }
 
 /** Two-pane layout: light table of contents on the left, the dashboard on the right. */
-export function Workspace({ space, currentId, userName, outlines = {}, nav, children }: WorkspaceProps) {
+export function Workspace({ space, currentId, userName, outlines = {}, children }: WorkspaceProps) {
   const { org, client } = space;
   // The organization's own page is linked only when this person can open it (client users may not).
   const orgHref = space.spaces.some((s) => s.kind === "org") ? `/${org.slug}` : null;
@@ -53,7 +51,6 @@ export function Workspace({ space, currentId, userName, outlines = {}, nav, chil
         footer={footer}
         content={<div className="mx-auto max-w-[1180px]">{children}</div>}
       >
-        {nav && <div className="mb-6">{nav}</div>}
         <SidebarNav toc={space.toc} currentId={currentId} outlines={outlines} />
       </SidebarShell>
     </ThemeScope>

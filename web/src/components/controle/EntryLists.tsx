@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import type { Entry } from "@/lib/controle/entries";
 import { formatMoney, formatQuantity } from "@/lib/controle/money";
 import { dayLabel, PAYMENT_LABEL, type Purchase, type Sale } from "@/lib/controle/schema";
 import { call, ControleError } from "./api";
@@ -40,111 +41,128 @@ function RemoveButton({ api, action, id, what, onError }: RemoveButtonProps) {
   );
 }
 
-function Empty({ children }: { children: React.ReactNode }) {
-  return <p className="rounded-xl border border-dashed border-line px-4 py-8 text-center text-sm text-muted">{children}</p>;
-}
-
-interface PurchaseListProps {
-  api: string;
-  purchases: Purchase[];
-  canRecord: boolean;
-}
-
-/** Purchases of the month; each one opens to show its lines and the stored proof. */
-export function PurchaseList({ api, purchases, canRecord }: PurchaseListProps) {
-  const [error, setError] = useState<string | null>(null);
-  if (purchases.length === 0) return <Empty>Nenhuma despesa neste mês.</Empty>;
-
+/** What kind of entry a row is: an arrow going out (despesa) or coming in (venda), also named for screen readers. */
+function KindIcon({ kind }: { kind: Entry["kind"] }) {
+  const sale = kind === "venda";
   return (
-    <div className="flex flex-col gap-2">
-      <ErrorNote message={error} />
-      {purchases.map((p) => (
-        <details key={p.id} className="card group">
-          <summary className="flex cursor-pointer list-none items-center gap-3 p-4 [&::-webkit-details-marker]:hidden">
-            <span className="w-11 shrink-0 text-sm tabular-nums text-muted">{dayLabel(p.purchasedOn)}</span>
-            <span className="min-w-0 flex-1">
-              <span className="block truncate font-semibold">{p.supplier ?? "Despesa"}</span>
-              <span className="block text-xs text-muted">
-                {p.items.length === 1 ? "1 item" : `${p.items.length} itens`}
-                {p.paymentMethod ? ` · ${PAYMENT_LABEL[p.paymentMethod]}` : ""}
-                {p.hasReceipt ? " · com comprovante" : ""}
-              </span>
-            </span>
-            <span className="shrink-0 font-semibold tabular-nums">{formatMoney(p.totalCents)}</span>
-            <span aria-hidden className="shrink-0 text-muted transition-transform group-open:rotate-90">›</span>
-          </summary>
-          <div className="flex flex-col gap-3 border-t border-line p-4">
-            {p.items.length > 0 && (
-              <ul className="flex flex-col gap-1.5 text-sm">
-                {p.items.map((item) => (
-                  <li key={item.id} className="flex items-baseline justify-between gap-3">
-                    <span className="min-w-0">
-                      {item.description}
-                      <span className="text-muted"> · {formatQuantity(item.quantity)}{item.unit ? ` ${item.unit}` : ""}</span>
-                    </span>
-                    <span className="shrink-0 tabular-nums">{formatMoney(item.totalCents)}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {p.notes && <p className="text-sm text-muted">{p.notes}</p>}
-            <div className="flex items-center justify-between gap-3">
-              {p.hasReceipt ? (
-                <a href={`${api}/comprovante/${p.id}`} target="_blank" rel="noreferrer" className="text-sm font-semibold text-brand underline-offset-2 hover:underline">
-                  Abrir comprovante
-                </a>
-              ) : (
-                <span className="text-xs text-muted">Lançada à mão</span>
-              )}
-              {canRecord && (
-                <RemoveButton
-                  api={api}
-                  action="purchaseRemove"
-                  id={p.id}
-                  what={`a despesa de ${formatMoney(p.totalCents)}${p.supplier ? ` em ${p.supplier}` : ""}`}
-                  onError={setError}
-                />
-              )}
-            </div>
-          </div>
-        </details>
-      ))}
-    </div>
+    <span
+      role="img"
+      aria-label={sale ? "Venda" : "Despesa"}
+      title={sale ? "Venda" : "Despesa"}
+      className={`grid size-9 shrink-0 place-items-center rounded-full ${sale ? "bg-ok/15 text-ok" : "bg-danger/15 text-danger"}`}
+    >
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        {sale ? <path d="M12 19V5M5 12l7-7 7 7" /> : <path d="M12 5v14M5 12l7 7 7-7" />}
+      </svg>
+    </span>
   );
 }
 
-interface SaleListProps {
+const purchaseTitle = (p: Purchase): string => p.supplier ?? "Despesa";
+const saleTitle = (s: Sale): string => s.customerName ?? s.product ?? "Venda";
+
+function purchaseDetail(p: Purchase): string {
+  return [
+    p.items.length === 1 ? "1 item" : p.items.length > 1 ? `${p.items.length} itens` : null,
+    p.paymentMethod ? PAYMENT_LABEL[p.paymentMethod] : null,
+    p.hasReceipt ? "com comprovante" : null,
+  ].filter(Boolean).join(" · ") || "Despesa";
+}
+
+function saleDetail(s: Sale): string {
+  return [s.paymentMethod ? PAYMENT_LABEL[s.paymentMethod] : null, s.customerName ? s.product : null].filter(Boolean).join(" · ") || "Pagamento não informado";
+}
+
+interface PurchaseBodyProps {
   api: string;
-  sales: Sale[];
+  purchase: Purchase;
+}
+
+function PurchaseBody({ api, purchase: p }: PurchaseBodyProps) {
+  return (
+    <>
+      {p.items.length > 0 && (
+        <ul className="flex flex-col gap-1.5 text-sm">
+          {p.items.map((item) => (
+            <li key={item.id} className="flex items-baseline justify-between gap-3">
+              <span className="min-w-0">
+                {item.description}
+                <span className="text-muted"> · {formatQuantity(item.quantity)}{item.unit ? ` ${item.unit}` : ""}</span>
+              </span>
+              <span className="shrink-0 tabular-nums">{formatMoney(item.totalCents)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {p.notes && <p className="text-sm text-muted">{p.notes}</p>}
+      {p.hasReceipt && (
+        <a href={`${api}/comprovante/${p.id}`} target="_blank" rel="noreferrer" className="self-start text-sm font-semibold text-brand underline-offset-2 hover:underline">
+          Abrir comprovante
+        </a>
+      )}
+    </>
+  );
+}
+
+interface EntryListProps {
+  api: string;
+  /** Purchases and sales of the month, already in display order (see mergeEntries). */
+  entries: Entry[];
   canRecord: boolean;
 }
 
-export function SaleList({ api, sales, canRecord }: SaleListProps) {
+/** Everything recorded in the month in one list; the icon tells a despesa from a venda. Each row opens for its details. */
+export function EntryList({ api, entries, canRecord }: EntryListProps) {
   const [error, setError] = useState<string | null>(null);
-  if (sales.length === 0) return <Empty>Nenhuma venda neste mês.</Empty>;
+  if (entries.length === 0) {
+    return <p className="rounded-xl border border-dashed border-line px-4 py-8 text-center text-sm text-muted">Nenhum lançamento neste mês.</p>;
+  }
 
   return (
     <div className="flex flex-col gap-2">
       <ErrorNote message={error} />
-      <ul className="card divide-y divide-line">
-        {sales.map((s) => (
-          <li key={s.id} className="flex items-center gap-3 p-4">
-            <span className="w-11 shrink-0 text-sm tabular-nums text-muted">{dayLabel(s.soldOn)}</span>
-            <span className="min-w-0 flex-1">
-              <span className="block truncate font-semibold">{s.customerName ?? s.product ?? "Venda"}</span>
-              <span className="block text-xs text-muted">
-                {[s.paymentMethod ? PAYMENT_LABEL[s.paymentMethod] : null, s.customerName ? s.product : null].filter(Boolean).join(" · ") || "Pagamento não informado"}
+      {entries.map((entry) => {
+        const sale = entry.kind === "venda";
+        const title = sale ? saleTitle(entry.sale) : purchaseTitle(entry.purchase);
+        return (
+          <details key={`${entry.kind}-${entry.id}`} className="card group">
+            <summary className="flex cursor-pointer list-none items-center gap-3 p-3 sm:p-4 [&::-webkit-details-marker]:hidden">
+              <KindIcon kind={entry.kind} />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-semibold">{title}</span>
+                <span className="block truncate text-xs text-muted">
+                  {dayLabel(entry.day)} · {sale ? saleDetail(entry.sale) : purchaseDetail(entry.purchase)}
+                </span>
               </span>
-            </span>
-            <span className="flex shrink-0 flex-col items-end gap-0.5">
-              <span className="font-semibold tabular-nums">{formatMoney(s.totalCents)}</span>
-              {canRecord && (
-                <RemoveButton api={api} action="saleRemove" id={s.id} what={`a venda de ${formatMoney(s.totalCents)}${s.customerName ? ` para ${s.customerName}` : ""}`} onError={setError} />
-              )}
-            </span>
-          </li>
-        ))}
-      </ul>
+              <span className={`shrink-0 font-semibold tabular-nums ${sale ? "text-ok" : ""}`}>
+                {sale ? "+" : "−"} {formatMoney(entry.totalCents)}
+              </span>
+              <span aria-hidden className="shrink-0 text-muted transition-transform group-open:rotate-90">›</span>
+            </summary>
+            <div className="flex flex-col gap-3 border-t border-line p-4">
+              {!sale && <PurchaseBody api={api} purchase={entry.purchase} />}
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-xs text-muted">
+                  {sale ? "Venda" : entry.purchase.hasReceipt ? "Despesa" : "Despesa lançada à mão"} de {dayLabel(entry.day)}
+                </span>
+                {canRecord && (
+                  <RemoveButton
+                    api={api}
+                    action={sale ? "saleRemove" : "purchaseRemove"}
+                    id={entry.id}
+                    what={
+                      sale
+                        ? `a venda de ${formatMoney(entry.totalCents)}${entry.sale.customerName ? ` para ${entry.sale.customerName}` : ""}`
+                        : `a despesa de ${formatMoney(entry.totalCents)}${entry.purchase.supplier ? ` em ${entry.purchase.supplier}` : ""}`
+                    }
+                    onError={setError}
+                  />
+                )}
+              </div>
+            </div>
+          </details>
+        );
+      })}
     </div>
   );
 }

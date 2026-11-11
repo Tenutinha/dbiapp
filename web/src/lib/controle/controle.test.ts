@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { mergeEntries } from "./entries";
 import { toDraft, type ReceiptReading } from "./extraction";
 import { isReceiptPath, receiptExt, receiptMime, receiptPath } from "./receipts";
 import { isValidDay, monthLabel, monthOrCurrent, purchaseInput, saleInput, shiftDay, shiftMonth, todayInBrazil } from "./schema";
@@ -166,5 +167,27 @@ describe("evolução", () => {
       { period: "2026-11-03", salesCents: null, purchasesCents: null },
       { period: "2026-11-04", salesCents: null, purchasesCents: null },
     ]);
+  });
+});
+
+describe("lista única de lançamentos", () => {
+  const purchase = (id: string, purchasedOn: string, createdAt: string) => ({
+    id, purchasedOn, createdAt, supplier: null, totalCents: 100, paymentMethod: null, notes: null, hasReceipt: false, fromReceipt: false, items: [],
+  });
+  const sale = (id: string, soldOn: string, createdAt: string) => ({
+    id, soldOn, createdAt, totalCents: 200, paymentMethod: null, customerName: null, product: null,
+  });
+
+  it("mistura despesas e vendas, do dia mais recente para o mais antigo", () => {
+    const list = mergeEntries(
+      [purchase("d1", "2026-11-10", "2026-11-10T12:00:00"), purchase("d2", "2026-11-11", "2026-11-11T09:00:00")],
+      [sale("v1", "2026-11-11", "2026-11-11T15:00:00"), sale("v2", "2026-11-09", "2026-11-12T08:00:00")],
+    );
+    expect(list.map((e) => `${e.kind}:${e.id}`)).toEqual(["venda:v1", "despesa:d2", "despesa:d1", "venda:v2"]);
+    expect(list[0]).toMatchObject({ day: "2026-11-11", totalCents: 200 });
+  });
+
+  it("mês sem nada dá lista vazia", () => {
+    expect(mergeEntries([], [])).toEqual([]);
   });
 });
