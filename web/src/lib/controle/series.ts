@@ -15,8 +15,17 @@ export interface RunningPoint {
 }
 
 /**
- * Running totals of a month, day by day. Days after `lastDay` (today, in the current month) come
- * empty, so the lines stop at today instead of running flat to the end of the month.
+ * Where the lines of a month stop: today, or the last day that has an entry when that is later
+ * (entries may be dated ahead).
+ */
+export function lastDrawnDay(days: readonly SeriesPoint[], today: string): string {
+  const lastWithEntry = days.reduce((last, day) => (day.salesCents !== 0 || day.purchasesCents !== 0 ? day.period : last), "");
+  return lastWithEntry > today ? lastWithEntry : today;
+}
+
+/**
+ * Running totals of a month, day by day. Days after `lastDay` (see lastDrawnDay) come empty, so
+ * the lines stop there instead of running flat to the end of the month.
  */
 export function cumulative(days: readonly SeriesPoint[], lastDay: string): RunningPoint[] {
   let sales = 0;

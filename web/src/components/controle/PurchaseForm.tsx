@@ -23,6 +23,8 @@ interface PurchaseFormProps {
   receipt: SentReceipt | null;
   /** Whether the draft came from the reader (kept with the purchase). */
   fromReceipt: boolean;
+  /** Set when correcting a saved purchase: it is rewritten instead of created (its receipt is kept). */
+  editId?: string;
   onSaved: () => void;
   onCancel: () => void;
 }
@@ -77,7 +79,7 @@ function build(fields: { day: string; supplier: string; total: string; payment: 
 }
 
 /** Checking screen of a purchase: everything the reader found is editable before it is saved. */
-export function PurchaseForm({ api, today, draft, receipt, fromReceipt, onSaved, onCancel }: PurchaseFormProps) {
+export function PurchaseForm({ api, today, draft, receipt, fromReceipt, editId, onSaved, onCancel }: PurchaseFormProps) {
   const [day, setDay] = useState(draft.purchasedOn ?? today);
   const [supplier, setSupplier] = useState(draft.supplier ?? "");
   const [total, setTotal] = useState(moneyInput(draft.totalCents));
@@ -110,7 +112,8 @@ export function PurchaseForm({ api, today, draft, receipt, fromReceipt, onSaved,
     setSaving(true);
     setError(null);
     try {
-      await call(api, { action: "purchaseSave", purchase: { ...built, receipt, fromReceipt: fromReceipt && receipt !== null } });
+      if (editId) await call(api, { action: "purchaseUpdate", id: editId, purchase: built });
+      else await call(api, { action: "purchaseSave", purchase: { ...built, receipt, fromReceipt: fromReceipt && receipt !== null } });
       onSaved();
     } catch (err) {
       setError(err instanceof ControleError ? err.message : "Não foi possível salvar. Tente de novo.");
@@ -122,7 +125,7 @@ export function PurchaseForm({ api, today, draft, receipt, fromReceipt, onSaved,
     <form onSubmit={save} className="flex flex-col gap-4" noValidate>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Data">
-          <input type="date" value={day} max={today} onChange={(e) => setDay(e.target.value)} className={INPUT} required />
+          <input type="date" value={day} onChange={(e) => setDay(e.target.value)} className={INPUT} required />
         </Field>
         <Field label="Total pago (R$)">
           <input inputMode="decimal" value={total} onChange={(e) => setTotal(e.target.value)} placeholder="0,00" className={`${INPUT} font-semibold`} />
@@ -195,7 +198,7 @@ export function PurchaseForm({ api, today, draft, receipt, fromReceipt, onSaved,
       <ErrorNote message={error} />
       <div className="sticky bottom-0 -mx-4 flex gap-2 border-t border-line bg-card/95 px-4 py-3 backdrop-blur">
         <button type="button" onClick={onCancel} disabled={saving} className="btn btn-ghost flex-1 justify-center">Cancelar</button>
-        <button className="btn btn-primary flex-[2] justify-center" disabled={saving}>{saving ? "Salvando…" : "Salvar despesa"}</button>
+        <button className="btn btn-primary flex-[2] justify-center" disabled={saving}>{saving ? "Salvando…" : editId ? "Salvar alterações" : "Salvar despesa"}</button>
       </div>
     </form>
   );

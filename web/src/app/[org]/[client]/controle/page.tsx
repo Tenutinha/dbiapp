@@ -9,7 +9,7 @@ import { mergeEntries } from "@/lib/controle/entries";
 import { receiptReaderEnabled } from "@/lib/controle/extract";
 import { formatMoney } from "@/lib/controle/money";
 import { monthLabel, monthOrCurrent, shiftMonth, todayInBrazil } from "@/lib/controle/schema";
-import { cumulative } from "@/lib/controle/series";
+import { cumulative, lastDrawnDay } from "@/lib/controle/series";
 import { dailySeries, listPurchases, listSales, monthlySeries, monthTotals } from "@/lib/data/controle";
 import { guard } from "@/lib/guard";
 import { getControle } from "@/lib/services/controle";
@@ -88,11 +88,8 @@ export default async function ControlePage({ params, searchParams }: Props) {
           <nav aria-label="Mês" className="-ml-2 flex shrink-0 items-center justify-between sm:ml-0">
             <Link href={monthHref(shiftMonth(month, -1))} aria-label="Mês anterior" className="grid size-10 place-items-center rounded-lg text-xl text-muted hover:bg-text/5">‹</Link>
             <p className="min-w-24 text-center text-sm font-semibold first-letter:uppercase">{monthLabel(month)}</p>
-            {month < currentMonth ? (
-              <Link href={monthHref(shiftMonth(month, 1))} aria-label="Próximo mês" className="grid size-10 place-items-center rounded-lg text-xl text-muted hover:bg-text/5">›</Link>
-            ) : (
-              <span className="size-10" aria-hidden />
-            )}
+            {/* Entries may be dated ahead, so the months to come are reachable too. */}
+            <Link href={monthHref(shiftMonth(month, 1))} aria-label="Próximo mês" className="grid size-10 place-items-center rounded-lg text-xl text-muted hover:bg-text/5">›</Link>
           </nav>
         </header>
 
@@ -102,12 +99,12 @@ export default async function ControlePage({ params, searchParams }: Props) {
           <Kpi label="Saldo" cents={balance} detail="no mês" tone={balance < 0 ? "danger" : "ok"} />
         </section>
 
-        <EvolutionCharts month={cumulative(days, today)} months={months} />
+        <EvolutionCharts month={cumulative(days, lastDrawnDay(days, today))} months={months} />
 
         <section id="lancamentos" aria-labelledby="lancamentos-titulo" className="flex scroll-mt-20 flex-col gap-3">
           <h2 id="lancamentos-titulo" className="text-sm font-semibold">Lançamentos do mês</h2>
           {!canRecord && <p className="text-sm text-muted">Seu acesso é só de leitura: você vê os lançamentos, mas não cria nem exclui.</p>}
-          <EntryList api={api} entries={mergeEntries(purchases, sales)} canRecord={canRecord} />
+          <EntryList api={api} today={today} entries={mergeEntries(purchases, sales)} canRecord={canRecord} />
         </section>
       </div>
       {canRecord && <ControleActions api={api} today={today} readerEnabled={receiptReaderEnabled()} />}

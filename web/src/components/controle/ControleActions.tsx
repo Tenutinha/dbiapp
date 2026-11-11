@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { EntryWizard } from "./EntryWizard";
 import { PurchaseCapture } from "./PurchaseCapture";
+import { Sheet } from "./Sheet";
 
-type Sheet = "despesa" | "venda";
+type Kind = "despesa" | "venda";
 
-const TITLE: Record<Sheet, string> = { despesa: "Nova despesa", venda: "Nova venda" };
+const TITLE: Record<Kind, string> = { despesa: "Nova despesa", venda: "Nova venda" };
 
 interface ControleActionsProps {
   api: string;
@@ -15,22 +16,9 @@ interface ControleActionsProps {
   readerEnabled: boolean;
 }
 
-/**
- * The two floating buttons of the "controle" home — Despesa and Vendas — and the sheet each one opens
- * (from the bottom on a phone, centred on a larger screen). The form only exists while its sheet is open,
- * so every opening starts clean.
- */
+/** The two floating buttons of the "controle" home — Despesa and Vendas — and the sheet each one opens. */
 export function ControleActions({ api, today, readerEnabled }: ControleActionsProps) {
-  const [sheet, setSheet] = useState<Sheet | null>(null);
-  const dialogRef = useRef<HTMLDialogElement>(null);
-
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-    if (sheet && !dialog.open) dialog.showModal();
-    if (!sheet && dialog.open) dialog.close();
-  }, [sheet]);
-
+  const [sheet, setSheet] = useState<Kind | null>(null);
   const close = (): void => setSheet(null);
 
   return (
@@ -47,27 +35,13 @@ export function ControleActions({ api, today, readerEnabled }: ControleActionsPr
         </div>
       </div>
 
-      <dialog
-        ref={dialogRef}
-        onClose={close}
-        onClick={(e) => { if (e.target === e.currentTarget) close(); }}
-        aria-label={sheet ? TITLE[sheet] : undefined}
-        className="mx-auto mb-0 mt-auto max-h-[92dvh] w-full max-w-lg overflow-y-auto rounded-t-2xl border border-line bg-card p-0 text-text backdrop:bg-black/60 backdrop:backdrop-blur-sm sm:my-auto sm:rounded-2xl"
-      >
-        {sheet && (
-          <div className="flex flex-col gap-4 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-brand-2">{TITLE[sheet]}</h2>
-              <button type="button" onClick={close} aria-label="Fechar" className="grid size-10 place-items-center rounded-lg text-xl text-muted hover:bg-text/5">✕</button>
-            </div>
-            {sheet === "despesa" ? (
-              <PurchaseCapture api={api} today={today} readerEnabled={readerEnabled} onClose={close} />
-            ) : (
-              <EntryWizard kind="venda" api={api} today={today} onClose={close} />
-            )}
-          </div>
+      <Sheet title={sheet ? TITLE[sheet] : null} onClose={close}>
+        {sheet === "despesa" ? (
+          <PurchaseCapture api={api} today={today} readerEnabled={readerEnabled} onClose={close} />
+        ) : (
+          <EntryWizard kind="venda" api={api} today={today} onClose={close} />
         )}
-      </dialog>
+      </Sheet>
     </>
   );
 }
