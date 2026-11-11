@@ -1,19 +1,23 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { CONTACT_HREF } from "@/components/landing/content";
 import { AuthPage } from "../AuthPage";
-import { SignupForm } from "./SignupForm";
 
-export const metadata: Metadata = { title: "Criar conta" };
+export const metadata: Metadata = { title: "Acesso por convite" };
 
+/**
+ * Self-service signup is closed: organizations are created only by platform administrators
+ * ("admin master"), and people join by invitation. The old address stays to explain that.
+ */
 export default function SignupPage() {
   return (
     <AuthPage
-      title="Criar conta"
-      subtitle="Crie sua conta e a organização da sua empresa. Você será o admin e poderá convidar sua equipe e seus clientes."
+      title="Acesso por convite"
+      subtitle="As organizações da DBI são criadas pela nossa equipe. Se a sua empresa já usa a DBI, peça ao admin dela para te convidar."
     >
-      <SignupForm />
+      <a href={CONTACT_HREF} className="btn btn-primary w-full">Quero conhecer a DBI</a>
       <p className="text-center text-sm text-muted">
-        Já tem conta?{" "}
+        Já tem conta ou recebeu um convite?{" "}
         <Link href="/entrar" className="text-text underline underline-offset-4 hover:text-brand">Entrar</Link>
       </p>
     </AuthPage>

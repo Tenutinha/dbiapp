@@ -24,9 +24,6 @@ function Nav() {
           <Link href="/entrar" className="btn btn-ghost hidden sm:inline-flex">
             Entrar
           </Link>
-          <Link href="/entrar/cadastro" className="btn btn-ghost hidden md:inline-flex">
-            Criar conta
-          </Link>
           <a href={CONTACT_HREF} className="btn btn-primary">
             Quero conhecer
           </a>
@@ -73,9 +70,6 @@ function FinalCta() {
           <a href={CONTACT_HREF} className="btn btn-primary px-5 py-3 text-[15px]">
             Falar com a DBI
           </a>
-          <Link href="/entrar/cadastro" className="btn btn-ghost px-5 py-3 text-[15px]">
-            Criar conta
-          </Link>
           <Link href="/entrar" className="btn btn-ghost px-5 py-3 text-[15px]">
             Entrar na plataforma
           </Link>

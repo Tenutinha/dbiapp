@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { activateTemplate } from "@/app/actions";
 import { Notice } from "@/components/AppShell";
+import { CONTACT_HREF } from "@/components/landing/content";
 import type { VitrineViewer } from "@/lib/vitrine-server";
 
 interface AddToOrgProps {
@@ -15,7 +16,7 @@ export function AddToOrg({ templateId, viewer }: AddToOrgProps) {
       <div className="flex flex-col gap-2">
         <p className="text-sm text-muted">Entre na sua conta para adicionar este dashboard à sua organização.</p>
         <Link href="/entrar" className="btn btn-primary w-full">Entrar para adicionar</Link>
-        <Link href="/entrar/cadastro" className="btn btn-ghost w-full">Criar conta grátis</Link>
+        <a href={CONTACT_HREF} className="btn btn-ghost w-full">Quero conhecer a DBI</a>
       </div>
     );
   }

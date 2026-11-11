@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { AppShell, Logo } from "@/components/AppShell";
+import { CONTACT_HREF } from "@/components/landing/content";
 import type { VitrineViewer } from "@/lib/vitrine-server";
 
 interface VitrineFrameProps {
@@ -21,9 +22,9 @@ export function VitrineFrame({ viewer, children }: VitrineFrameProps) {
             <Link href="/entrar" className="btn btn-ghost">
               Entrar
             </Link>
-            <Link href="/entrar/cadastro" className="btn btn-primary hidden sm:inline-flex">
-              Criar conta
-            </Link>
+            <a href={CONTACT_HREF} className="btn btn-primary hidden sm:inline-flex">
+              Quero conhecer
+            </a>
           </div>
         </div>
       </header>
