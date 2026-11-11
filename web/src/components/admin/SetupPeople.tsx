@@ -50,6 +50,8 @@ interface SpaceUsersProps {
   scope: string;
   spaceName: string;
   people: readonly OrgPerson[];
+  /** The organization has the "controle" module (changes the role suggested for client users). */
+  controle?: boolean;
 }
 
 const MAX_AVATARS = 6;
@@ -90,7 +92,7 @@ export function SpaceUsersList({ scope, people }: Pick<SpaceUsersProps, "scope" 
 }
 
 /** Content of the "Gerenciar usuários" modal: everyone who sees the space (× to revoke) and the access form. */
-export function SpaceUsersPanel({ org, scope, spaceName, people }: SpaceUsersProps) {
+export function SpaceUsersPanel({ org, scope, spaceName, people, controle }: SpaceUsersProps) {
   const viewers = viewersOf(scope, people);
   const isOrg = scope === ORG_SCOPE;
   return (
@@ -129,6 +131,7 @@ export function SpaceUsersPanel({ org, scope, spaceName, people }: SpaceUsersPro
           clients={isOrg ? [] : [{ id: scope, name: spaceName }]}
           allowOrg={isOrg}
           title="Dar acesso a mais alguém"
+          controle={controle}
           bare
         />
       </section>

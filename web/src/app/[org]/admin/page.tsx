@@ -17,6 +17,7 @@ import { listSpaceLinks } from "@/lib/data/space-links";
 import { ORG_SCOPE } from "@/lib/admin-setup";
 import { activeLink } from "@/lib/space-link";
 import { guard } from "@/lib/guard";
+import { controleEnabled } from "@/lib/services/controle";
 import { listTemplates } from "@/lib/templates/registry";
 
 export const dynamic = "force-dynamic";
@@ -74,12 +75,13 @@ export default async function AdminPage({ params, searchParams }: {
   ]);
   if (data === "forbidden") return <Forbidden message="Somente admins da organização acessam esta página." />;
   const { ctx, people, groups, spaceLinks, pickerItems } = data;
+  const controle = await controleEnabled(ctx.org.id);
 
   return (
     <OrgFrame org={ctx.org} isAdmin userName={ctx.user.name}>
       <h1 className="sr-only">Configuração de {ctx.org.name}</h1>
       <AdminSetupTable
-        org={{ slug: ctx.org.slug, name: ctx.org.name }}
+        org={{ slug: ctx.org.slug, name: ctx.org.name, controle }}
         groups={groups}
         people={people}
         catalog={pickerItems}

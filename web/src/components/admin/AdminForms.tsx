@@ -61,9 +61,11 @@ interface GrantAccessFormProps {
   title?: string;
   /** Renders without the card frame (inside a modal). */
   bare?: boolean;
+  /** The organization has the "controle" module: client users are there to record entries, so "Analista" is suggested. */
+  controle?: boolean;
 }
 
-export function GrantAccessForm({ orgSlug, clients, allowOrg = true, title = "Dar acesso", bare = false }: GrantAccessFormProps) {
+export function GrantAccessForm({ orgSlug, clients, allowOrg = true, title = "Dar acesso", bare = false, controle = false }: GrantAccessFormProps) {
   const [state, action, pending] = useActionState(grantAccessAction, INITIAL);
   const initialScope = allowOrg ? "org" : (clients[0]?.id ?? "org");
   const [scope, setScope] = useState(initialScope);
@@ -95,17 +97,19 @@ export function GrantAccessForm({ orgSlug, clients, allowOrg = true, title = "Da
         </label>
         <label className="flex flex-col gap-1 text-xs text-muted">
           Papel
-          <select name="role" key={isClient ? "client" : "org"} defaultValue={isClient ? "viewer" : "editor"} className={INPUT}>
+          <select name="role" key={isClient ? "client" : "org"} defaultValue={isClient ? (controle ? "analyst" : "viewer") : "editor"} className={INPUT}>
             {!isClient && <option value="admin">Admin — usuários, clientes e dados</option>}
             {!isClient && <option value="editor">Editor de dados — sobe e publica</option>}
-            <option value="analyst">Analista — vê e compartilha</option>
+            <option value="analyst">{isClient && controle ? "Analista — vê, compartilha e lança vendas e despesas" : "Analista — vê e compartilha"}</option>
             <option value="viewer">Leitor — só vê</option>
           </select>
         </label>
       </div>
       <p className="text-xs text-muted">
         {isClient
-          ? "Usuários de cliente veem apenas os dashboards desse cliente."
+          ? controle
+            ? "Usuários de cliente veem apenas esse cliente. No Controle, só o Analista lança, edita e exclui; o Leitor apenas vê."
+            : "Usuários de cliente veem apenas os dashboards desse cliente."
           : "Admin e editor acessam todos os clientes; analista e leitor veem só os dashboards da organização."}
       </p>
       <label className="flex items-start gap-2 text-xs">
