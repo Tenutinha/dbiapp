@@ -205,7 +205,7 @@ export function EntryList({ api, today, entries, canRecord }: EntryListProps) {
       })}
       </div>
       <Sheet title={editing ? (editing.kind === "venda" ? "Editar venda" : "Editar despesa") : null} onClose={stopEditing}>
-        {editing?.kind === "venda" && <SaleEditForm api={api} today={today} sale={editing.sale} onSaved={edited} onCancel={stopEditing} />}
+        {editing?.kind === "venda" && <SaleEditForm api={api} sale={editing.sale} onSaved={edited} onCancel={stopEditing} />}
         {editing?.kind === "despesa" && (
           <PurchaseForm
             api={api}

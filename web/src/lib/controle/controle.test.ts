@@ -2,18 +2,21 @@ import { describe, expect, it } from "vitest";
 import { mergeEntries } from "./entries";
 import { toDraft, type ReceiptReading } from "./extraction";
 import { isReceiptPath, receiptExt, receiptMime, receiptPath } from "./receipts";
-import { isValidDay, monthLabel, monthOrCurrent, purchaseInput, saleInput, shiftDay, shiftMonth, todayInBrazil } from "./schema";
-import { cumulative } from "./series";
+import { isValidDay, lastValidDay, monthLabel, monthOrCurrent, purchaseInput, saleInput, shiftDay, shiftMonth, todayInBrazil } from "./schema";
+import { cumulative, lastDrawnDay } from "./series";
 
 const TODAY = new Date("2026-11-11T15:00:00Z");
 const ID = "0f8fad5b-d9cb-469f-a165-70867728950e";
 
 describe("datas", () => {
-  it("aceita só dias que existem, de 2000 até hoje", () => {
+  it("aceita só dias que existem, de 2000 até cinco anos à frente", () => {
     expect(isValidDay("2026-11-11", TODAY)).toBe(true);
     expect(isValidDay("2026-02-30", TODAY)).toBe(false);
     expect(isValidDay("1999-12-31", TODAY)).toBe(false);
-    expect(isValidDay("2026-11-12", TODAY)).toBe(false);
+    expect(isValidDay("2026-12-21", TODAY)).toBe(true);
+    expect(lastValidDay(TODAY)).toBe("2031-11-11");
+    expect(isValidDay("2031-11-11", TODAY)).toBe(true);
+    expect(isValidDay("2031-11-12", TODAY)).toBe(false);
     expect(isValidDay("11/11/2026", TODAY)).toBe(false);
   });
 
@@ -158,6 +161,13 @@ describe("evolução", () => {
       { period: "2026-11-03", salesCents: 150, purchasesCents: 50 },
       { period: "2026-11-04", salesCents: 150, purchasesCents: 50 },
     ]);
+  });
+
+  it("a linha vai até hoje, ou até o último lançamento quando ele é futuro", () => {
+    expect(lastDrawnDay(days, "2026-11-02")).toBe("2026-11-03");
+    expect(lastDrawnDay(days, "2026-11-04")).toBe("2026-11-04");
+    expect(lastDrawnDay(days, "2026-12-15")).toBe("2026-12-15");
+    expect(lastDrawnDay([], "2026-11-04")).toBe("2026-11-04");
   });
 
   it("não desenha os dias que ainda não chegaram", () => {

@@ -125,7 +125,7 @@ export function PurchaseForm({ api, today, draft, receipt, fromReceipt, editId, 
     <form onSubmit={save} className="flex flex-col gap-4" noValidate>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Data">
-          <input type="date" value={day} max={today} onChange={(e) => setDay(e.target.value)} className={INPUT} required />
+          <input type="date" value={day} onChange={(e) => setDay(e.target.value)} className={INPUT} required />
         </Field>
         <Field label="Total pago (R$)">
           <input inputMode="decimal" value={total} onChange={(e) => setTotal(e.target.value)} placeholder="0,00" className={`${INPUT} font-semibold`} />
