@@ -13,7 +13,7 @@ import { listAllOrganizations, type OrgOverview } from "@/lib/data/platform";
 import { guard } from "@/lib/guard";
 import { allowedActions, ROLE_LABEL } from "@/lib/permissions";
 import { catalogReady, listTemplates } from "@/lib/templates/registry";
-import { isVitrineTemplate, toVitrineItem, type VitrineItem } from "@/lib/vitrine";
+import { isVitrineTemplate, orgsThatCanAdd, toVitrineItem, type VitrineItem } from "@/lib/vitrine";
 
 export const dynamic = "force-dynamic";
 
@@ -115,8 +115,11 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
   if (orgs.length === 1 && !user.isPlatformAdmin) redirect(`/${orgs[0].slug}`);
 
   const admin = user.isPlatformAdmin;
+  // The showcase is for adding dashboards to an organization: only who can do that sees it
+  // (admin master, admins and data editors). Invited readers and analysts never see it.
+  const showVitrine = orgsThatCanAdd(orgs, admin).length > 0;
   const [items, catalogOk, overview] = await Promise.all([
-    loadVitrineItems(),
+    showVitrine ? loadVitrineItems() : Promise.resolve([]),
     admin ? catalogReady() : Promise.resolve(false),
     admin ? listAllOrganizations() : Promise.resolve([]),
   ]);
@@ -136,7 +139,7 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
           {admin && <NewOrgCard />}
         </div>
       )}
-      <VitrineSection className="mt-12" items={items} admin={catalogRows ? { rows: catalogRows, editId: typeof editar === "string" ? editar : null } : null} />
+      {showVitrine && <VitrineSection className="mt-12" items={items} admin={catalogRows ? { rows: catalogRows, editId: typeof editar === "string" ? editar : null } : null} />}
     </AppShell>
   );
 }
