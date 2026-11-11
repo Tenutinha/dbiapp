@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { explorerApi, type OrganizePlan, type OrganizeResult } from "./api";
 import { organizeBatches } from "./organize-batches";
+import { OrganizeMoveList } from "./OrganizeMoveList";
 
 interface OrganizeDialogProps {
   org: string;
@@ -13,7 +14,6 @@ interface OrganizeDialogProps {
   onCancel: () => void;
 }
 
-const fileName = (path: string): string => path.slice(path.lastIndexOf("/") + 1);
 
 /**
  * "Organizar pasta": recognized fiscal files (SPED, NF-e) found loose in the folder go to the standard
@@ -101,20 +101,7 @@ export function OrganizeDialog({ org, folder, folderName, onDone, onCancel }: Or
               {plan.moves.length === 0 ? (
                 <p className="py-6 text-center text-muted">Nada a organizar: os arquivos fiscais já estão nas pastas padrão.</p>
               ) : (
-                <ul className="flex flex-col divide-y divide-line rounded-lg border border-line">
-                  {plan.moves.map((m) => (
-                    <li key={m.path} className="flex items-start gap-3 px-3 py-2">
-                      <input type="checkbox" checked={chosen.has(m.path)} onChange={() => toggle(m.path)} aria-label={`Organizar ${fileName(m.path)}`} className="mt-1" />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate font-medium" title={m.path}>{fileName(m.path)}</p>
-                        <p className="truncate text-xs text-muted">{m.layout}</p>
-                        <p className="truncate font-mono text-[11px] text-muted" title={m.to}>→ {m.to}</p>
-                        {m.note && <p className="text-[11px] text-accent">⚠ {m.note}</p>}
-                      </div>
-                      {m.replaces && <span className="shrink-0 rounded bg-accent/15 px-1.5 py-0.5 text-[11px] text-accent" title="Já existe o mesmo documento na pasta: ele será substituído por este">substitui o existente</span>}
-                    </li>
-                  ))}
-                </ul>
+                <OrganizeMoveList moves={plan.moves} chosen={chosen} onToggle={toggle} />
               )}
               {plan.unrecognized.length > 0 && (
                 <details className="mt-3 text-xs text-muted">
