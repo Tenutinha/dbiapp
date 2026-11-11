@@ -21,7 +21,8 @@ function RemoveButton({ api, action, id, what, onError }: RemoveButtonProps) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
 
-  async function remove(): Promise<void> {
+  async function remove(e: React.MouseEvent): Promise<void> {
+    e.preventDefault(); // it sits in the row's summary: the tap must not open or close the row
     if (!window.confirm(`Excluir ${what}? Não dá para desfazer.`)) return;
     setBusy(true);
     onError(null);
@@ -35,8 +36,17 @@ function RemoveButton({ api, action, id, what, onError }: RemoveButtonProps) {
   }
 
   return (
-    <button type="button" onClick={remove} disabled={busy} className="text-sm text-danger underline-offset-2 hover:underline disabled:opacity-50">
-      {busy ? "Excluindo…" : "Excluir"}
+    <button
+      type="button"
+      onClick={remove}
+      disabled={busy}
+      aria-label={`Excluir ${what}`}
+      title="Excluir"
+      className="grid size-10 shrink-0 place-items-center rounded-lg text-muted transition hover:bg-danger/10 hover:text-danger disabled:animate-pulse disabled:opacity-50"
+    >
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v5M14 11v5" />
+      </svg>
     </button>
   );
 }
@@ -121,12 +131,14 @@ export function EntryList({ api, entries, canRecord }: EntryListProps) {
   return (
     <div className="flex flex-col gap-2">
       <ErrorNote message={error} />
+      {/* Its own scroll: a long month does not push the rest of the screen away. */}
+      <div className="-mr-1 flex max-h-[60dvh] flex-col gap-2 overflow-y-auto pr-1">
       {entries.map((entry) => {
         const sale = entry.kind === "venda";
         const title = sale ? saleTitle(entry.sale) : purchaseTitle(entry.purchase);
         return (
-          <details key={`${entry.kind}-${entry.id}`} className="card group">
-            <summary className="flex cursor-pointer list-none items-center gap-3 p-3 sm:p-4 [&::-webkit-details-marker]:hidden">
+          <details key={`${entry.kind}-${entry.id}`} className="card group shrink-0">
+            <summary className="flex cursor-pointer list-none items-center gap-2 p-3 sm:gap-3 sm:p-4 [&::-webkit-details-marker]:hidden">
               <KindIcon kind={entry.kind} />
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-semibold">{title}</span>
@@ -137,32 +149,31 @@ export function EntryList({ api, entries, canRecord }: EntryListProps) {
               <span className={`shrink-0 font-semibold tabular-nums ${sale ? "text-ok" : ""}`}>
                 {sale ? "+" : "−"} {formatMoney(entry.totalCents)}
               </span>
+              {canRecord && (
+                <RemoveButton
+                  api={api}
+                  action={sale ? "saleRemove" : "purchaseRemove"}
+                  id={entry.id}
+                  what={
+                    sale
+                      ? `a venda de ${formatMoney(entry.totalCents)}${entry.sale.customerName ? ` para ${entry.sale.customerName}` : ""}`
+                      : `a despesa de ${formatMoney(entry.totalCents)}${entry.purchase.supplier ? ` em ${entry.purchase.supplier}` : ""}`
+                  }
+                  onError={setError}
+                />
+              )}
               <span aria-hidden className="shrink-0 text-muted transition-transform group-open:rotate-90">›</span>
             </summary>
             <div className="flex flex-col gap-3 border-t border-line p-4">
               {!sale && <PurchaseBody api={api} purchase={entry.purchase} />}
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-xs text-muted">
-                  {sale ? "Venda" : entry.purchase.hasReceipt ? "Despesa" : "Despesa lançada à mão"} de {dayLabel(entry.day)}
-                </span>
-                {canRecord && (
-                  <RemoveButton
-                    api={api}
-                    action={sale ? "saleRemove" : "purchaseRemove"}
-                    id={entry.id}
-                    what={
-                      sale
-                        ? `a venda de ${formatMoney(entry.totalCents)}${entry.sale.customerName ? ` para ${entry.sale.customerName}` : ""}`
-                        : `a despesa de ${formatMoney(entry.totalCents)}${entry.purchase.supplier ? ` em ${entry.purchase.supplier}` : ""}`
-                    }
-                    onError={setError}
-                  />
-                )}
-              </div>
+              <span className="text-xs text-muted">
+                {sale ? "Venda" : entry.purchase.hasReceipt ? "Despesa" : "Despesa lançada à mão"} de {dayLabel(entry.day)}
+              </span>
             </div>
           </details>
         );
       })}
+      </div>
     </div>
   );
 }
