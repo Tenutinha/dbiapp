@@ -1,7 +1,6 @@
 import { z } from "zod";
-import { isValidSlug, slugify } from "./permissions";
 
-/** Login and signup form rules shared by the server actions. Pure: no I/O, safe to unit test. */
+/** Login and password form rules shared by the server actions. Pure: no I/O, safe to unit test. */
 
 export const emailSchema = z.string().trim().toLowerCase().email("Digite um e-mail válido.");
 
@@ -10,8 +9,6 @@ export const passwordSchema = z.string().min(1, "Digite sua senha.").max(256, "S
 export const MIN_PASSWORD = 8;
 /** bcrypt (Supabase Auth) ignores bytes after 72. */
 export const MAX_PASSWORD = 72;
-/** Organization addresses are limited to 40 characters (see permissions.ts). */
-const MAX_SLUG = 40;
 
 const strongPassword = z
   .string()
@@ -26,55 +23,6 @@ const MISMATCH = { path: ["confirm"], message: "As senhas não conferem." };
 export const newPasswordSchema = z
   .object({ password: strongPassword, confirm: z.string() })
   .refine(passwordsMatch, MISMATCH);
-
-const personName = z.string().trim().min(2, "Informe seu nome.").max(80, "Nome longo demais.");
-const companyName = z.string().trim().min(2, "Informe o nome da empresa.").max(80, "Nome da empresa longo demais.");
-
-/** Self-service signup: person + their organization. A blank address is derived from the company name. */
-export const signupSchema = z
-  .object({
-    name: personName,
-    company: companyName,
-    slug: z.string().trim().toLowerCase().max(MAX_SLUG, "Endereço longo demais.").optional(),
-    email: emailSchema,
-    password: strongPassword,
-    confirm: z.string(),
-  })
-  .refine(passwordsMatch, MISMATCH)
-  .transform((v) => ({ ...v, slug: v.slug ? v.slug : slugify(v.company) }))
-  .refine((v) => isValidSlug(v.slug), {
-    path: ["slug"],
-    message: "Endereço inválido ou reservado. Use letras minúsculas, números e hífen.",
-  });
-
-export type SignupInput = z.output<typeof signupSchema>;
-
-/** "odeon" → ["odeon", "odeon-2", …], each within the address length limit. */
-export function slugCandidates(slug: string, count: number): string[] {
-  return Array.from({ length: count }, (_, i) => {
-    if (i === 0) return slug;
-    const suffix = `-${i + 1}`;
-    return `${slug.slice(0, MAX_SLUG - suffix.length).replace(/-+$/, "")}${suffix}`;
-  });
-}
-
-export interface SignupMetadata {
-  name: string;
-  orgName: string;
-  slug: string;
-}
-
-/**
- * What the signup form stored on the Supabase account (user_metadata). Null for accounts that
- * did not come from the form (e.g. invited people), or when the data is not usable.
- */
-export function readSignupMetadata(meta: Record<string, unknown> | undefined): SignupMetadata | null {
-  const parsed = z
-    .object({ name: personName, signup_org_name: companyName, signup_org_slug: z.string() })
-    .safeParse(meta ?? {});
-  if (!parsed.success || !isValidSlug(parsed.data.signup_org_slug)) return null;
-  return { name: parsed.data.name, orgName: parsed.data.signup_org_name, slug: parsed.data.signup_org_slug };
-}
 
 const SAFE_PATH = /^\/(?![/\\])[A-Za-z0-9/_-]*$/;
 

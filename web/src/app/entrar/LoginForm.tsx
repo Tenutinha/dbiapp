@@ -54,12 +54,6 @@ export function LoginForm() {
       </button>
       <div className="flex flex-col gap-1 text-center text-sm text-muted">
         <p>
-          Não tem conta?{" "}
-          <Link href="/entrar/cadastro" className="text-text underline underline-offset-4 hover:text-brand">
-            Criar conta
-          </Link>
-        </p>
-        <p>
           Foi convidado?{" "}
           <Link href="/entrar/recuperar?primeiro=1" className="text-text underline underline-offset-4 hover:text-brand">
             Crie sua senha

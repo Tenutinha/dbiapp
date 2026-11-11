@@ -51,3 +51,24 @@ export async function createOrganization(input: NewOrganization): Promise<void> 
   }
   await storage.createOrgFolder(input.slug);
 }
+
+export interface DeletedOrganization {
+  slug: string;
+  name: string;
+}
+
+/**
+ * Deletes an organization and everything that belongs to it in the database (clients, members,
+ * dashboards, versions, links… all cascade). Its files are removed separately (storage).
+ * Null when it no longer exists.
+ */
+export async function deleteOrganization(orgId: string): Promise<DeletedOrganization | null> {
+  const [row] = await sql<DeletedOrganization[]>`
+    DELETE FROM organizations WHERE id = ${orgId} RETURNING slug, name`;
+  return row ?? null;
+}
+
+export async function getOrganizationById(orgId: string): Promise<DeletedOrganization | null> {
+  const [row] = await sql<DeletedOrganization[]>`SELECT slug, name FROM organizations WHERE id = ${orgId}`;
+  return row ?? null;
+}

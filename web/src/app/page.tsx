@@ -4,6 +4,7 @@ import { AppShell, Notice, PageHeader } from "@/components/AppShell";
 import type { Metadata } from "next";
 import { LandingPage } from "@/components/landing/LandingPage";
 import { NewOrgCard } from "@/components/NewOrgCard";
+import { DeleteOrgButton } from "@/components/admin/DeleteOrgButton";
 import { VitrineSection } from "@/components/vitrine/VitrineSection";
 import { listUserOrganizations, type UserOrg } from "@/lib/access";
 import { AccessError, getCurrentUser, type CurrentUser } from "@/lib/auth";
@@ -58,7 +59,8 @@ function GearIcon() {
 
 /**
  * One organization on the home page: the whole card opens its dashboards; admins also get a
- * gear to its administration (a sibling link layered on top — links cannot be nested).
+ * gear to its administration (a sibling link layered on top — links cannot be nested), and
+ * platform administrators a trash can to delete it.
  */
 function OrgCard({ org, stats, platformAdmin }: OrgCardProps) {
   const role = org.orgRole ? ROLE_LABEL[org.orgRole] : platformAdmin ? "Admin master" : "Acesso de cliente";
@@ -66,7 +68,7 @@ function OrgCard({ org, stats, platformAdmin }: OrgCardProps) {
   return (
     <div className="card group relative p-5 transition hover:border-brand/60">
       <Link href={`/${org.slug}`} className="after:absolute after:inset-0 after:rounded-[inherit] after:content-['']">
-        <p className={`text-lg font-bold group-hover:text-brand-2 ${isAdmin ? "pr-8" : ""}`}>{org.name}</p>
+        <p className={`text-lg font-bold group-hover:text-brand-2 ${platformAdmin ? "pr-16" : isAdmin ? "pr-8" : ""}`}>{org.name}</p>
       </Link>
       <p className="mt-1 font-mono text-xs text-muted">dbi.app.br/{org.slug}</p>
       <p className="mt-3 text-xs text-muted">{role}</p>
@@ -75,6 +77,12 @@ function OrgCard({ org, stats, platformAdmin }: OrgCardProps) {
           {plural(stats.clients, "cliente", "clientes")} · {plural(stats.dashboards, "dashboard", "dashboards")} ·{" "}
           {plural(stats.people, "pessoa", "pessoas")}
         </p>
+      )}
+      {platformAdmin && (
+        <DeleteOrgButton
+          org={{ id: org.id, name: org.name, slug: org.slug }}
+          summary={stats ? `${plural(stats.clients, "cliente", "clientes")} · ${plural(stats.dashboards, "dashboard", "dashboards")} · ${plural(stats.people, "pessoa", "pessoas")}` : undefined}
+        />
       )}
       {isAdmin && (
         <Link
