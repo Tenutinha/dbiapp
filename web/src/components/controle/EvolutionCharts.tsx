@@ -83,17 +83,21 @@ interface EvolutionChartsProps {
   month: RunningPoint[];
   /** Totals of the last months, oldest first. */
   months: SeriesPoint[];
+  /** "no mês" or "no período" (several months, last days). */
+  scope?: string;
 }
 
 /** How the month is going (accumulated, day by day) and how the last months compare. */
-export function EvolutionCharts({ month, months }: EvolutionChartsProps) {
+export function EvolutionCharts({ month, months, scope = "no mês" }: EvolutionChartsProps) {
+  // Within one month the axis shows the day ("11"); across months, day and month ("11/10").
+  const acrossMonths = new Set(month.map((p) => p.period.slice(0, 7))).size > 1;
   const daily = useChart((c) => ({
-    ...base(c, month.map((p) => String(Number(p.period.slice(8, 10))))),
+    ...base(c, month.map((p) => (acrossMonths ? `${p.period.slice(8, 10)}/${p.period.slice(5, 7)}` : String(Number(p.period.slice(8, 10)))))),
     series: [
       { name: SALES, type: "line", smooth: true, smoothMonotone: "x", showSymbol: false, areaStyle: { opacity: 0.1 }, data: month.map((p) => p.salesCents) },
       { name: EXPENSES, type: "line", smooth: true, smoothMonotone: "x", showSymbol: false, areaStyle: { opacity: 0.06 }, data: month.map((p) => p.purchasesCents) },
     ],
-  }), [month]);
+  }), [month, acrossMonths]);
 
   const monthly = useChart((c) => ({
     ...base(c, months.map((p) => MONTHS[Number(p.period.slice(5, 7)) - 1])),
@@ -106,9 +110,9 @@ export function EvolutionCharts({ month, months }: EvolutionChartsProps) {
   return (
     <div className="grid gap-3 lg:grid-cols-2">
       <section className="card p-4">
-        <h2 className="text-sm font-semibold">Evolução no mês</h2>
+        <h2 className="text-sm font-semibold">Evolução {scope}</h2>
         <p className="text-xs text-muted">Acumulado, dia a dia</p>
-        <div ref={daily} className="mt-2 h-52 w-full" role="img" aria-label="Gráfico de linhas: vendas e despesas acumuladas no mês, dia a dia" />
+        <div ref={daily} className="mt-2 h-52 w-full" role="img" aria-label={`Gráfico de linhas: vendas e despesas acumuladas ${scope}, dia a dia`} />
       </section>
       <section className="card p-4">
         <h2 className="text-sm font-semibold">Últimos {months.length} meses</h2>

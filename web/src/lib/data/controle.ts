@@ -20,35 +20,36 @@ export async function orgModules(orgId: string): Promise<string[]> {
   return row?.modules ?? [];
 }
 
-/** First day of a "aaaa-mm" month, for range filters that use the (client, day) index. */
-const monthStart = (month: string): string => `${month}-01`;
+/** The days of a period as a date[] parameter (see lib/controle/period.ts: periodDays). */
+const dayList = (days: readonly string[]): string[] => [...days];
 
-export interface MonthTotals {
+export interface PeriodTotals {
   purchasesCents: number;
   purchases: number;
   salesCents: number;
   sales: number;
 }
 
-export async function monthTotals(clientId: string, month: string): Promise<MonthTotals> {
-  const start = monthStart(month);
-  const [row] = await sql<MonthTotals[]>`
+/** Totals of the given days (a month, several months or the last days). */
+export async function periodTotals(clientId: string, days: readonly string[]): Promise<PeriodTotals> {
+  const list = dayList(days);
+  const [row] = await sql<PeriodTotals[]>`
     SELECT
       (SELECT COALESCE(SUM(total_cents), 0)::float8 FROM controle_purchases
-        WHERE client_id = ${clientId} AND purchased_on >= ${start}::date AND purchased_on < ${start}::date + interval '1 month') AS "purchasesCents",
+        WHERE client_id = ${clientId} AND purchased_on = ANY(${list}::date[])) AS "purchasesCents",
       (SELECT COUNT(*)::int FROM controle_purchases
-        WHERE client_id = ${clientId} AND purchased_on >= ${start}::date AND purchased_on < ${start}::date + interval '1 month') AS purchases,
+        WHERE client_id = ${clientId} AND purchased_on = ANY(${list}::date[])) AS purchases,
       (SELECT COALESCE(SUM(total_cents), 0)::float8 FROM controle_sales
-        WHERE client_id = ${clientId} AND sold_on >= ${start}::date AND sold_on < ${start}::date + interval '1 month') AS "salesCents",
+        WHERE client_id = ${clientId} AND sold_on = ANY(${list}::date[])) AS "salesCents",
       (SELECT COUNT(*)::int FROM controle_sales
-        WHERE client_id = ${clientId} AND sold_on >= ${start}::date AND sold_on < ${start}::date + interval '1 month') AS sales`;
+        WHERE client_id = ${clientId} AND sold_on = ANY(${list}::date[])) AS sales`;
   return row;
 }
 
 // ---------- purchases ----------
 
-export async function listPurchases(clientId: string, month: string): Promise<Purchase[]> {
-  const start = monthStart(month);
+export async function listPurchases(clientId: string, days: readonly string[]): Promise<Purchase[]> {
+  const list = dayList(days);
   return sql<Purchase[]>`
     SELECT p.id, to_char(p.purchased_on, 'YYYY-MM-DD') AS "purchasedOn", p.supplier,
            p.total_cents::float8 AS "totalCents", p.payment_method AS "paymentMethod", p.notes,
@@ -60,7 +61,7 @@ export async function listPurchases(clientId: string, month: string): Promise<Pu
                'unitPriceCents', i.unit_price_cents::float8, 'totalCents', i.total_cents::float8) ORDER BY i.position)
              FROM controle_purchase_items i WHERE i.purchase_id = p.id), '[]'::jsonb) AS items
     FROM controle_purchases p
-    WHERE p.client_id = ${clientId} AND p.purchased_on >= ${start}::date AND p.purchased_on < ${start}::date + interval '1 month'
+    WHERE p.client_id = ${clientId} AND p.purchased_on = ANY(${list}::date[])
     ORDER BY p.purchased_on DESC, p.created_at DESC`;
 }
 
@@ -141,14 +142,14 @@ export async function deletePurchase(clientId: string, purchaseId: string): Prom
 
 // ---------- sales ----------
 
-export async function listSales(clientId: string, month: string): Promise<Sale[]> {
-  const start = monthStart(month);
+export async function listSales(clientId: string, days: readonly string[]): Promise<Sale[]> {
+  const list = dayList(days);
   return sql<Sale[]>`
     SELECT id, to_char(sold_on, 'YYYY-MM-DD') AS "soldOn", total_cents::float8 AS "totalCents",
            payment_method AS "paymentMethod", customer_name AS "customerName", product,
            to_char(controle_sales.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US') AS "createdAt"
     FROM controle_sales
-    WHERE client_id = ${clientId} AND sold_on >= ${start}::date AND sold_on < ${start}::date + interval '1 month'
+    WHERE client_id = ${clientId} AND sold_on = ANY(${list}::date[])
     ORDER BY sold_on DESC, created_at DESC`;
 }
 
@@ -179,20 +180,20 @@ export async function deleteSale(clientId: string, saleId: string): Promise<bool
 
 // ---------- evolution ----------
 
-/** Sales and purchases of each day of a month (days with nothing come as zero). */
-export async function dailySeries(clientId: string, month: string): Promise<SeriesPoint[]> {
-  const start = monthStart(month);
+/** Sales and purchases of each of the given days, in that order (days with nothing come as zero). */
+export async function dailySeries(clientId: string, days: readonly string[]): Promise<SeriesPoint[]> {
+  const list = dayList(days);
   return sql<SeriesPoint[]>`
     SELECT to_char(d, 'YYYY-MM-DD') AS period,
-      COALESCE((SELECT SUM(total_cents) FROM controle_sales WHERE client_id = ${clientId} AND sold_on = d::date), 0)::float8 AS "salesCents",
-      COALESCE((SELECT SUM(total_cents) FROM controle_purchases WHERE client_id = ${clientId} AND purchased_on = d::date), 0)::float8 AS "purchasesCents"
-    FROM generate_series(${start}::date, (${start}::date + interval '1 month' - interval '1 day')::date, interval '1 day') d
+      COALESCE((SELECT SUM(total_cents) FROM controle_sales WHERE client_id = ${clientId} AND sold_on = d), 0)::float8 AS "salesCents",
+      COALESCE((SELECT SUM(total_cents) FROM controle_purchases WHERE client_id = ${clientId} AND purchased_on = d), 0)::float8 AS "purchasesCents"
+    FROM unnest(${list}::date[]) AS d
     ORDER BY d`;
 }
 
 /** Sales and purchases of each of the `months` months that end in `month`, oldest first. */
 export async function monthlySeries(clientId: string, month: string, months = 6): Promise<SeriesPoint[]> {
-  const start = monthStart(month);
+  const start = `${month}-01`;
   return sql<SeriesPoint[]>`
     SELECT to_char(m, 'YYYY-MM') AS period,
       COALESCE((SELECT SUM(total_cents) FROM controle_sales
