@@ -20,7 +20,7 @@ import { ManageUsersModal, NewClientModal } from "./SetupTableControls";
 import { SpaceLinkControl, type SpaceLinkView } from "./SpaceLinkControl";
 
 export interface AdminSetupTableProps {
-  org: { slug: string; name: string };
+  org: { slug: string; name: string; /** Has the "controle" module on. */ controle?: boolean };
   groups: SpaceGroup[];
   people: OrgPerson[];
   /** Published catalog dashboards, browsed in the "+ Adicionar dashboard" picker. */
@@ -317,6 +317,7 @@ function SpaceBlock({
               scope={group.scope}
               spaceName={spaceName}
               people={people}
+              controle={org.controle}
             />
           </ManageUsersModal>
           <SpaceLinkControl
