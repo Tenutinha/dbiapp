@@ -75,11 +75,9 @@ export default async function ControlePage({ params, searchParams }: Props) {
     listSales(entries.clientId, month),
   ]);
   const balance = totals.salesCents - totals.purchasesCents;
-  // Each business is opened on its own address; only the platform administrator switches between them here.
-  const spaces = space.isPlatformAdmin ? space.spaces : space.spaces.filter((s) => s.current);
 
   return (
-    <Workspace space={{ ...space, spaces }} currentId={null} userName={ctx.user.name}>
+    <Workspace space={space} currentId={null} userName={ctx.user.name}>
       {/* Bottom room so the floating buttons never cover the last entry. */}
       <div className={`mx-auto flex max-w-3xl flex-col gap-4 pt-5 lg:pt-10 ${canRecord ? "pb-24" : ""}`}>
         <header className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between sm:gap-3">
