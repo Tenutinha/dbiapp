@@ -9,9 +9,7 @@ import { receiptReaderEnabled } from "@/lib/controle/extract";
 import { formatMoney } from "@/lib/controle/money";
 import { monthLabel, monthOrCurrent, shiftMonth, todayInBrazil } from "@/lib/controle/schema";
 import { listKnownProducts, listPurchases, listSales, monthTotals } from "@/lib/data/controle";
-import { listClients } from "@/lib/data/organizations";
 import { guard } from "@/lib/guard";
-import { visibleClientIds } from "@/lib/permissions";
 import { getControle } from "@/lib/services/controle";
 
 export const dynamic = "force-dynamic";
@@ -72,15 +70,12 @@ export default async function ControlePage({ params, searchParams }: Props) {
     return search.size > 0 ? `${base}?${search}` : base;
   };
 
-  const [totals, purchases, sales, products, clients] = await Promise.all([
+  const [totals, purchases, sales, products] = await Promise.all([
     monthTotals(space.clientId, month),
     tab === "compras" ? listPurchases(space.clientId, month) : Promise.resolve([]),
     tab === "vendas" ? listSales(space.clientId, month) : Promise.resolve([]),
     tab === "vendas" && canRecord ? listKnownProducts(space.clientId) : Promise.resolve([]),
-    listClients(ctx.org.id),
   ]);
-  const visible = new Set(visibleClientIds(ctx.membership, clients.map((c) => c.id)));
-  const siblings = clients.filter((c) => visible.has(c.id));
   const balance = totals.salesCents - totals.purchasesCents;
 
   return (
@@ -90,20 +85,6 @@ export default async function ControlePage({ params, searchParams }: Props) {
         <header className="flex flex-col gap-2">
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-2">Controle</p>
           <h1 className="text-2xl font-extrabold tracking-tight">{ctx.client.name}</h1>
-          {siblings.length > 1 && (
-            <nav aria-label="Negócios" className="flex flex-wrap gap-2">
-              {siblings.map((c) => (
-                <Link
-                  key={c.id}
-                  href={`/${ctx.org.slug}/${c.slug}/controle${tab === "vendas" ? "?aba=vendas" : ""}`}
-                  aria-current={c.id === ctx.client.id ? "page" : undefined}
-                  className={`rounded-full border px-3 py-1.5 text-sm ${c.id === ctx.client.id ? "border-brand bg-brand/15 font-semibold" : "border-line text-muted"}`}
-                >
-                  {c.name}
-                </Link>
-              ))}
-            </nav>
-          )}
         </header>
 
         <nav aria-label="Mês" className="flex items-center justify-between">
