@@ -134,6 +134,8 @@ export interface Purchase {
   notes: string | null;
   hasReceipt: boolean;
   fromReceipt: boolean;
+  /** When it was recorded (UTC, sortable text) — orders entries of the same day. */
+  createdAt: string;
   items: PurchaseItem[];
 }
 
@@ -145,4 +147,5 @@ export interface Sale {
   customerName: string | null;
   /** Only on sales recorded before the amount-only form. */
   product: string | null;
+  createdAt: string;
 }

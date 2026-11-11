@@ -53,6 +53,7 @@ export async function listPurchases(clientId: string, month: string): Promise<Pu
     SELECT p.id, to_char(p.purchased_on, 'YYYY-MM-DD') AS "purchasedOn", p.supplier,
            p.total_cents::float8 AS "totalCents", p.payment_method AS "paymentMethod", p.notes,
            (p.receipt_path IS NOT NULL) AS "hasReceipt", (p.source = 'ai') AS "fromReceipt",
+           to_char(p.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US') AS "createdAt",
            COALESCE((
              SELECT jsonb_agg(jsonb_build_object(
                'id', i.id, 'description', i.description, 'quantity', i.quantity::float8, 'unit', i.unit,
@@ -119,7 +120,8 @@ export async function listSales(clientId: string, month: string): Promise<Sale[]
   const start = monthStart(month);
   return sql<Sale[]>`
     SELECT id, to_char(sold_on, 'YYYY-MM-DD') AS "soldOn", total_cents::float8 AS "totalCents",
-           payment_method AS "paymentMethod", customer_name AS "customerName", product
+           payment_method AS "paymentMethod", customer_name AS "customerName", product,
+           to_char(controle_sales.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US') AS "createdAt"
     FROM controle_sales
     WHERE client_id = ${clientId} AND sold_on >= ${start}::date AND sold_on < ${start}::date + interval '1 month'
     ORDER BY sold_on DESC, created_at DESC`;
