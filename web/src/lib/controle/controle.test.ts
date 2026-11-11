@@ -182,10 +182,10 @@ describe("evolução", () => {
 
 describe("lista única de lançamentos", () => {
   const purchase = (id: string, purchasedOn: string, createdAt: string) => ({
-    id, purchasedOn, createdAt, supplier: null, totalCents: 100, paymentMethod: null, notes: null, hasReceipt: false, fromReceipt: false, items: [],
+    id, purchasedOn, createdAt, author: null, supplier: null, totalCents: 100, paymentMethod: null, notes: null, hasReceipt: false, fromReceipt: false, items: [],
   });
   const sale = (id: string, soldOn: string, createdAt: string) => ({
-    id, soldOn, createdAt, totalCents: 200, paymentMethod: null, customerName: null, product: null,
+    id, soldOn, createdAt, author: null, totalCents: 200, paymentMethod: null, customerName: null, product: null,
   });
 
   it("mistura despesas e vendas, do dia mais recente para o mais antigo", () => {

@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { Avatar } from "@/components/admin/Avatar";
 import type { Entry } from "@/lib/controle/entries";
 import { formatMoney, formatQuantity } from "@/lib/controle/money";
 import { dayLabel, PAYMENT_LABEL, type Purchase, type Sale } from "@/lib/controle/schema";
@@ -173,14 +174,16 @@ export function EntryList({ api, today, entries, canRecord }: EntryListProps) {
       {entries.map((entry) => {
         const sale = entry.kind === "venda";
         const title = sale ? saleTitle(entry.sale) : purchaseTitle(entry.purchase);
+        const author = sale ? entry.sale.author : entry.purchase.author;
         return (
           <details key={`${entry.kind}-${entry.id}`} className="card group shrink-0">
             <summary className="flex cursor-pointer list-none items-center gap-2 p-3 sm:gap-3 sm:p-4 [&::-webkit-details-marker]:hidden">
               <KindIcon kind={entry.kind} />
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-semibold">{title}</span>
-                <span className="block truncate text-xs text-muted">
-                  {dayLabel(entry.day)} · {sale ? saleDetail(entry.sale) : purchaseDetail(entry.purchase)}
+                <span className="flex items-center gap-1.5 text-xs text-muted">
+                  {author && <Avatar name={author.name} email="" imageUrl={author.avatarUrl} size="xs" title={`Lançado por ${author.name}`} className="ring-1" />}
+                  <span className="truncate">{dayLabel(entry.day)} · {sale ? saleDetail(entry.sale) : purchaseDetail(entry.purchase)}</span>
                 </span>
               </span>
               <span className={`shrink-0 font-semibold tabular-nums ${sale ? "text-ok" : ""}`}>
@@ -198,6 +201,7 @@ export function EntryList({ api, today, entries, canRecord }: EntryListProps) {
               {!sale && <PurchaseBody api={api} purchase={entry.purchase} />}
               <span className="text-xs text-muted">
                 {sale ? "Venda" : entry.purchase.hasReceipt ? "Despesa" : "Despesa lançada à mão"} de {dayLabel(entry.day)}
+                {author ? ` · lançado por ${author.name}` : ""}
               </span>
             </div>
           </details>
