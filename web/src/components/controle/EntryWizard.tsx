@@ -121,7 +121,7 @@ export function EntryWizard({ kind, api, today, onClose, onBack }: EntryWizardPr
 
   function confirmDay(chosen: string): void {
     if (!isValidDay(chosen)) {
-      setError("Escolha uma data até hoje.");
+      setError("Escolha uma data válida.");
       return;
     }
     setDay(chosen);
@@ -250,7 +250,7 @@ export function EntryWizard({ kind, api, today, onClose, onBack }: EntryWizardPr
           <label className="flex flex-col gap-1 text-xs text-muted">
             Outra data
             <span className="flex gap-2">
-              <input type="date" value={day} max={today} onChange={(e) => setDay(e.target.value)} className={INPUT} />
+              <input type="date" value={day} onChange={(e) => setDay(e.target.value)} className={INPUT} />
               <button type="button" onClick={() => confirmDay(day)} className="btn btn-ghost shrink-0">Usar</button>
             </span>
           </label>

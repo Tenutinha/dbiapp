@@ -27,12 +27,21 @@ export function todayInBrazil(now: Date = new Date()): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(now);
 }
 
-/** "2026-11-11" for a real calendar day (no 31st of February), from 2000 up to today in Brazil — entries are never future-dated. */
+/** How far ahead an entry may be dated: bills and sales already agreed are recorded before their day comes. */
+export const MAX_YEARS_AHEAD = 5;
+
+/** The last day an entry may carry: today in Brazil plus MAX_YEARS_AHEAD years. */
+export function lastValidDay(now: Date = new Date()): string {
+  const today = todayInBrazil(now);
+  return `${Number(today.slice(0, 4)) + MAX_YEARS_AHEAD}${today.slice(4)}`;
+}
+
+/** "2026-11-11" for a real calendar day (no 31st of February), from 2000 up to a few years ahead (see lastValidDay). */
 export function isValidDay(text: string, now: Date = new Date()): boolean {
   if (!DAY.test(text)) return false;
   const date = new Date(`${text}T00:00:00Z`);
   if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== text) return false;
-  return text >= "2000-01-01" && text <= todayInBrazil(now);
+  return text >= "2000-01-01" && text <= lastValidDay(now);
 }
 
 /** The month of the screen: the one asked in the address when valid, else the current one. */

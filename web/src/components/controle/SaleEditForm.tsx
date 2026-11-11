@@ -8,14 +8,13 @@ import { ErrorNote, Field, INPUT, PaymentPicker } from "./fields";
 
 interface SaleEditFormProps {
   api: string;
-  today: string;
   sale: Sale;
   onSaved: () => void;
   onCancel: () => void;
 }
 
 /** A recorded sale, all on one screen to be corrected: amount, day, payment and the customer's name. */
-export function SaleEditForm({ api, today, sale, onSaved, onCancel }: SaleEditFormProps) {
+export function SaleEditForm({ api, sale, onSaved, onCancel }: SaleEditFormProps) {
   const [total, setTotal] = useState(moneyInput(sale.totalCents));
   const [day, setDay] = useState(sale.soldOn);
   const [payment, setPayment] = useState<PaymentMethod | null>(sale.paymentMethod);
@@ -27,7 +26,7 @@ export function SaleEditForm({ api, today, sale, onSaved, onCancel }: SaleEditFo
     e.preventDefault();
     const totalCents = parseMoney(total);
     if (totalCents === null || totalCents <= 0) return setError("Informe o valor da venda.");
-    if (!isValidDay(day)) return setError("Informe a data da venda, até hoje.");
+    if (!isValidDay(day)) return setError("Informe a data da venda.");
     const input: SaleInput = { soldOn: day, totalCents, paymentMethod: payment, customerName: customer.trim() || null };
     setSaving(true);
     setError(null);
@@ -47,7 +46,7 @@ export function SaleEditForm({ api, today, sale, onSaved, onCancel }: SaleEditFo
           <input inputMode="decimal" value={total} onChange={(e) => setTotal(e.target.value)} placeholder="0,00" className={`${INPUT} font-semibold`} />
         </Field>
         <Field label="Data">
-          <input type="date" value={day} max={today} onChange={(e) => setDay(e.target.value)} className={INPUT} required />
+          <input type="date" value={day} onChange={(e) => setDay(e.target.value)} className={INPUT} required />
         </Field>
         <Field label="Nome do cliente (opcional)" className="col-span-2">
           <input value={customer} onChange={(e) => setCustomer(e.target.value)} maxLength={120} autoComplete="off" className={INPUT} />
