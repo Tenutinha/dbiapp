@@ -107,6 +107,31 @@ export async function receiptInUse(clientId: string, path: string): Promise<bool
   return row.used;
 }
 
+/** Rewrites a purchase of this client and its lines (all or nothing); the receipt stays as it is. False when it is gone. */
+export async function updatePurchase(clientId: string, purchaseId: string, input: PurchaseInput): Promise<boolean> {
+  return sql.begin(async (tx) => {
+    const rows = await tx`
+      UPDATE controle_purchases
+      SET purchased_on = ${input.purchasedOn}::date, supplier = ${input.supplier}, total_cents = ${input.totalCents},
+          payment_method = ${input.paymentMethod}, notes = ${input.notes}
+      WHERE id = ${purchaseId} AND client_id = ${clientId}
+      RETURNING id`;
+    if (rows.length === 0) return false;
+    await tx`DELETE FROM controle_purchase_items WHERE purchase_id = ${purchaseId}`;
+    const lines = input.items.map((item, position) => ({
+      purchase_id: purchaseId,
+      position,
+      description: item.description,
+      quantity: item.quantity,
+      unit: item.unit,
+      unit_price_cents: item.unitPriceCents,
+      total_cents: item.totalCents,
+    }));
+    if (lines.length > 0) await tx`INSERT INTO controle_purchase_items ${tx(lines)}`;
+    return true;
+  });
+}
+
 /** Deletes a purchase of this client. Returns its receipt path (to delete the file) and whether it existed. */
 export async function deletePurchase(clientId: string, purchaseId: string): Promise<{ found: boolean; receiptPath: string | null }> {
   const rows = await sql<{ receiptPath: string | null }[]>`
@@ -135,6 +160,16 @@ export async function insertSale(space: Space, userId: string, input: SaleInput)
             ${input.paymentMethod}, ${input.customerName}, ${userId})
     RETURNING id`;
   return row.id;
+}
+
+/** Rewrites a sale of this client. False when it is gone. */
+export async function updateSale(clientId: string, saleId: string, input: SaleInput): Promise<boolean> {
+  const updated = await sql`
+    UPDATE controle_sales
+    SET sold_on = ${input.soldOn}::date, total_cents = ${input.totalCents},
+        payment_method = ${input.paymentMethod}, customer_name = ${input.customerName}
+    WHERE id = ${saleId} AND client_id = ${clientId}`;
+  return updated.count > 0;
 }
 
 export async function deleteSale(clientId: string, saleId: string): Promise<boolean> {
