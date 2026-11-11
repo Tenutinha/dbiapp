@@ -4,34 +4,94 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { formatMoney, parseMoney } from "@/lib/controle/money";
 import {
-  dayLabel, isValidDay, PAYMENT_LABEL, PAYMENT_METHODS, shiftDay, type PaymentMethod, type SaleInput,
+  dayLabel, isValidDay, PAYMENT_LABEL, PAYMENT_METHODS, shiftDay, type PaymentMethod, type PurchaseInput, type SaleInput,
 } from "@/lib/controle/schema";
 import { call, ControleError } from "./api";
 import { ErrorNote, INPUT } from "./fields";
 
-const STEPS = ["valor", "pagamento", "data", "cliente"] as const;
+const STEPS = ["valor", "pagamento", "data", "nome"] as const;
 type Step = (typeof STEPS)[number] | "pronto";
 
-interface SaleWizardProps {
+interface Answers {
+  day: string;
+  totalCents: number;
+  payment: PaymentMethod | null;
+  /** The optional last answer: who bought (venda) or where the money went (despesa). */
+  name: string | null;
+}
+
+/** What changes between a sale and an expense: the wording and what is sent to the API. */
+interface Kind {
+  id: string;
+  askValue: string;
+  missingValue: string;
+  askDay: string;
+  askName: string;
+  namePlaceholder: string;
+  saveNamed: string;
+  done: (amount: string) => string;
+  body: (answers: Answers) => Record<string, unknown>;
+}
+
+const KINDS: Record<"venda" | "despesa", Kind> = {
+  venda: {
+    id: "venda",
+    askValue: "Qual o valor da venda?",
+    missingValue: "Digite o valor da venda.",
+    askDay: "Quando foi a venda?",
+    askName: "Quer colocar o nome do cliente?",
+    namePlaceholder: "Nome do cliente",
+    saveNamed: "Salvar venda",
+    done: (amount) => `Venda de ${amount} lançada`,
+    body: (a) => {
+      const sale: SaleInput = { soldOn: a.day, totalCents: a.totalCents, paymentMethod: a.payment, customerName: a.name };
+      return { action: "saleSave", sale };
+    },
+  },
+  despesa: {
+    id: "despesa",
+    askValue: "Qual o valor da despesa?",
+    missingValue: "Digite o valor da despesa.",
+    askDay: "Quando foi a despesa?",
+    askName: "Quer dizer onde foi a despesa?",
+    namePlaceholder: "Mercado, fornecedor, conta…",
+    saveNamed: "Salvar despesa",
+    done: (amount) => `Despesa de ${amount} lançada`,
+    body: (a) => {
+      const purchase: PurchaseInput = {
+        purchasedOn: a.day, totalCents: a.totalCents, paymentMethod: a.payment, supplier: a.name,
+        notes: null, receipt: null, fromReceipt: false, items: [],
+      };
+      return { action: "purchaseSave", purchase };
+    },
+  },
+};
+
+interface EntryWizardProps {
+  kind: keyof typeof KINDS;
   api: string;
   today: string;
   onClose: () => void;
+  /** Where the arrow of the first question leads (e.g. back to the ways of recording an expense). */
+  onBack?: () => void;
 }
 
 const QUESTION = "text-xl font-bold leading-tight";
 const CHOICE = "rounded-xl border border-line px-4 py-4 text-left text-base font-semibold transition hover:border-brand";
 
 /**
- * A sale, one question at a time: how much, how it was paid, when, and — only if the person wants —
- * who bought. Every answer moves to the next question; the arrow goes back without losing anything.
+ * A sale or a hand-typed expense, one question at a time: how much, how it was paid, when, and — only
+ * if the person wants — who bought / where it was spent. Every answer moves to the next question; the
+ * arrow goes back without losing anything.
  */
-export function SaleWizard({ api, today, onClose }: SaleWizardProps) {
+export function EntryWizard({ kind, api, today, onClose, onBack }: EntryWizardProps) {
+  const copy = KINDS[kind];
   const router = useRouter();
   const [step, setStep] = useState<Step>("valor");
   const [value, setValue] = useState("");
   const [payment, setPayment] = useState<PaymentMethod | null>(null);
   const [day, setDay] = useState(today);
-  const [customer, setCustomer] = useState("");
+  const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const fieldRef = useRef<HTMLInputElement>(null);
@@ -53,7 +113,7 @@ export function SaleWizard({ api, today, onClose }: SaleWizardProps) {
   function confirmValue(e: React.FormEvent): void {
     e.preventDefault();
     if (cents === null || cents <= 0) {
-      setError("Digite o valor da venda.");
+      setError(copy.missingValue);
       return;
     }
     go("pagamento");
@@ -65,17 +125,16 @@ export function SaleWizard({ api, today, onClose }: SaleWizardProps) {
       return;
     }
     setDay(chosen);
-    go("cliente");
+    go("nome");
   }
 
   async function save(e: React.FormEvent): Promise<void> {
     e.preventDefault();
     if (cents === null) return;
-    const sale: SaleInput = { soldOn: day, totalCents: cents, paymentMethod: payment, customerName: customer.trim() || null };
     setSaving(true);
     setError(null);
     try {
-      await call(api, { action: "saleSave", sale });
+      await call(api, copy.body({ day, totalCents: cents, payment, name: name.trim() || null }));
       setStep("pronto");
       router.refresh();
     } catch (err) {
@@ -87,15 +146,15 @@ export function SaleWizard({ api, today, onClose }: SaleWizardProps) {
 
   function another(): void {
     setValue("");
-    setCustomer("");
-    go("valor"); // payment and day stay: sales of the same day usually come in a row
+    setName("");
+    go("valor"); // payment and day stay: entries of the same day usually come in a row
   }
 
   if (step === "pronto") {
     return (
       <div className="flex flex-col items-center gap-4 py-6 text-center" role="status">
         <span className="grid size-14 place-items-center rounded-full bg-ok/15 text-2xl text-ok" aria-hidden>✓</span>
-        <p className={QUESTION}>Venda de {formatMoney(cents ?? 0)} lançada</p>
+        <p className={QUESTION}>{copy.done(formatMoney(cents ?? 0))}</p>
         <div className="grid w-full grid-cols-2 gap-2">
           <button type="button" onClick={onClose} className="btn btn-ghost justify-center py-3">Fechar</button>
           <button type="button" onClick={another} className="btn btn-primary justify-center py-3">Lançar outra</button>
@@ -107,8 +166,13 @@ export function SaleWizard({ api, today, onClose }: SaleWizardProps) {
   return (
     <div className="flex flex-col gap-5">
       <div className="flex items-center gap-3">
-        {index > 0 ? (
-          <button type="button" onClick={() => go(STEPS[index - 1])} aria-label="Voltar à pergunta anterior" className="grid size-10 place-items-center rounded-lg text-xl text-muted hover:bg-text/5">
+        {index > 0 || onBack ? (
+          <button
+            type="button"
+            onClick={index > 0 ? () => go(STEPS[index - 1]) : onBack}
+            aria-label={index > 0 ? "Voltar à pergunta anterior" : "Voltar"}
+            className="grid size-10 place-items-center rounded-lg text-xl text-muted hover:bg-text/5"
+          >
             ‹
           </button>
         ) : (
@@ -132,11 +196,11 @@ export function SaleWizard({ api, today, onClose }: SaleWizardProps) {
 
       {step === "valor" && (
         <form onSubmit={confirmValue} className="flex flex-col gap-4" noValidate>
-          <label htmlFor="venda-valor" className={QUESTION}>Qual o valor da venda?</label>
+          <label htmlFor={`${copy.id}-valor`} className={QUESTION}>{copy.askValue}</label>
           <div className="flex items-center gap-2 rounded-xl border border-line bg-bg px-4 focus-within:border-brand">
             <span className="text-2xl font-semibold text-muted">R$</span>
             <input
-              id="venda-valor"
+              id={`${copy.id}-valor`}
               ref={fieldRef}
               inputMode="decimal"
               autoComplete="off"
@@ -174,7 +238,7 @@ export function SaleWizard({ api, today, onClose }: SaleWizardProps) {
 
       {step === "data" && (
         <div className="flex flex-col gap-4">
-          <p className={QUESTION}>Quando foi a venda?</p>
+          <p className={QUESTION}>{copy.askDay}</p>
           <div className="grid grid-cols-2 gap-2">
             <button type="button" onClick={() => confirmDay(today)} className={`${CHOICE} ${day === today ? "border-brand bg-brand/15" : ""}`}>
               Hoje <span className="block text-sm font-normal text-muted">{dayLabel(today)}</span>
@@ -194,25 +258,25 @@ export function SaleWizard({ api, today, onClose }: SaleWizardProps) {
         </div>
       )}
 
-      {step === "cliente" && (
+      {step === "nome" && (
         <form onSubmit={save} className="flex flex-col gap-4" noValidate>
-          <label htmlFor="venda-cliente" className={QUESTION}>
-            Quer colocar o nome do cliente?
+          <label htmlFor={`${copy.id}-nome`} className={QUESTION}>
+            {copy.askName}
             <span className="mt-1 block text-sm font-normal text-muted">Opcional — pode salvar em branco.</span>
           </label>
           <input
-            id="venda-cliente"
+            id={`${copy.id}-nome`}
             ref={fieldRef}
-            value={customer}
-            onChange={(e) => setCustomer(e.target.value)}
-            placeholder="Nome do cliente"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder={copy.namePlaceholder}
             maxLength={120}
             autoComplete="off"
             className={INPUT}
           />
           <ErrorNote message={error} />
           <button className="btn btn-primary justify-center py-3 text-base" disabled={saving}>
-            {saving ? "Salvando…" : customer.trim() ? "Salvar venda" : "Salvar sem nome"}
+            {saving ? "Salvando…" : name.trim() ? copy.saveNamed : "Salvar em branco"}
           </button>
         </form>
       )}

@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { EntryWizard } from "./EntryWizard";
 import { PurchaseCapture } from "./PurchaseCapture";
-import { SaleWizard } from "./SaleWizard";
 
 type Sheet = "despesa" | "venda";
 
@@ -61,9 +61,9 @@ export function ControleActions({ api, today, readerEnabled }: ControleActionsPr
               <button type="button" onClick={close} aria-label="Fechar" className="grid size-10 place-items-center rounded-lg text-xl text-muted hover:bg-text/5">✕</button>
             </div>
             {sheet === "despesa" ? (
-              <PurchaseCapture api={api} today={today} readerEnabled={readerEnabled} />
+              <PurchaseCapture api={api} today={today} readerEnabled={readerEnabled} onClose={close} />
             ) : (
-              <SaleWizard api={api} today={today} onClose={close} />
+              <EntryWizard kind="venda" api={api} today={today} onClose={close} />
             )}
           </div>
         )}
