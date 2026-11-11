@@ -34,21 +34,24 @@ function labelPosition(box: Box | null): React.CSSProperties {
 const isOwnUi =(target: EventTarget | null): boolean =>
   target instanceof Element && target.closest(`[${INSPECTOR_ATTR}]`) !== null;
 
-/** Asks the server whether this user (platform admin) gets the inspector. */
+/**
+ * Asks the server whether this user (platform admin) gets the inspector — again on every page, so
+ * signing out or switching to another account in the same tab hides it.
+ */
 function useInspectorAccess(): boolean {
   const pathname = usePathname();
   const [enabled, setEnabled] = useState(false);
   useEffect(() => {
-    if (enabled) return;
     const ctrl = new AbortController();
     fetch("/api/dev/inspector", { cache: "no-store", signal: ctrl.signal })
       .then((r) => (r.ok ? r.json() : { enabled: false }))
       .then((d: { enabled?: unknown }) => setEnabled(d.enabled === true))
-      .catch(() => {
-        // Aborted or offline: the inspector simply stays hidden.
+      .catch((err: unknown) => {
+        // Aborted by the next page: that one asks again. Offline: hidden, never shown by mistake.
+        if (!(err instanceof DOMException && err.name === "AbortError")) setEnabled(false);
       });
     return () => ctrl.abort();
-  }, [pathname, enabled]);
+  }, [pathname]);
   return enabled;
 }
 
