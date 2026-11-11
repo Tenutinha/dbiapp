@@ -1,16 +1,17 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { AppHeader, Forbidden } from "@/components/AppShell";
+import { Forbidden } from "@/components/AppShell";
 import { PurchaseList, SaleList } from "@/components/controle/EntryLists";
 import { PurchaseCapture } from "@/components/controle/PurchaseCapture";
 import { SaleForm } from "@/components/controle/SaleForm";
-import { orgActions } from "@/lib/access";
+import { Workspace } from "@/components/workspace/Workspace";
 import { receiptReaderEnabled } from "@/lib/controle/extract";
 import { formatMoney } from "@/lib/controle/money";
 import { monthLabel, monthOrCurrent, shiftMonth, todayInBrazil } from "@/lib/controle/schema";
 import { listKnownProducts, listPurchases, listSales, monthTotals } from "@/lib/data/controle";
 import { guard } from "@/lib/guard";
 import { getControle } from "@/lib/services/controle";
+import { loadSpace } from "@/lib/services/space";
 
 export const dynamic = "force-dynamic";
 
@@ -61,7 +62,7 @@ export default async function ControlePage({ params, searchParams }: Props) {
   const today = todayInBrazil();
   const month = monthOrCurrent(single(query.mes));
   const currentMonth = today.slice(0, 7);
-  const { ctx, space, canRecord } = access;
+  const { ctx, space: entries, canRecord } = access;
   const base = `/${ctx.org.slug}/${ctx.client.slug}/controle`;
   const api = `/api/controle/${ctx.org.slug}/${ctx.client.slug}`;
   const href = (to: { tab?: Tab; month?: string }): string => {
@@ -70,18 +71,41 @@ export default async function ControlePage({ params, searchParams }: Props) {
     return search.size > 0 ? `${base}?${search}` : base;
   };
 
-  const [totals, purchases, sales, products] = await Promise.all([
-    monthTotals(space.clientId, month),
-    tab === "compras" ? listPurchases(space.clientId, month) : Promise.resolve([]),
-    tab === "vendas" ? listSales(space.clientId, month) : Promise.resolve([]),
-    tab === "vendas" && canRecord ? listKnownProducts(space.clientId) : Promise.resolve([]),
+  const [space, totals, purchases, sales, products] = await Promise.all([
+    loadSpace(ctx.org, ctx.client, ctx.membership),
+    monthTotals(entries.clientId, month),
+    tab === "compras" ? listPurchases(entries.clientId, month) : Promise.resolve([]),
+    tab === "vendas" ? listSales(entries.clientId, month) : Promise.resolve([]),
+    tab === "vendas" && canRecord ? listKnownProducts(entries.clientId) : Promise.resolve([]),
   ]);
   const balance = totals.salesCents - totals.purchasesCents;
 
+  // The screen's own entries in the standard sidebar, styled like the dashboards listed below them.
+  const nav = (
+    <nav aria-label="Controle">
+      <p className="mb-2 text-[13px] text-ink-muted">Controle</p>
+      <ul className="border-l border-paper-line">
+        {(["compras", "vendas"] as const).map((t) => (
+          <li key={t}>
+            <Link
+              href={href({ tab: t })}
+              aria-current={t === tab ? "page" : undefined}
+              className={`-ml-px block border-l py-1 pl-3 pr-1 text-[15px] capitalize leading-snug transition-colors ${
+                t === tab ? "border-ink font-medium text-ink" : "border-transparent text-ink/80 hover:border-ink-muted hover:text-ink"
+              }`}
+            >
+              {t}
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  );
+
   return (
-    <>
-      <AppHeader org={ctx.org} isAdmin={orgActions(ctx).has("admin")} userName={ctx.user.name} />
-      <main className="mx-auto flex max-w-2xl flex-col gap-4 px-4 pb-16 pt-5">
+    // Each business is opened on its own: the sidebar's switcher lists only this one.
+    <Workspace space={{ ...space, spaces: space.spaces.filter((s) => s.current) }} currentId={null} userName={ctx.user.name} nav={nav}>
+      <div className="mx-auto flex max-w-2xl flex-col gap-4 pt-5 lg:pt-10">
         <header className="flex flex-col gap-2">
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-2">Controle</p>
           <h1 className="text-2xl font-extrabold tracking-tight">{ctx.client.name}</h1>
@@ -129,7 +153,7 @@ export default async function ControlePage({ params, searchParams }: Props) {
             <SaleList api={api} sales={sales} canRecord={canRecord} />
           </>
         )}
-      </main>
-    </>
+      </div>
+    </Workspace>
   );
 }
