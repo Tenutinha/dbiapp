@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
-import { createClientAction, grantAccessAction, type FormState } from "@/app/[org]/admin/actions";
+import { createClientAction, grantAccessAction, resendInviteAction, type FormState } from "@/app/[org]/admin/actions";
 
 const INITIAL: FormState = { ok: false, message: "" };
 const INPUT = "w-full rounded-lg border border-line bg-bg px-3 py-2 text-sm outline-none focus:border-brand";
@@ -108,8 +108,35 @@ export function GrantAccessForm({ orgSlug, clients, allowOrg = true, title = "Da
           ? "Usuários de cliente veem apenas os dashboards desse cliente."
           : "Admin e editor acessam todos os clientes; analista e leitor veem só os dashboards da organização."}
       </p>
+      <label className="flex items-start gap-2 text-xs">
+        <input type="checkbox" name="invite" defaultChecked className="mt-0.5" />
+        <span>
+          <span className="font-medium">Enviar convite por e-mail</span>
+          <span className="block text-muted">A pessoa recebe um link para criar a senha e já entra.</span>
+        </span>
+      </label>
       <button className="btn btn-primary" disabled={pending}>{pending ? "Salvando…" : "Dar acesso"}</button>
       <Message state={state} />
+    </form>
+  );
+}
+
+/** "Reenviar convite": the create-your-password e-mail again (lost, expired after 1 hour, or never sent). */
+export function ResendInviteButton({ orgSlug, userId, name }: { orgSlug: string; userId: string; name: string }) {
+  const [state, action, pending] = useActionState(resendInviteAction, INITIAL);
+  const label = state.message ? (state.ok ? "Enviado" : "Falhou") : pending ? "Enviando…" : "Reenviar convite";
+  return (
+    <form action={action} className="inline shrink-0">
+      <input type="hidden" name="org" value={orgSlug} />
+      <input type="hidden" name="userId" value={userId} />
+      <button
+        type="submit"
+        disabled={pending}
+        title={state.message || `Enviar de novo a ${name} o e-mail para criar a senha e entrar`}
+        className={`rounded px-1.5 py-0.5 text-[11px] transition hover:bg-text/5 ${state.message && !state.ok ? "text-danger" : state.ok ? "text-ok" : "text-muted hover:text-brand-2"}`}
+      >
+        {label}
+      </button>
     </form>
   );
 }

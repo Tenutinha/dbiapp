@@ -2,7 +2,7 @@ import { revokeAccessAction } from "@/app/[org]/admin/actions";
 import { ORG_SCOPE } from "@/lib/admin-setup";
 import type { OrgPerson } from "@/lib/data/organizations";
 import { ROLE_LABEL } from "@/lib/permissions";
-import { GrantAccessForm } from "./AdminForms";
+import { GrantAccessForm, ResendInviteButton } from "./AdminForms";
 import { avatarUrl } from "@/lib/data/users";
 import { Avatar } from "./Avatar";
 
@@ -113,6 +113,7 @@ export function SpaceUsersPanel({ org, scope, spaceName, people }: SpaceUsersPro
                   {person.email} · {role}{via === "staff" && !isOrg ? " (equipe)" : ""}
                 </span>
               </span>
+              {(isOrg || via === "client") && <ResendInviteButton orgSlug={org} userId={person.userId} name={person.name} />}
               {isOrg && <RevokeButton org={org} userId={person.userId} label={`Tirar ${person.name} da equipe da organização`} />}
               {!isOrg && via === "client" && (
                 <RevokeButton org={org} userId={person.userId} clientId={scope} label={`Tirar ${person.name} de ${spaceName}`} />

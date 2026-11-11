@@ -13,6 +13,8 @@ import { EXPIRY_CHOICES, expiryDate, type ExpiryChoice } from "@/lib/space-link"
 import { createClientWithFolder, renameClientWithFolder } from "@/lib/services/client-folders";
 import { clientNameSchema } from "@/lib/client-name";
 import { CLIENT_ROLES, isValidSlug, ROLES, slugify } from "@/lib/permissions";
+import { grantMessage, resendMessage } from "@/lib/access-invite";
+import { sendAccessInvite } from "@/lib/services/access-invite";
 
 export interface FormState {
   ok: boolean;
@@ -106,6 +108,7 @@ const grantSchema = z
 export async function grantAccessAction(_prev: FormState, formData: FormData): Promise<FormState> {
   try {
     const input = grantSchema.parse(Object.fromEntries(["org", "email", "name", "scope", "role"].map((k) => [k, formData.get(k)])));
+    const invite = formData.get("invite") === "on";
     const ctx = await requireAdmin(input.org);
     const clientId = input.scope === "org" ? null : input.scope;
 
@@ -117,7 +120,23 @@ export async function grantAccessAction(_prev: FormState, formData: FormData): P
     }
     await grantAccess(ctx.org.id, { email: input.email, name: input.name, clientId, role: input.role });
     revalidatePath(`/${ctx.org.slug}`, "layout");
-    return { ok: true, message: `Acesso concedido a ${input.email}.` };
+    // The access is saved either way; the e-mail only says how to get in (create the password).
+    return grantMessage(input.email, invite ? await sendAccessInvite(input.email) : null);
+  } catch (err) {
+    return failure(err);
+  }
+}
+
+const resendSchema = z.object({ org: orgSlugSchema, userId: z.string().uuid() });
+
+/** "Reenviar convite": the "create your password" e-mail again, for someone of this organization. */
+export async function resendInviteAction(_prev: FormState, formData: FormData): Promise<FormState> {
+  try {
+    const input = resendSchema.parse({ org: formData.get("org"), userId: formData.get("userId") });
+    const ctx = await requireAdmin(input.org);
+    const person = (await listOrgPeople(ctx.org.id)).find((p) => p.userId === input.userId);
+    if (!person) return { ok: false, message: "Esta pessoa não tem mais acesso aqui." };
+    return resendMessage(person.email, await sendAccessInvite(person.email));
   } catch (err) {
     return failure(err);
   }
