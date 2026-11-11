@@ -7,8 +7,11 @@
  *   analyst → view + share the organization's own dashboards
  *   viewer  → view the organization's own dashboards
  * Client users (only their client's dashboards):
- *   analyst → view + share
+ *   analyst → view + share + record
  *   viewer  → view
+ *
+ * "record" is typing business entries (purchases, sales) into a space. It only has a screen in
+ * organizations with the "controle" module on (see services/controle.ts), which checks that separately.
  */
 
 export const ROLES = ["admin", "editor", "analyst", "viewer"] as const;
@@ -16,7 +19,7 @@ export type Role = (typeof ROLES)[number];
 export const CLIENT_ROLES = ["analyst", "viewer"] as const;
 export type ClientRole = (typeof CLIENT_ROLES)[number];
 
-export type Action = "view" | "share" | "manageData" | "admin";
+export type Action = "view" | "share" | "record" | "manageData" | "admin";
 
 export const ROLE_LABEL: Record<Role, string> = {
   admin: "Admin",
@@ -34,7 +37,7 @@ export interface Membership {
   platformAdmin?: boolean;
 }
 
-const ALL_ACTIONS: readonly Action[] = ["view", "share", "manageData", "admin"];
+const ALL_ACTIONS: readonly Action[] = ["view", "share", "record", "manageData", "admin"];
 
 /** The scope being accessed: the organization itself (clientId null) or one of its clients. */
 export interface Scope {
@@ -42,21 +45,21 @@ export interface Scope {
 }
 
 const STAFF_ALL_SCOPES: Record<Role, readonly Action[]> = {
-  admin: ["view", "share", "manageData", "admin"],
-  editor: ["view", "share", "manageData"],
+  admin: ["view", "share", "record", "manageData", "admin"],
+  editor: ["view", "share", "record", "manageData"],
   analyst: [],
   viewer: [],
 };
 
 const STAFF_ORG_SCOPE: Record<Role, readonly Action[]> = {
-  admin: ["view", "share", "manageData", "admin"],
-  editor: ["view", "share", "manageData"],
+  admin: ["view", "share", "record", "manageData", "admin"],
+  editor: ["view", "share", "record", "manageData"],
   analyst: ["view", "share"],
   viewer: ["view"],
 };
 
 const CLIENT_SCOPE: Record<ClientRole, readonly Action[]> = {
-  analyst: ["view", "share"],
+  analyst: ["view", "share", "record"],
   viewer: ["view"],
 };
 
