@@ -1,0 +1,157 @@
+/**
+ * Purchases and sales of the "controle" module (migration 015). Every statement is scoped by the
+ * client it belongs to, so an id from another client never matches. Amounts are bigint cents and
+ * quantities numeric in the database; they are read as plain numbers (far below 2^53).
+ */
+import "server-only";
+import { sql } from "../db";
+import type { Purchase, PurchaseInput, Sale, SaleInput } from "../controle/schema";
+
+export interface Space {
+  orgId: string;
+  clientId: string;
+}
+
+/** Optional modules turned on for an organization (e.g. ["controle"]). */
+export async function orgModules(orgId: string): Promise<string[]> {
+  const [row] = await sql<{ modules: string[] | null }[]>`
+    SELECT to_jsonb(o) -> 'modules' AS modules FROM organizations o WHERE o.id = ${orgId}`; // null before migration 015
+  return row?.modules ?? [];
+}
+
+/** First day of a "aaaa-mm" month, for range filters that use the (client, day) index. */
+const monthStart = (month: string): string => `${month}-01`;
+
+export interface MonthTotals {
+  purchasesCents: number;
+  purchases: number;
+  salesCents: number;
+  sales: number;
+}
+
+export async function monthTotals(clientId: string, month: string): Promise<MonthTotals> {
+  const start = monthStart(month);
+  const [row] = await sql<MonthTotals[]>`
+    SELECT
+      (SELECT COALESCE(SUM(total_cents), 0)::float8 FROM controle_purchases
+        WHERE client_id = ${clientId} AND purchased_on >= ${start}::date AND purchased_on < ${start}::date + interval '1 month') AS "purchasesCents",
+      (SELECT COUNT(*)::int FROM controle_purchases
+        WHERE client_id = ${clientId} AND purchased_on >= ${start}::date AND purchased_on < ${start}::date + interval '1 month') AS purchases,
+      (SELECT COALESCE(SUM(total_cents), 0)::float8 FROM controle_sales
+        WHERE client_id = ${clientId} AND sold_on >= ${start}::date AND sold_on < ${start}::date + interval '1 month') AS "salesCents",
+      (SELECT COUNT(*)::int FROM controle_sales
+        WHERE client_id = ${clientId} AND sold_on >= ${start}::date AND sold_on < ${start}::date + interval '1 month') AS sales`;
+  return row;
+}
+
+// ---------- purchases ----------
+
+export async function listPurchases(clientId: string, month: string): Promise<Purchase[]> {
+  const start = monthStart(month);
+  return sql<Purchase[]>`
+    SELECT p.id, to_char(p.purchased_on, 'YYYY-MM-DD') AS "purchasedOn", p.supplier,
+           p.total_cents::float8 AS "totalCents", p.payment_method AS "paymentMethod", p.notes,
+           (p.receipt_path IS NOT NULL) AS "hasReceipt", (p.source = 'ai') AS "fromReceipt",
+           COALESCE((
+             SELECT jsonb_agg(jsonb_build_object(
+               'id', i.id, 'description', i.description, 'quantity', i.quantity::float8, 'unit', i.unit,
+               'unitPriceCents', i.unit_price_cents::float8, 'totalCents', i.total_cents::float8) ORDER BY i.position)
+             FROM controle_purchase_items i WHERE i.purchase_id = p.id), '[]'::jsonb) AS items
+    FROM controle_purchases p
+    WHERE p.client_id = ${clientId} AND p.purchased_on >= ${start}::date AND p.purchased_on < ${start}::date + interval '1 month'
+    ORDER BY p.purchased_on DESC, p.created_at DESC`;
+}
+
+/** Saves a purchase and its lines together (all or nothing). Returns the new id. */
+export async function insertPurchase(space: Space, userId: string, input: PurchaseInput): Promise<string> {
+  return sql.begin(async (tx) => {
+    const [row] = await tx<{ id: string }[]>`
+      INSERT INTO controle_purchases
+        (organization_id, client_id, purchased_on, supplier, total_cents, payment_method, notes, receipt_path, receipt_mime, source, created_by)
+      VALUES (${space.orgId}, ${space.clientId}, ${input.purchasedOn}::date, ${input.supplier}, ${input.totalCents},
+              ${input.paymentMethod}, ${input.notes}, ${input.receipt?.path ?? null}, ${input.receipt?.mime ?? null},
+              ${input.fromReceipt ? "ai" : "manual"}, ${userId})
+      RETURNING id`;
+    const lines = input.items.map((item, position) => ({
+      purchase_id: row.id,
+      position,
+      description: item.description,
+      quantity: item.quantity,
+      unit: item.unit,
+      unit_price_cents: item.unitPriceCents,
+      total_cents: item.totalCents,
+    }));
+    if (lines.length > 0) await tx`INSERT INTO controle_purchase_items ${tx(lines)}`;
+    return row.id;
+  });
+}
+
+export interface StoredReceipt {
+  path: string;
+  mime: string;
+}
+
+/** The receipt of one purchase of this client; null when the purchase has none (or is not this client's). */
+export async function findReceipt(clientId: string, purchaseId: string): Promise<StoredReceipt | null> {
+  const [row] = await sql<{ path: string | null; mime: string | null }[]>`
+    SELECT receipt_path AS path, receipt_mime AS mime FROM controle_purchases WHERE id = ${purchaseId} AND client_id = ${clientId}`;
+  return row?.path && row.mime ? { path: row.path, mime: row.mime } : null;
+}
+
+/** Whether a receipt path is already attached to a purchase of this client (one file, one purchase). */
+export async function receiptInUse(clientId: string, path: string): Promise<boolean> {
+  const [row] = await sql<{ used: boolean }[]>`
+    SELECT EXISTS (SELECT 1 FROM controle_purchases WHERE client_id = ${clientId} AND receipt_path = ${path}) AS used`;
+  return row.used;
+}
+
+/** Deletes a purchase of this client. Returns its receipt path (to delete the file) and whether it existed. */
+export async function deletePurchase(clientId: string, purchaseId: string): Promise<{ found: boolean; receiptPath: string | null }> {
+  const rows = await sql<{ receiptPath: string | null }[]>`
+    DELETE FROM controle_purchases WHERE id = ${purchaseId} AND client_id = ${clientId} RETURNING receipt_path AS "receiptPath"`;
+  return { found: rows.length > 0, receiptPath: rows[0]?.receiptPath ?? null };
+}
+
+// ---------- sales ----------
+
+export async function listSales(clientId: string, month: string): Promise<Sale[]> {
+  const start = monthStart(month);
+  return sql<Sale[]>`
+    SELECT id, to_char(sold_on, 'YYYY-MM-DD') AS "soldOn", product, quantity::float8 AS quantity,
+           unit_price_cents::float8 AS "unitPriceCents", total_cents::float8 AS "totalCents",
+           payment_method AS "paymentMethod", notes
+    FROM controle_sales
+    WHERE client_id = ${clientId} AND sold_on >= ${start}::date AND sold_on < ${start}::date + interval '1 month'
+    ORDER BY sold_on DESC, created_at DESC`;
+}
+
+export async function insertSale(space: Space, userId: string, input: SaleInput): Promise<string> {
+  const [row] = await sql<{ id: string }[]>`
+    INSERT INTO controle_sales
+      (organization_id, client_id, sold_on, product, quantity, unit_price_cents, total_cents, payment_method, notes, created_by)
+    VALUES (${space.orgId}, ${space.clientId}, ${input.soldOn}::date, ${input.product}, ${input.quantity},
+            ${input.unitPriceCents}, ${input.totalCents}, ${input.paymentMethod}, ${input.notes}, ${userId})
+    RETURNING id`;
+  return row.id;
+}
+
+export async function deleteSale(clientId: string, saleId: string): Promise<boolean> {
+  const deleted = await sql`DELETE FROM controle_sales WHERE id = ${saleId} AND client_id = ${clientId}`;
+  return deleted.count > 0;
+}
+
+export interface KnownProduct {
+  product: string;
+  /** Price of its latest sale, to pre-fill the next one. */
+  unitPriceCents: number | null;
+}
+
+/** Products this client already sold, most recent first — suggestions for the sale form. */
+export async function listKnownProducts(clientId: string, limit = 60): Promise<KnownProduct[]> {
+  return sql<KnownProduct[]>`
+    SELECT product, "unitPriceCents" FROM (
+      SELECT DISTINCT ON (lower(product)) product, unit_price_cents::float8 AS "unitPriceCents", created_at
+      FROM controle_sales WHERE client_id = ${clientId}
+      ORDER BY lower(product), created_at DESC) latest
+    ORDER BY created_at DESC LIMIT ${limit}`;
+}

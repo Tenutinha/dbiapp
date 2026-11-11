@@ -33,6 +33,11 @@ const envSchema = z
     NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: z.string().min(20).optional(),
     /** Server-only. Used for Storage; never sent to the browser. */
     SUPABASE_SERVICE_ROLE_KEY: z.string().min(20).optional(),
+
+    /** Server-only. Claude API key for the "controle" receipt reader; without it entries are typed by hand. */
+    ANTHROPIC_API_KEY: z.string().min(20).optional(),
+    /** Model that reads the receipts. */
+    CONTROLE_AI_MODEL: z.string().min(1).default("claude-opus-5-5"),
   })
   .superRefine((e, ctx) => {
     const need = (key: keyof typeof e, why: string): void => {

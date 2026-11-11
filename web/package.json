@@ -17,6 +17,7 @@
     "mapadavotacao:organizar": "node --import tsx scripts/mapadavotacao/organizar-pasta.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.8.0",
     "@duckdb/node-api": "^2.0.0-r.1",
     "@google-cloud/storage": "^7.22.0",
     "@supabase/ssr": "^0.12.7",

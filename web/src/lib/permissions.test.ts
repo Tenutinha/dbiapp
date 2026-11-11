@@ -9,12 +9,12 @@ const actions = (m: Membership, scope: { clientId: string | null }) => [...allow
 
 describe("organization staff", () => {
   it("admin can do everything everywhere", () => {
-    expect(actions(staff("admin"), ORG)).toEqual(["admin", "manageData", "share", "view"]);
-    expect(actions(staff("admin"), C1)).toEqual(["admin", "manageData", "share", "view"]);
+    expect(actions(staff("admin"), ORG)).toEqual(["admin", "manageData", "record", "share", "view"]);
+    expect(actions(staff("admin"), C1)).toEqual(["admin", "manageData", "record", "share", "view"]);
   });
 
   it("editor manages data for the org and every client, but is not admin", () => {
-    expect(actions(staff("editor"), C2)).toEqual(["manageData", "share", "view"]);
+    expect(actions(staff("editor"), C2)).toEqual(["manageData", "record", "share", "view"]);
     expect(can(staff("editor"), ORG, "admin")).toBe(false);
   });
 
@@ -37,7 +37,14 @@ describe("client users", () => {
   });
 
   it("never manage data or administer, even as analyst", () => {
-    expect(actions(client1Analyst, C1)).toEqual(["share", "view"]);
+    expect(actions(client1Analyst, C1)).toEqual(["record", "share", "view"]);
+  });
+
+  it("an analyst records entries (purchases, sales) of their own client only; a viewer never does", () => {
+    expect(can(client1Analyst, C1, "record")).toBe(true);
+    expect(can(client1Analyst, C2, "record")).toBe(false);
+    expect(can(client1Analyst, ORG, "record")).toBe(false);
+    expect(can(client1Viewer, C1, "record")).toBe(false);
   });
 
   it("can belong to several clients", () => {
@@ -47,7 +54,7 @@ describe("client users", () => {
 
   it("a staff viewer who is also a client analyst gets the client rights", () => {
     const m: Membership = { orgRole: "viewer", clientRoles: { c1: "analyst" } };
-    expect(actions(m, C1)).toEqual(["share", "view"]);
+    expect(actions(m, C1)).toEqual(["record", "share", "view"]);
     expect(actions(m, ORG)).toEqual(["view"]);
   });
 });
@@ -57,8 +64,8 @@ describe("platform admin (admin master)", () => {
 
   it("can do everything in any organization and client, without being a member", () => {
     expect(isMember(master)).toBe(true);
-    expect(actions(master, ORG)).toEqual(["admin", "manageData", "share", "view"]);
-    expect(actions(master, C2)).toEqual(["admin", "manageData", "share", "view"]);
+    expect(actions(master, ORG)).toEqual(["admin", "manageData", "record", "share", "view"]);
+    expect(actions(master, C2)).toEqual(["admin", "manageData", "record", "share", "view"]);
     expect(visibleClientIds(master, ["c1", "c2"])).toEqual(["c1", "c2"]);
   });
 
