@@ -13,7 +13,7 @@ import {
 } from "../controle/receipts";
 import { todayInBrazil, type PurchaseDraft, type PurchaseInput, type SaleInput } from "../controle/schema";
 import {
-  deletePurchase, deleteSale, findReceipt, insertPurchase, insertSale, orgModules, receiptInUse, type Space,
+  deletePurchase, deleteSale, findReceipt, insertPurchase, insertSale, orgModules, receiptInUse, updatePurchase, updateSale, type Space,
 } from "../data/controle";
 import { storage } from "../storage";
 import { clientFolder } from "../storage-keys";
@@ -129,6 +129,11 @@ export async function savePurchase(access: ControleAccess, input: PurchaseInput)
   return { id: await insertPurchase(access.space, access.ctx.user.id, { ...input, fromReceipt: false }) };
 }
 
+/** Corrects a saved purchase. Its receipt (and whether it came from the reader) is not touched. */
+export async function editPurchase(access: ControleAccess, purchaseId: string, input: PurchaseInput): Promise<void> {
+  if (!(await updatePurchase(access.space.clientId, purchaseId, input))) throw new UserFacingError("Esta despesa não existe mais.");
+}
+
 export async function removePurchase(access: ControleAccess, purchaseId: string): Promise<void> {
   const { found, receiptPath: path } = await deletePurchase(access.space.clientId, purchaseId);
   if (!found) throw new UserFacingError("Esta despesa não existe mais.");
@@ -144,6 +149,10 @@ export async function discardReceipt(access: ControleAccess, path: string): Prom
 
 export async function saveSale(access: ControleAccess, input: SaleInput): Promise<{ id: string }> {
   return { id: await insertSale(access.space, access.ctx.user.id, input) };
+}
+
+export async function editSale(access: ControleAccess, saleId: string, input: SaleInput): Promise<void> {
+  if (!(await updateSale(access.space.clientId, saleId, input))) throw new UserFacingError("Esta venda não existe mais.");
 }
 
 export async function removeSale(access: ControleAccess, saleId: string): Promise<void> {

@@ -107,7 +107,7 @@ export default async function ControlePage({ params, searchParams }: Props) {
         <section id="lancamentos" aria-labelledby="lancamentos-titulo" className="flex scroll-mt-20 flex-col gap-3">
           <h2 id="lancamentos-titulo" className="text-sm font-semibold">Lançamentos do mês</h2>
           {!canRecord && <p className="text-sm text-muted">Seu acesso é só de leitura: você vê os lançamentos, mas não cria nem exclui.</p>}
-          <EntryList api={api} entries={mergeEntries(purchases, sales)} canRecord={canRecord} />
+          <EntryList api={api} today={today} entries={mergeEntries(purchases, sales)} canRecord={canRecord} />
         </section>
       </div>
       {canRecord && <ControleActions api={api} today={today} readerEnabled={receiptReaderEnabled()} />}

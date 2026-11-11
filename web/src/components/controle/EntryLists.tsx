@@ -7,6 +7,12 @@ import { formatMoney, formatQuantity } from "@/lib/controle/money";
 import { dayLabel, PAYMENT_LABEL, type Purchase, type Sale } from "@/lib/controle/schema";
 import { call, ControleError } from "./api";
 import { ErrorNote } from "./fields";
+import { PurchaseForm } from "./PurchaseForm";
+import { SaleEditForm } from "./SaleEditForm";
+import { Sheet } from "./Sheet";
+
+/** Square icon button of a row; it sits in the row's summary, so its tap must not open or close the row. */
+const ROW_BUTTON = "grid size-9 shrink-0 place-items-center rounded-lg text-muted transition";
 
 interface RemoveButtonProps {
   api: string;
@@ -42,13 +48,36 @@ function RemoveButton({ api, action, id, what, onError }: RemoveButtonProps) {
       disabled={busy}
       aria-label={`Excluir ${what}`}
       title="Excluir"
-      className="grid size-10 shrink-0 place-items-center rounded-lg text-muted transition hover:bg-danger/10 hover:text-danger disabled:animate-pulse disabled:opacity-50"
+      className={`${ROW_BUTTON} hover:bg-danger/10 hover:text-danger disabled:animate-pulse disabled:opacity-50`}
     >
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
         <path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v5M14 11v5" />
       </svg>
     </button>
   );
+}
+
+function EditButton({ what, onEdit }: { what: string; onEdit: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => { e.preventDefault(); onEdit(); }}
+      aria-label={`Editar ${what}`}
+      title="Editar"
+      className={`${ROW_BUTTON} hover:bg-brand/10 hover:text-brand`}
+    >
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+      </svg>
+    </button>
+  );
+}
+
+/** What the confirmation and the buttons name: "a despesa de R$ 57,48 em Atacadão". */
+function describe(entry: Entry): string {
+  const amount = formatMoney(entry.totalCents);
+  if (entry.kind === "venda") return `a venda de ${amount}${entry.sale.customerName ? ` para ${entry.sale.customerName}` : ""}`;
+  return `a despesa de ${amount}${entry.purchase.supplier ? ` em ${entry.purchase.supplier}` : ""}`;
 }
 
 /** What kind of entry a row is: an arrow going out (despesa) or coming in (venda), also named for screen readers. */
@@ -116,14 +145,22 @@ function PurchaseBody({ api, purchase: p }: PurchaseBodyProps) {
 
 interface EntryListProps {
   api: string;
+  today: string;
   /** Purchases and sales of the month, already in display order (see mergeEntries). */
   entries: Entry[];
   canRecord: boolean;
 }
 
 /** Everything recorded in the month in one list; the icon tells a despesa from a venda. Each row opens for its details. */
-export function EntryList({ api, entries, canRecord }: EntryListProps) {
+export function EntryList({ api, today, entries, canRecord }: EntryListProps) {
+  const router = useRouter();
   const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState<Entry | null>(null);
+  const stopEditing = (): void => setEditing(null);
+  const edited = (): void => {
+    setEditing(null);
+    router.refresh();
+  };
   if (entries.length === 0) {
     return <p className="rounded-xl border border-dashed border-line px-4 py-8 text-center text-sm text-muted">Nenhum lançamento neste mês.</p>;
   }
@@ -150,19 +187,12 @@ export function EntryList({ api, entries, canRecord }: EntryListProps) {
                 {sale ? "+" : "−"} {formatMoney(entry.totalCents)}
               </span>
               {canRecord && (
-                <RemoveButton
-                  api={api}
-                  action={sale ? "saleRemove" : "purchaseRemove"}
-                  id={entry.id}
-                  what={
-                    sale
-                      ? `a venda de ${formatMoney(entry.totalCents)}${entry.sale.customerName ? ` para ${entry.sale.customerName}` : ""}`
-                      : `a despesa de ${formatMoney(entry.totalCents)}${entry.purchase.supplier ? ` em ${entry.purchase.supplier}` : ""}`
-                  }
-                  onError={setError}
-                />
+                <span className="flex shrink-0">
+                  <EditButton what={describe(entry)} onEdit={() => { setError(null); setEditing(entry); }} />
+                  <RemoveButton api={api} action={sale ? "saleRemove" : "purchaseRemove"} id={entry.id} what={describe(entry)} onError={setError} />
+                </span>
               )}
-              <span aria-hidden className="shrink-0 text-muted transition-transform group-open:rotate-90">›</span>
+              <span aria-hidden className="hidden shrink-0 text-muted transition-transform group-open:rotate-90 sm:block">›</span>
             </summary>
             <div className="flex flex-col gap-3 border-t border-line p-4">
               {!sale && <PurchaseBody api={api} purchase={entry.purchase} />}
@@ -174,6 +204,21 @@ export function EntryList({ api, entries, canRecord }: EntryListProps) {
         );
       })}
       </div>
+      <Sheet title={editing ? (editing.kind === "venda" ? "Editar venda" : "Editar despesa") : null} onClose={stopEditing}>
+        {editing?.kind === "venda" && <SaleEditForm api={api} today={today} sale={editing.sale} onSaved={edited} onCancel={stopEditing} />}
+        {editing?.kind === "despesa" && (
+          <PurchaseForm
+            api={api}
+            today={today}
+            draft={{ ...editing.purchase, readable: true }}
+            receipt={null}
+            fromReceipt={false}
+            editId={editing.id}
+            onSaved={edited}
+            onCancel={stopEditing}
+          />
+        )}
+      </Sheet>
     </div>
   );
 }
