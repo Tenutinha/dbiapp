@@ -134,8 +134,17 @@ export interface PurchaseItem extends PurchaseItemInput {
   id: string;
 }
 
+/** Who recorded an entry, as the list shows it. */
+export interface Author {
+  name: string;
+  /** Their picture; null shows the initials. */
+  avatarUrl: string | null;
+}
+
 export interface Purchase {
   id: string;
+  /** Null when the person's account no longer exists. */
+  author: Author | null;
   purchasedOn: string;
   supplier: string | null;
   totalCents: number;
@@ -150,6 +159,7 @@ export interface Purchase {
 
 export interface Sale {
   id: string;
+  author: Author | null;
   soldOn: string;
   totalCents: number;
   paymentMethod: PaymentMethod | null;

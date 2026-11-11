@@ -7,6 +7,7 @@ import "server-only";
 import { sql } from "../db";
 import type { Purchase, PurchaseInput, Sale, SaleInput } from "../controle/schema";
 import type { SeriesPoint } from "../controle/series";
+import { avatarUrl } from "./users";
 
 export interface Space {
   orgId: string;
@@ -48,10 +49,17 @@ export async function periodTotals(clientId: string, days: readonly string[]): P
 
 // ---------- purchases ----------
 
+/** A listed row as it leaves the database: the author still as name + avatar id. */
+type Authored<T> = Omit<T, "author"> & { authorName: string | null; authorAvatarKey: string | null };
+
+function withAuthor<T extends { author: unknown }>({ authorName, authorAvatarKey, ...row }: Authored<T>): T {
+  return { ...row, author: authorName === null ? null : { name: authorName, avatarUrl: avatarUrl(authorAvatarKey) } } as unknown as T;
+}
+
 export async function listPurchases(clientId: string, days: readonly string[]): Promise<Purchase[]> {
   const list = dayList(days);
-  return sql<Purchase[]>`
-    SELECT p.id, to_char(p.purchased_on, 'YYYY-MM-DD') AS "purchasedOn", p.supplier,
+  const rows = await sql<Authored<Purchase>[]>`
+    SELECT p.id, u.name AS "authorName", to_jsonb(u) ->> 'avatar_key' AS "authorAvatarKey", to_char(p.purchased_on, 'YYYY-MM-DD') AS "purchasedOn", p.supplier,
            p.total_cents::float8 AS "totalCents", p.payment_method AS "paymentMethod", p.notes,
            (p.receipt_path IS NOT NULL) AS "hasReceipt", (p.source = 'ai') AS "fromReceipt",
            to_char(p.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US') AS "createdAt",
@@ -60,9 +68,10 @@ export async function listPurchases(clientId: string, days: readonly string[]): 
                'id', i.id, 'description', i.description, 'quantity', i.quantity::float8, 'unit', i.unit,
                'unitPriceCents', i.unit_price_cents::float8, 'totalCents', i.total_cents::float8) ORDER BY i.position)
              FROM controle_purchase_items i WHERE i.purchase_id = p.id), '[]'::jsonb) AS items
-    FROM controle_purchases p
+    FROM controle_purchases p LEFT JOIN users u ON u.id = p.created_by
     WHERE p.client_id = ${clientId} AND p.purchased_on = ANY(${list}::date[])
     ORDER BY p.purchased_on DESC, p.created_at DESC`;
+  return rows.map((row) => withAuthor<Purchase>(row));
 }
 
 /** Saves a purchase and its lines together (all or nothing). Returns the new id. */
@@ -144,13 +153,15 @@ export async function deletePurchase(clientId: string, purchaseId: string): Prom
 
 export async function listSales(clientId: string, days: readonly string[]): Promise<Sale[]> {
   const list = dayList(days);
-  return sql<Sale[]>`
-    SELECT id, to_char(sold_on, 'YYYY-MM-DD') AS "soldOn", total_cents::float8 AS "totalCents",
-           payment_method AS "paymentMethod", customer_name AS "customerName", product,
-           to_char(controle_sales.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US') AS "createdAt"
-    FROM controle_sales
-    WHERE client_id = ${clientId} AND sold_on = ANY(${list}::date[])
-    ORDER BY sold_on DESC, created_at DESC`;
+  const rows = await sql<Authored<Sale>[]>`
+    SELECT s.id, u.name AS "authorName", to_jsonb(u) ->> 'avatar_key' AS "authorAvatarKey",
+           to_char(s.sold_on, 'YYYY-MM-DD') AS "soldOn", s.total_cents::float8 AS "totalCents",
+           s.payment_method AS "paymentMethod", s.customer_name AS "customerName", s.product,
+           to_char(s.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US') AS "createdAt"
+    FROM controle_sales s LEFT JOIN users u ON u.id = s.created_by
+    WHERE s.client_id = ${clientId} AND s.sold_on = ANY(${list}::date[])
+    ORDER BY s.sold_on DESC, s.created_at DESC`;
+  return rows.map((row) => withAuthor<Sale>(row));
 }
 
 export async function insertSale(space: Space, userId: string, input: SaleInput): Promise<string> {

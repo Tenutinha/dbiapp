@@ -15,7 +15,7 @@ export function avatarHue(key: string): number {
 interface AvatarProps {
   name: string;
   email: string;
-  size?: "sm" | "md" | "lg" | "xl";
+  size?: "xs" | "sm" | "md" | "lg" | "xl";
   /** The person's uploaded picture; without it, the initials on their colour. */
   imageUrl?: string | null;
   /** Tooltip text (defaults to the name). */
@@ -23,7 +23,7 @@ interface AvatarProps {
   className?: string;
 }
 
-const SIZE = { sm: "size-7 text-[10px]", md: "size-9 text-xs", lg: "size-10 text-sm", xl: "size-20 text-2xl" } as const;
+const SIZE = { xs: "size-5 text-[8px]", sm: "size-7 text-[10px]", md: "size-9 text-xs", lg: "size-10 text-sm", xl: "size-20 text-2xl" } as const;
 
 /** Round avatar: the person's picture when they uploaded one, otherwise their initials. */
 export function Avatar({ name, email, size = "sm", imageUrl, title, className = "" }: AvatarProps) {
