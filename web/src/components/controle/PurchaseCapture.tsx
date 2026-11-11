@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { RECEIPT_ACCEPT } from "@/lib/controle/receipts";
 import type { PurchaseDraft } from "@/lib/controle/schema";
 import { call, ControleError, sendReceipt, type SentReceipt } from "./api";
+import { EntryWizard } from "./EntryWizard";
 import { ErrorNote } from "./fields";
 import { shrinkPhoto } from "./image";
 import { PurchaseForm } from "./PurchaseForm";
@@ -21,22 +22,24 @@ interface Review {
   notice: string | null;
 }
 
-type Stage = { name: "idle" } | { name: "working"; step: string } | ({ name: "review" } & Review);
+type Stage = { name: "idle" } | { name: "manual" } | { name: "working"; step: string } | ({ name: "review" } & Review);
 
 interface PurchaseCaptureProps {
   api: string;
   today: string;
   /** Whether this deployment can read receipts with AI; without it the receipt is only kept. */
   readerEnabled: boolean;
+  /** Closes the sheet this lives in. */
+  onClose: () => void;
 }
 
 const message = (err: unknown): string => (err instanceof ControleError ? err.message : "Algo deu errado. Tente de novo.");
 
 /**
  * New purchase, from the phone: photograph (or pick) the proof, wait while it is stored and read,
- * check the result, save. Typing everything by hand is always one tap away.
+ * check the result, save. Without a proof, "Lançar à mão" asks one question at a time, like a sale.
  */
-export function PurchaseCapture({ api, today, readerEnabled }: PurchaseCaptureProps) {
+export function PurchaseCapture({ api, today, readerEnabled, onClose }: PurchaseCaptureProps) {
   const router = useRouter();
   const [stage, setStage] = useState<Stage>({ name: "idle" });
   const [error, setError] = useState<string | null>(null);
@@ -101,6 +104,10 @@ export function PurchaseCapture({ api, today, readerEnabled }: PurchaseCapturePr
     router.refresh();
   }
 
+  if (stage.name === "manual") {
+    return <EntryWizard kind="despesa" api={api} today={today} onClose={onClose} onBack={() => setStage({ name: "idle" })} />;
+  }
+
   if (stage.name === "working") {
     return (
       <div className="flex flex-col items-center gap-3 p-8 text-center" role="status" aria-live="polite">
@@ -151,7 +158,7 @@ export function PurchaseCapture({ api, today, readerEnabled }: PurchaseCapturePr
         <button type="button" onClick={() => fileRef.current?.click()} className="btn btn-ghost justify-center">Foto ou PDF</button>
         <button
           type="button"
-          onClick={() => { setError(null); setSaved(false); setStage({ name: "review", draft: EMPTY, receipt: null, fromReceipt: false, preview: null, notice: null }); }}
+          onClick={() => { setError(null); setSaved(false); setStage({ name: "manual" }); }}
           className="btn btn-ghost justify-center"
         >
           Lançar à mão
