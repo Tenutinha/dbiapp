@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { toDraft, type ReceiptReading } from "./extraction";
 import { isReceiptPath, receiptExt, receiptMime, receiptPath } from "./receipts";
-import { isValidDay, monthLabel, monthOrCurrent, purchaseInput, saleInput, shiftMonth, todayInBrazil } from "./schema";
+import { isValidDay, monthLabel, monthOrCurrent, purchaseInput, saleInput, shiftDay, shiftMonth, todayInBrazil } from "./schema";
+import { cumulative } from "./series";
 
 const TODAY = new Date("2026-11-11T15:00:00Z");
 const ID = "0f8fad5b-d9cb-469f-a165-70867728950e";
@@ -16,9 +17,15 @@ describe("datas", () => {
   });
 
   it("quantidade menor que um milésimo é recusada (viraria zero no banco)", () => {
-    const sale = { soldOn: "2026-11-11", product: "x", totalCents: 100 };
-    expect(saleInput.safeParse({ ...sale, quantity: 0.0004 }).success).toBe(false);
-    expect(saleInput.safeParse({ ...sale, quantity: 0.001 }).success).toBe(true);
+    const purchase = { purchasedOn: "2026-11-10", totalCents: 100 };
+    const item = { description: "x", totalCents: 100 };
+    expect(purchaseInput.safeParse({ ...purchase, items: [{ ...item, quantity: 0.0004 }] }).success).toBe(false);
+    expect(purchaseInput.safeParse({ ...purchase, items: [{ ...item, quantity: 0.001 }] }).success).toBe(true);
+  });
+
+  it("dia anterior e seguinte", () => {
+    expect(shiftDay("2026-11-01", -1)).toBe("2026-10-31");
+    expect(shiftDay("2026-12-31", 1)).toBe("2027-01-01");
   });
 
   it("o dia de hoje é o do Brasil, não o do servidor", () => {
@@ -125,10 +132,39 @@ describe("o que chega da tela", () => {
     { ...purchase, items: [{ description: "x", quantity: 0, totalCents: 1 }] },
   ])("compra inválida é recusada (%#)", (input) => expect(purchaseInput.safeParse(input).success).toBe(false));
 
-  it("venda", () => {
-    const sale = { soldOn: "2026-11-11", product: " Brigadeiro tradicional ", quantity: 50, unitPriceCents: 350, totalCents: 17500, paymentMethod: "pix" };
-    expect(saleInput.parse(sale)).toMatchObject({ product: "Brigadeiro tradicional", notes: null });
-    expect(saleInput.safeParse({ ...sale, product: " " }).success).toBe(false);
-    expect(saleInput.safeParse({ ...sale, quantity: -1 }).success).toBe(false);
+  it("venda: valor, pagamento e data; o nome do cliente é opcional", () => {
+    const sale = { soldOn: "2026-11-11", totalCents: 17500, paymentMethod: "pix" };
+    expect(saleInput.parse(sale)).toEqual({ soldOn: "2026-11-11", totalCents: 17500, paymentMethod: "pix", customerName: null });
+    expect(saleInput.parse({ ...sale, customerName: "  Dona Lúcia " }).customerName).toBe("Dona Lúcia");
+    expect(saleInput.parse({ ...sale, customerName: "  " }).customerName).toBeNull();
+    expect(saleInput.safeParse({ ...sale, totalCents: 0 }).success).toBe(false);
+    expect(saleInput.safeParse({ ...sale, soldOn: "2999-01-01" }).success).toBe(false);
+  });
+});
+
+describe("evolução", () => {
+  const days = [
+    { period: "2026-11-01", salesCents: 100, purchasesCents: 0 },
+    { period: "2026-11-02", salesCents: 0, purchasesCents: 40 },
+    { period: "2026-11-03", salesCents: 50, purchasesCents: 10 },
+    { period: "2026-11-04", salesCents: 0, purchasesCents: 0 },
+  ];
+
+  it("acumula dia a dia", () => {
+    expect(cumulative(days, "2026-11-30")).toEqual([
+      { period: "2026-11-01", salesCents: 100, purchasesCents: 0 },
+      { period: "2026-11-02", salesCents: 100, purchasesCents: 40 },
+      { period: "2026-11-03", salesCents: 150, purchasesCents: 50 },
+      { period: "2026-11-04", salesCents: 150, purchasesCents: 50 },
+    ]);
+  });
+
+  it("não desenha os dias que ainda não chegaram", () => {
+    const upTo = cumulative(days, "2026-11-02");
+    expect(upTo.slice(0, 2).map((p) => p.salesCents)).toEqual([100, 100]);
+    expect(upTo.slice(2)).toEqual([
+      { period: "2026-11-03", salesCents: null, purchasesCents: null },
+      { period: "2026-11-04", salesCents: null, purchasesCents: null },
+    ]);
   });
 });

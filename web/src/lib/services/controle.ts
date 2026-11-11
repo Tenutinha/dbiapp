@@ -131,7 +131,7 @@ export async function savePurchase(access: ControleAccess, input: PurchaseInput)
 
 export async function removePurchase(access: ControleAccess, purchaseId: string): Promise<void> {
   const { found, receiptPath: path } = await deletePurchase(access.space.clientId, purchaseId);
-  if (!found) throw new UserFacingError("Esta compra não existe mais.");
+  if (!found) throw new UserFacingError("Esta despesa não existe mais.");
   if (path && isReceiptPath(path)) await storage.remove([receiptKey(access, path)]); // never throws: the entry is already gone
 }
 

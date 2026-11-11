@@ -11,7 +11,7 @@ interface RemoveButtonProps {
   api: string;
   action: "purchaseRemove" | "saleRemove";
   id: string;
-  /** What the confirmation names: "a compra de R$ 57,48 em Atacadão". */
+  /** What the confirmation names: "a despesa de R$ 57,48 em Atacadão". */
   what: string;
   onError: (message: string | null) => void;
 }
@@ -53,7 +53,7 @@ interface PurchaseListProps {
 /** Purchases of the month; each one opens to show its lines and the stored proof. */
 export function PurchaseList({ api, purchases, canRecord }: PurchaseListProps) {
   const [error, setError] = useState<string | null>(null);
-  if (purchases.length === 0) return <Empty>Nenhuma compra neste mês.</Empty>;
+  if (purchases.length === 0) return <Empty>Nenhuma despesa neste mês.</Empty>;
 
   return (
     <div className="flex flex-col gap-2">
@@ -63,7 +63,7 @@ export function PurchaseList({ api, purchases, canRecord }: PurchaseListProps) {
           <summary className="flex cursor-pointer list-none items-center gap-3 p-4 [&::-webkit-details-marker]:hidden">
             <span className="w-11 shrink-0 text-sm tabular-nums text-muted">{dayLabel(p.purchasedOn)}</span>
             <span className="min-w-0 flex-1">
-              <span className="block truncate font-semibold">{p.supplier ?? "Compra"}</span>
+              <span className="block truncate font-semibold">{p.supplier ?? "Despesa"}</span>
               <span className="block text-xs text-muted">
                 {p.items.length === 1 ? "1 item" : `${p.items.length} itens`}
                 {p.paymentMethod ? ` · ${PAYMENT_LABEL[p.paymentMethod]}` : ""}
@@ -101,7 +101,7 @@ export function PurchaseList({ api, purchases, canRecord }: PurchaseListProps) {
                   api={api}
                   action="purchaseRemove"
                   id={p.id}
-                  what={`a compra de ${formatMoney(p.totalCents)}${p.supplier ? ` em ${p.supplier}` : ""}`}
+                  what={`a despesa de ${formatMoney(p.totalCents)}${p.supplier ? ` em ${p.supplier}` : ""}`}
                   onError={setError}
                 />
               )}
@@ -131,18 +131,15 @@ export function SaleList({ api, sales, canRecord }: SaleListProps) {
           <li key={s.id} className="flex items-center gap-3 p-4">
             <span className="w-11 shrink-0 text-sm tabular-nums text-muted">{dayLabel(s.soldOn)}</span>
             <span className="min-w-0 flex-1">
-              <span className="block truncate font-semibold">{s.product}</span>
+              <span className="block truncate font-semibold">{s.customerName ?? s.product ?? "Venda"}</span>
               <span className="block text-xs text-muted">
-                {formatQuantity(s.quantity)}
-                {s.unitPriceCents !== null ? ` × ${formatMoney(s.unitPriceCents)}` : ""}
-                {s.paymentMethod ? ` · ${PAYMENT_LABEL[s.paymentMethod]}` : ""}
-                {s.notes ? ` · ${s.notes}` : ""}
+                {[s.paymentMethod ? PAYMENT_LABEL[s.paymentMethod] : null, s.customerName ? s.product : null].filter(Boolean).join(" · ") || "Pagamento não informado"}
               </span>
             </span>
             <span className="flex shrink-0 flex-col items-end gap-0.5">
               <span className="font-semibold tabular-nums">{formatMoney(s.totalCents)}</span>
               {canRecord && (
-                <RemoveButton api={api} action="saleRemove" id={s.id} what={`a venda de ${s.product} (${formatMoney(s.totalCents)})`} onError={setError} />
+                <RemoveButton api={api} action="saleRemove" id={s.id} what={`a venda de ${formatMoney(s.totalCents)}${s.customerName ? ` para ${s.customerName}` : ""}`} onError={setError} />
               )}
             </span>
           </li>
