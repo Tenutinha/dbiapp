@@ -15,7 +15,7 @@ import { storage } from "../storage";
 import { isDatasetKey, isIssuedUploadKey } from "../storage-keys";
 import { joinParts, splitParts } from "../storage-parts";
 import { getTemplate } from "../templates/registry";
-import type { Template, TemplateTable } from "../templates/schema";
+import { extraFacts, type Template, type TemplateTable } from "../templates/schema";
 
 export const MAX_UPLOAD_BYTES = 2 * 1024 ** 3; // 2 GB
 const PARQUET_MIME = "application/vnd.apache.parquet";
@@ -57,7 +57,7 @@ export async function ingestIntoDraft(
   const format = detectFormat(originalName);
   const draft = await getOrCreateDraft(access.instanceId);
   // Unique per upload: concurrent uploads never share a file, and published files are never overwritten.
-  const key = storage.datasetKey(access.org.slug, access.client?.slug ?? null, access.instanceId, draft.version, table.name);
+  const key = storage.datasetKey(access.org.slug, access.client?.slug ?? null, access.instanceId, access.templateId, draft.version, table.name);
   const targetPath = storage.pathFor(key);
 
   const report = await ingestTable({ storageRoot: storage.workRoot, table, sourcePath: incomingPath, format, targetPath });
@@ -123,7 +123,7 @@ export async function convertToPart(
 ): Promise<TableReport & { key?: string }> {
   const format = detectFormat(originalName);
   const draft = await getOrCreateDraft(access.instanceId);
-  const key = storage.datasetKey(access.org.slug, access.client?.slug ?? null, access.instanceId, draft.version, table.name);
+  const key = storage.datasetKey(access.org.slug, access.client?.slug ?? null, access.instanceId, access.templateId, draft.version, table.name);
   const report = await ingestTable({
     storageRoot: storage.workRoot, table, sourcePath: incomingPath, format, targetPath: storage.pathFor(key),
   });
@@ -155,7 +155,7 @@ export async function registerParts(access: InstanceAccess, table: TemplateTable
   });
   const draft = await getDraft(access.instanceId);
   const keys = parts.map((p) => p.key);
-  const mine = draft !== null && keys.every((k) => isDatasetKey(k, access.org.slug, access.client?.slug ?? null, access.instanceId, draft.version, table.name));
+  const mine = draft !== null && keys.every((k) => isDatasetKey(k, access.org.slug, access.client?.slug ?? null, access.instanceId, access.templateId, draft.version, table.name));
   if (!draft || !mine || new Set(keys).size !== keys.length) return failed([NEW_VERSION]);
 
   let local: { name: string; path: string }[];
@@ -196,7 +196,7 @@ export async function registerParts(access: InstanceAccess, table: TemplateTable
 export async function discardParts(access: InstanceAccess, table: TemplateTable, keys: readonly string[]): Promise<void> {
   const draft = await getDraft(access.instanceId);
   if (!draft) return;
-  const mine = keys.filter((k) => isDatasetKey(k, access.org.slug, access.client?.slug ?? null, access.instanceId, draft.version, table.name));
+  const mine = keys.filter((k) => isDatasetKey(k, access.org.slug, access.client?.slug ?? null, access.instanceId, access.templateId, draft.version, table.name));
   await storage.remove(await unregistered(draft.id, mine));
 }
 
@@ -282,7 +282,9 @@ export async function publishDraft(access: InstanceAccess): Promise<PublishResul
   const files: Record<string, string> = {};
   for (const f of [...activeFiles, ...draftFiles]) files[f.tableName] = f.storagePath;
 
-  const required = template.tables.map((t) => t.name);
+  // Extra facts (e.g. one block of every period) may come later: the dashboard is published without them.
+  const optional = new Set(extraFacts(template).map((t) => t.name));
+  const required = template.tables.filter((t) => !optional.has(t.name)).map((t) => t.name);
   const missing = required.filter((t) => !files[t]);
   if (missing.length > 0) {
     return { ok: false, errors: [`Faltam tabelas: ${missing.join(", ")}.`], orphans: [] };

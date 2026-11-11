@@ -113,6 +113,33 @@ export function mergeByKey(keys: Readonly<Record<string, string>>, parts: readon
   return merged;
 }
 
+/**
+ * Merges what each file says about the keyed tables as the files are read (last row per key wins),
+ * without holding every file's rows: a hundred monthly files repeat the same participants and items.
+ */
+export class KeyedTables {
+  private readonly byTable = new Map<string, Map<string, Row>>();
+
+  constructor(private readonly keys: Readonly<Record<string, string>>) {}
+
+  add(part: FiscalTables): void {
+    for (const [table, rows] of Object.entries(part)) {
+      const key = this.keys[table];
+      if (!key) continue;
+      const byKey = this.byTable.get(table) ?? new Map<string, Row>();
+      this.byTable.set(table, byKey);
+      for (const row of rows) {
+        const k = row[key];
+        if (k !== null && k !== undefined) byKey.set(k, row);
+      }
+    }
+  }
+
+  tables(): FiscalTables {
+    return Object.fromEntries([...this.byTable].map(([table, byKey]) => [table, [...byKey.values()]]));
+  }
+}
+
 /** Joins the tables read from many documents: facts are appended, dimensions merged by key. */
 export function mergeTables(importer: DocumentImporter, parts: readonly FiscalTables[]): FiscalTables {
   const merged = mergeByKey(importer.dimensionKeys, parts);

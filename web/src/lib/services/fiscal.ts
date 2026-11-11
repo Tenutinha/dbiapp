@@ -12,20 +12,20 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
-import { createWriteStream } from "node:fs";
+import { createWriteStream, type WriteStream } from "node:fs";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { InstanceAccess } from "../access";
 import { csvLine, toCsv } from "../fiscal/csv";
 import {
-  checkExtension, fiscalImporterFor, mergeByKey, mergeTables, SPED_DIMENSION_KEYS, SPED_HEAD_BYTES,
+  checkExtension, fiscalImporterFor, KeyedTables, mergeTables, SPED_DIMENSION_KEYS, SPED_HEAD_BYTES,
   type FiscalIdentity, type FiscalImporter, type FiscalTables,
 } from "../fiscal/importers";
 import { FiscalFileError, type Row } from "../fiscal/sped";
 import { factColumns } from "../fiscal/sped-kinds";
 import { appendSpedFile, writeChunk } from "../fiscal/sped-stream";
 import type { TableReport } from "../ingest/ingest";
-import type { Template, TemplateTable } from "../templates/schema";
+import { extraFacts, mainFact, type Template, type TemplateTable } from "../templates/schema";
 import { storage } from "../storage";
 import { relativeToOrg } from "../storage-browse";
 import { fiscalDocumentId, fiscalFileKey, fiscalFolder, isIssuedFiscalUploadKey, spaceFolder } from "../storage-keys";
@@ -170,9 +170,12 @@ export async function listFiscalPeriods(access: InstanceAccess): Promise<FiscalP
 export async function adoptLooseFiles(access: InstanceAccess): Promise<number> {
   const importer = requireImporter(access);
   const spaceRoot = relativeToOrg(access.org.slug, spaceFolder(access.org.slug, access.client?.slug || null)).replace(/\/$/, "");
-  const loose = (await storage.listOrgFolder(access.org.slug, spaceRoot, MAX_FILES_PER_FOLDER)).files
-    .filter((f) => importer.extensions.some((ext) => f.name.toLowerCase().endsWith(ext)));
   const folder = folderOf(access);
+  // Also the ones dropped straight into the dashboard's own folder, outside any company/period folder.
+  const ownRoot = relativeToOrg(access.org.slug, folder).replace(/\/$/, "");
+  const loose = (await Promise.all([spaceRoot, ownRoot].map((root) => storage.listOrgFolder(access.org.slug, root, MAX_FILES_PER_FOLDER))))
+    .flatMap((listing) => listing.files)
+    .filter((f) => importer.extensions.some((ext) => f.name.toLowerCase().endsWith(ext)));
   let adopted = 0;
   for (const file of loose) {
     let id: FiscalIdentity;
@@ -240,8 +243,18 @@ interface Gathered {
   written: Record<string, string>;
 }
 
+export interface RebuildOptions {
+  /**
+   * "blocks": only the block facts (e.g. bloco A of every period) and the dimensions are rebuilt; the main
+   * fact stays as published. For when the whole file of every period is too much to hold.
+   */
+  only?: "blocks";
+}
+
 /** Reads every stored file: SPED facts go straight to a CSV on disk, the rest is gathered in memory. */
-async function gather(access: InstanceAccess, importer: FiscalImporter, template: Template, dir: string): Promise<Gathered> {
+async function gather(
+  access: InstanceAccess, importer: FiscalImporter, template: Template, dir: string, options: RebuildOptions,
+): Promise<Gathered> {
   const stored = (await walk(access)).flatMap((f) => f.keys);
   const total = stored.reduce((s, f) => s + f.sizeBytes, 0);
   if (process.env.VERCEL && total > MAX_HOSTED_REBUILD_BYTES) {
@@ -250,7 +263,6 @@ async function gather(access: InstanceAccess, importer: FiscalImporter, template
     );
   }
   const skipped: RebuildResult["skipped"] = [];
-  const parts: FiscalTables[] = [];
   const written: Record<string, string> = {};
   let files = 0;
   const skip = (key: string, err: unknown): void => {
@@ -259,6 +271,7 @@ async function gather(access: InstanceAccess, importer: FiscalImporter, template
   };
 
   if (importer.mode === "documents") {
+    const parts: FiscalTables[] = [];
     for (const f of stored) {
       try {
         parts.push(importer.parse(await storage.read(f.key)));
@@ -270,17 +283,29 @@ async function gather(access: InstanceAccess, importer: FiscalImporter, template
     return { files, skipped, tables: mergeTables(importer, parts), written };
   }
 
-  const fact = template.tables.find((t) => t.kind === "fact");
-  if (!fact) throw new UserFacingError("O dashboard não tem tabela fato.");
-  const factFile = path.join(dir, `${fact.name}.csv`);
-  const out = createWriteStream(factFile, { encoding: "utf8" });
+  const fact = mainFact(template);
+  // Block facts the template has (a kind may declare one the template does not use).
+  const blockTables = extraFacts(template).map((t) => t.name).filter((name) => name in importer.kind.blockFacts);
+  if (options.only === "blocks" && blockTables.length === 0) {
+    throw new UserFacingError("Este dashboard não tem tabelas por bloco.");
+  }
+  const csvOf = (table: string): string => path.join(dir, `${table}.csv`);
+  const open = (table: string): WriteStream => createWriteStream(csvOf(table), { encoding: "utf8" });
+  const factOut = options.only === "blocks" ? null : open(fact.name);
+  const blockOuts = Object.fromEntries(blockTables.map((table) => [table, open(table)]));
+  const outs = [...(factOut ? [factOut] : []), ...Object.values(blockOuts)];
+  const blockLines: Record<string, number> = Object.fromEntries(blockTables.map((table) => [table, 0]));
+  // A hundred monthly files repeat the same participants and items: they are merged as the files are read.
+  const dimensions = new KeyedTables(SPED_DIMENSION_KEYS);
   try {
-    await writeChunk(out, csvLine(factColumns(importer.kind)));
+    for (const out of outs) await writeChunk(out, csvLine(factColumns(importer.kind)));
     for (const f of stored) {
       try {
         const local = await storage.localPath(f.key);
         try {
-          parts.push((await appendSpedFile(importer.kind, local, out)).dimensions);
+          const read = await appendSpedFile(importer.kind, local, { fact: factOut, blocks: blockOuts });
+          dimensions.add(read.dimensions);
+          for (const table of blockTables) blockLines[table] += read.blockLines[table] ?? 0;
           files += 1;
         } finally {
           // The cached copy of a remote object is only needed while it is read.
@@ -291,15 +316,17 @@ async function gather(access: InstanceAccess, importer: FiscalImporter, template
       }
     }
   } finally {
-    out.end();
-    await once(out, "close");
+    for (const out of outs) out.end();
+    await Promise.all(outs.map((out) => once(out, "close")));
   }
-  written[fact.name] = factFile;
-  return { files, skipped, tables: mergeByKey(SPED_DIMENSION_KEYS, parts), written };
+  if (factOut) written[fact.name] = csvOf(fact.name);
+  // A block the files do not bring (a company without services) leaves its fact out: the ingest refuses empty tables.
+  for (const table of blockTables) if (blockLines[table] > 0) written[table] = csvOf(table);
+  return { files, skipped, tables: dimensions.tables(), written };
 }
 
 /** Files what was uploaded loose, reads every stored file into the template's tables and puts them in the draft. */
-export async function rebuildFiscal(access: InstanceAccess): Promise<RebuildResult> {
+export async function rebuildFiscal(access: InstanceAccess, options: RebuildOptions = {}): Promise<RebuildResult> {
   const importer = requireImporter(access);
   const template = await requireTemplate(access.templateId);
   const adopted = await adoptLooseFiles(access);
@@ -307,12 +334,15 @@ export async function rebuildFiscal(access: InstanceAccess): Promise<RebuildResu
   await mkdir(dir, { recursive: true });
   const tables: TableReport[] = [];
   try {
-    const gathered = await gather(access, importer, template, dir);
+    const gathered = await gather(access, importer, template, dir, options);
     if (gathered.files === 0) {
       throw new UserFacingError(gathered.skipped.length ? "Nenhum arquivo pôde ser lido." : "Nenhum arquivo enviado ainda.");
     }
     for (const table of template.tables) {
       let file = gathered.written[table.name];
+      // A fact that was not written this time (the main one in a blocks-only rebuild, a block the files
+      // do not bring) keeps what is published.
+      if (!file && table.kind === "fact" && importer.mode === "sped") continue;
       if (!file) {
         file = path.join(dir, `${table.name}.csv`);
         let rows = gathered.tables[table.name] ?? [];

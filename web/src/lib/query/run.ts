@@ -3,7 +3,7 @@
  */
 import { queryRows, withConnection, type Row } from "../duck/engine";
 import type { Template, Visual } from "../templates/schema";
-import { buildFilterOptionsQuery, buildVisualQuery, type FilterSelection, type TableFiles } from "./build";
+import { buildFilterOptionsQuery, buildVisualQuery, MissingFactError, type FilterSelection, type TableFiles } from "./build";
 import type { CrossSelection } from "./cross";
 import type { FactFilter } from "./fact-filter";
 
@@ -61,6 +61,11 @@ export async function runDashboard(
         const q = buildVisualQuery(template, files, visual, selection, factFilter, cross);
         visuals.push({ visual, rows: await queryRows(conn, q.sql, q.params) });
       } catch (err) {
+        if (err instanceof MissingFactError) {
+          // An extra fact that has no data yet: nothing to show, not a failure.
+          visuals.push({ visual, rows: [] });
+          continue;
+        }
         console.error(`[dashboard] visual ${template.id}/${visual.id} failed`, err);
         visuals.push({ visual, rows: [], error: "Não foi possível calcular este visual." });
       }

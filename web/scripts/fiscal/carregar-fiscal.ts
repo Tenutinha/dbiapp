@@ -9,7 +9,10 @@
  *
  * Uso (em web/, com o .env do ambiente de destino):
  *   node --env-file=<.env> --conditions=react-server --import tsx scripts/fiscal/carregar-fiscal.ts \
- *     --molde <id> --org <slug> [--cliente <slug>] [--so-molde]
+ *     --molde <id> --org <slug> [--cliente <slug>] [--so-molde] [--so-blocos]
+ *
+ * Com --so-blocos, só as tabelas por bloco (ex.: bloco_a_servicos, o bloco A de todos os períodos) e as dimensões
+ * são refeitas; a fato principal fica como está publicada.
  */
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -18,7 +21,7 @@ import { findTemplate, updateDefinition } from "../../src/lib/data/catalog";
 import { sql } from "../../src/lib/db";
 import { publishDraft } from "../../src/lib/services/datasets";
 import { rebuildFiscal } from "../../src/lib/services/fiscal";
-import { templateSchema } from "../../src/lib/templates/schema";
+import { extraFacts, templateSchema } from "../../src/lib/templates/schema";
 
 const arg = (flag: string): string | undefined => {
   const i = process.argv.indexOf(flag);
@@ -43,7 +46,10 @@ async function main(): Promise<void> {
       SELECT COUNT(*)::int AS n FROM dataset_versions v JOIN dashboard_instances i ON i.id = v.instance_id WHERE i.template_id = ${t.id}`;
     // With data in place, only what does not touch the contract (visuals, fields, measures, sections) may change here.
     const current = templateSchema.parse(existing.definition);
-    const sameContract = JSON.stringify([current.tables, current.relationships]) === JSON.stringify([t.tables, t.relationships]);
+    // New extra facts (e.g. bloco_a_servicos) do not touch what is published: a dashboard goes on without them until they are loaded.
+    const added = new Set(extraFacts(t).map((tb) => tb.name).filter((name) => !current.tables.some((tb) => tb.name === name)));
+    const sameContract = JSON.stringify([current.tables, current.relationships])
+      === JSON.stringify([t.tables.filter((tb) => !added.has(tb.name)), t.relationships]);
     if (existing.status !== "draft" && n > 0 && !sameContract) {
       throw new Error(`o molde "${t.id}" está ${existing.status} e já tem dashboards com dados; atualize pela tela`);
     }
@@ -82,7 +88,7 @@ async function main(): Promise<void> {
   } as unknown as InstanceAccess; // só os campos que rebuildFiscal/publishDraft usam
 
   const started = Date.now();
-  const result = await rebuildFiscal(access);
+  const result = await rebuildFiscal(access, process.argv.includes("--so-blocos") ? { only: "blocks" } : {});
   console.log(`arquivos lidos: ${result.files} (${result.adopted} organizados da pasta do espaço) em ${((Date.now() - started) / 1000).toFixed(0)} s`);
   for (const s of result.skipped) console.log(`  pulado ${s.path}: ${s.error}`);
   for (const table of result.tables) {

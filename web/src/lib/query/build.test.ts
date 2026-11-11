@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { loadTemplate } from "../test-helpers";
-import { buildFilterOptionsQuery, buildVisualQuery, buildWhere, type QueryVisual } from "./build";
+import { templateSchema } from "../templates/schema";
+import { buildFilterOptionsQuery, buildVisualQuery, buildWhere, MissingFactError, type QueryVisual } from "./build";
 
 const t = loadTemplate("vendas-executivo");
 const files = Object.fromEntries(t.tables.map((tb) => [tb.name, `/data/${tb.name}.parquet`]));
@@ -116,3 +117,61 @@ describe("dashboard data filter (fact table)", () => {
   });
 });
 
+
+describe("more than one fact", () => {
+  // A second fact shaped like the main one (same columns), read under its name; and one of another shape.
+  const main = t.tables.find((tb) => tb.kind === "fact")!;
+  const multi = templateSchema.parse({
+    ...t,
+    tables: [
+      ...t.tables,
+      { ...main, name: "fato_vendas_antigas", sameAs: main.name },
+      { name: "fato_metas", kind: "fact", description: "Metas", columns: [{ name: "id_loja", type: "text" }, { name: "meta", type: "decimal" }] },
+    ],
+    measures: [...t.measures, { id: "meta", label: "Meta", sql: "SUM(fato_metas.meta)", format: "currency" }],
+    visuals: [
+      ...t.visuals,
+      { ...visual("k_receita"), id: "k_receita_antiga", fact: "fato_vendas_antigas" },
+      { id: "k_meta", type: "kpi", title: "Meta", measure: "meta", fact: "fato_metas" },
+    ],
+  });
+  const all = { ...files, fato_vendas_antigas: "/data/antigas.parquet", fato_metas: "/data/metas.parquet" };
+  const of = (id: string) => multi.visuals.find((v) => v.id === id)! as QueryVisual;
+
+  it("reads a same-shaped fact under the main fact's name, with its joins and filters", () => {
+    const q = buildVisualQuery(multi, all, of("k_receita_antiga"), { regiao: ["Sul"] });
+    expect(q.sql).toContain("FROM read_parquet('/data/antigas.parquet') AS fato_vendas");
+    expect(q.sql).toContain("AS dim_loja ON fato_vendas.id_loja = dim_loja.id_loja");
+    expect(q.params).toEqual(["Sul"]);
+  });
+
+  it("leaves out the filters a fact of another shape does not reach", () => {
+    const q = buildVisualQuery(multi, all, of("k_meta"), { regiao: ["Sul"] });
+    expect(q.sql).toContain("FROM read_parquet('/data/metas.parquet') AS fato_metas");
+    expect(q.sql).not.toContain("WHERE");
+    expect(q.params).toEqual([]);
+  });
+
+  it("offers in a filter the values of every fact that has the field", () => {
+    const q = buildFilterOptionsQuery(multi, all, "regiao", { canal: ["Loja"] });
+    expect(q.sql.match(/SELECT DISTINCT/g)).toHaveLength(2);
+    expect(q.sql).toContain("UNION");
+    expect(q.sql).toContain("/data/antigas.parquet");
+    expect(q.sql).not.toContain("/data/metas.parquet");
+    expect(q.sql).toContain("$1");
+    expect(q.sql).toContain("$2");
+    expect(q.params).toEqual(["Loja", "Loja"]);
+  });
+
+  it("tells a fact without a file apart from a broken query, and keeps the main fact's options", () => {
+    expect(() => buildVisualQuery(multi, files, of("k_meta"), {})).toThrow(MissingFactError);
+    expect(buildFilterOptionsQuery(multi, files, "regiao", {}).sql).not.toContain("UNION");
+  });
+
+  it("refuses a visual on a table that is not a fact, and a sameAs with other columns", () => {
+    const bad = (patch: object) => templateSchema.safeParse({ ...multi, ...patch }).success;
+    expect(bad({ visuals: [{ ...of("k_meta"), fact: "dim_loja" }] })).toBe(false);
+    expect(bad({ tables: [...t.tables, { ...main, name: "outra", sameAs: main.name, columns: main.columns.slice(1) }], visuals: t.visuals })).toBe(false);
+    expect(bad({})).toBe(true);
+  });
+});

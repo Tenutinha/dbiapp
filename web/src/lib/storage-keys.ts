@@ -1,9 +1,11 @@
 /**
  * Storage key layout — one folder per organization, named by its address (slug):
  *
- *   <espaço>/dashboards/<dashboard>/v<n>/<table>.<rand>.parquet    the dashboard's data: only the published version
+ *   <espaço>/dashboards/<molde>-<id>/v<n>/<table>.<rand>.parquet   the dashboard's data: only the published version
  *                                                                 (and a draft in progress); <espaço> is the client's
  *                                                                 folder or the organization's. Read-only in the explorer.
+ *                                                                 <id> is the start of the dashboard's id; folders named
+ *                                                                 by the whole id are the former name (same script moves them).
  *   orgs/<slug>/datasets/…                                        former place of the data (moved by scripts/migrar-dashboards.ts)
  *   orgs/<slug>/uploads/<dashboard>/<uuid>.<csv|parquet>          raw file, deleted after ingest
  *   orgs/<slug>/branding/<uuid>.<ext>                             logos
@@ -40,26 +42,39 @@ export function orgFolder(orgSlug: string): string {
 
 const rand8 = (): string => randomUUID().slice(0, 8);
 
-/** "<espaço>/dashboards/<dashboard>/" — the definitive data of one dashboard, in its client's folder (or the organization's). */
-export function dashboardFolder(orgSlug: string, clientSlug: string | null, instanceId: string): string {
+/**
+ * Name of a dashboard's folder: its model and the start of its id, e.g. "efd-contribuicoes-c680b903".
+ * Readable in the bucket, and it never has to move: neither the model nor the id of a dashboard changes.
+ */
+export function dashboardFolderName(templateId: string, instanceId: string): string {
   if (!UUID_ONLY.test(instanceId)) throw new StorageKeyError("invalid dashboard id");
-  return `${spaceFolder(orgSlug, clientSlug)}${DASHBOARDS_DIR}/${instanceId}/`;
+  if (!/^[a-z0-9-]+$/.test(templateId)) throw new StorageKeyError("invalid dashboard model");
+  return `${templateId.slice(0, 48)}-${instanceId.slice(0, 8)}`;
 }
 
-/** Where a table of a version of a dashboard is written: <espaço>/dashboards/<dashboard>/v<n>/<tabela>.<rand>.parquet. */
-export function datasetKey(orgSlug: string, clientSlug: string | null, instanceId: string, version: number, table: string): string {
-  return `${dashboardFolder(orgSlug, clientSlug, instanceId)}v${version}/${table}.${rand8()}.parquet`;
+/** "<espaço>/dashboards/<molde>-<id>/" — the definitive data of one dashboard, in its client's folder (or the organization's). */
+export function dashboardFolder(orgSlug: string, clientSlug: string | null, instanceId: string, templateId: string): string {
+  return `${spaceFolder(orgSlug, clientSlug)}${DASHBOARDS_DIR}/${dashboardFolderName(templateId, instanceId)}/`;
+}
+
+/** Where a table of a version of a dashboard is written: <espaço>/dashboards/<molde>-<id>/v<n>/<tabela>.<rand>.parquet. */
+export function datasetKey(
+  orgSlug: string, clientSlug: string | null, instanceId: string, templateId: string, version: number, table: string,
+): string {
+  return `${dashboardFolder(orgSlug, clientSlug, instanceId, templateId)}v${version}/${table}.${rand8()}.parquet`;
 }
 
 /**
  * Whether `key` is a data file this app wrote for that table in that version of the dashboard — in the
- * space's dashboards folder, or in the organization's former datasets/ folder (drafts started before the move).
+ * dashboard's folder, in the one it had before (named by its id alone), or in the organization's former
+ * datasets/ folder (drafts started before each move).
  */
 export function isDatasetKey(
-  key: string, orgSlug: string, clientSlug: string | null, instanceId: string, version: number, table: string,
+  key: string, orgSlug: string, clientSlug: string | null, instanceId: string, templateId: string, version: number, table: string,
 ): boolean {
   const prefixes = [
-    `${dashboardFolder(orgSlug, clientSlug, instanceId)}v${version}/${table}.`,
+    `${dashboardFolder(orgSlug, clientSlug, instanceId, templateId)}v${version}/${table}.`,
+    `${spaceFolder(orgSlug, clientSlug)}${DASHBOARDS_DIR}/${instanceId}/v${version}/${table}.`,
     `${orgFolder(orgSlug)}datasets/${instanceId}/v${version}/${table}.`,
   ];
   return prefixes.some((p) => key.startsWith(p) && /^[0-9a-f]{8}.parquet$/.test(key.slice(p.length)));

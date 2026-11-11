@@ -63,6 +63,12 @@ const tableSchema = z.object({
    * Parquet row-group stats prune well on the filters people use most.
    */
   sortBy: z.string().regex(/^[a-z_][a-z0-9_]*(\s*,\s*[a-z_][a-z0-9_]*){0,5}$/, "use column names separated by commas").optional(),
+  /**
+   * Only on an extra fact table: the fact it has the same columns as (e.g. "bloco_a_servicos", one block of
+   * every period, shaped like "registros"). Its visuals read it under that fact's name, so the template's
+   * fields, measures, filters and relationships written for that fact apply to it unchanged.
+   */
+  sameAs: ident.optional(),
   columns: z.array(columnSchema).min(1),
   source: sourceSchema.optional(),
 });
@@ -94,6 +100,8 @@ const base = {
   id: ident,
   title: z.string(),
   span,
+  /** Fact table this visual reads (default: the main fact, the first one of the template). */
+  fact: ident.optional(),
   /** Extra condition of this visual alone (e.g. "registros.registro = 'C100'"), on top of the screen filters. */
   where: sqlExpr.optional(),
   /** Screen filters this visual does not follow (e.g. reference records that have no month of their own). */
@@ -226,8 +234,18 @@ export const templateSchema = z
     const hasColumn = (table: string, column: string): boolean =>
       tables.get(table)?.columns.some((c) => c.name === column) ?? false;
 
+    // The first fact is the main one (data filter, row count); the others are read by the visuals that name them.
     const facts = t.tables.filter((tb) => tb.kind === "fact");
-    if (facts.length !== 1) issue("MVP supports exactly one fact table per template");
+    if (facts.length === 0) issue("a template needs a fact table");
+    for (const tb of t.tables) {
+      if (tb.sameAs === undefined) continue;
+      const target = tables.get(tb.sameAs);
+      if (tb.kind !== "fact" || target?.kind !== "fact" || target.sameAs !== undefined || target.name === tb.name || tb === facts[0]) {
+        issue(`${tb.name}.sameAs must name another fact table (and the main fact cannot have it)`);
+      } else if (JSON.stringify(tb.columns.map((c) => [c.name, c.type])) !== JSON.stringify(target.columns.map((c) => [c.name, c.type]))) {
+        issue(`${tb.name} must have the same columns as ${target.name}`);
+      }
+    }
 
     for (const tb of t.tables) {
       if (tb.kind === "dimension" && !tb.key) issue(`dimension ${tb.name} needs a key`);
@@ -282,6 +300,7 @@ export const templateSchema = z
     }
     for (const v of t.visuals) {
       const where = `visual ${v.id}`;
+      if (v.fact !== undefined && tables.get(v.fact)?.kind !== "fact") issue(`${where}: "${v.fact}" is not a fact table`);
       if (v.type === "kpi" || v.type === "donut") needMeasure(v.measure, where);
       if (v.type === "bar" || v.type === "line" || v.type === "donut") needField(v.field, where);
       if (v.type === "bar" || v.type === "line" || v.type === "table") v.measures.forEach((m) => needMeasure(m, where));
@@ -338,6 +357,18 @@ export type Template = z.infer<typeof templateSchema>;
 /** What a file must look like to feed `table`: its raw source when it has one, else the table itself. */
 export function inputTable<T extends { columns: unknown[]; source?: { columns: unknown[] } }>(table: T): T {
   return table.source ? { ...table, columns: table.source.columns, source: undefined } : table;
+}
+
+/** The main fact: the first fact table (the data filter and the row count are about it). */
+export function mainFact(t: Pick<Template, "id" | "tables">): TemplateTable {
+  const fact = t.tables.find((tb) => tb.kind === "fact");
+  if (!fact) throw new Error(`template ${t.id} has no fact table`);
+  return fact;
+}
+
+/** Fact tables besides the main one. A dashboard may be published before they have data. */
+export function extraFacts(t: Pick<Template, "tables">): TemplateTable[] {
+  return t.tables.filter((tb) => tb.kind === "fact").slice(1);
 }
 
 /** Columns a table is sorted by when written (sortBy is a comma separated list). */
