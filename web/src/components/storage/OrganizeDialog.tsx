@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { explorerApi, type OrganizePlan, type OrganizeResult } from "./api";
+import { organizeBatches } from "./organize-batches";
 
 interface OrganizeDialogProps {
   org: string;
@@ -23,6 +24,7 @@ export function OrganizeDialog({ org, folder, folderName, onDone, onCancel }: Or
   const [error, setError] = useState<string | null>(null);
   const [chosen, setChosen] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState<string | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -39,12 +41,26 @@ export function OrganizeDialog({ org, folder, folderName, onDone, onCancel }: Or
     };
   }, [org, folder]);
 
-  const apply = (): void => {
+  const apply = async (): Promise<void> => {
+    if (!plan) return;
     setBusy(true);
-    explorerApi.organizeApply(org, folder, [...chosen]).then(onDone, (err: Error) => {
-      setError(err.message);
+    const batches = organizeBatches(plan.moves, chosen);
+    let result: OrganizeResult = { done: [], failed: [] };
+    try {
+      for (const [i, paths] of batches.entries()) {
+        setProgress(batches.length > 1 ? `${i + 1}/${batches.length}` : null);
+        const part = await explorerApi.organizeApply(org, folder, paths);
+        result = { done: [...result.done, ...part.done], failed: [...result.failed, ...part.failed] };
+      }
+      onDone(result);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Não foi possível organizar.";
+      // Earlier batches already moved: report them too, so the explorer refreshes.
+      if (result.done.length > 0) onDone({ ...result, failed: [{ path: "", error: `${message} (os lotes seguintes não foram enviados)` }, ...result.failed] });
+      else setError(message);
       setBusy(false);
-    });
+      setProgress(null);
+    }
   };
 
   const toggle = (path: string): void =>
@@ -112,8 +128,8 @@ export function OrganizeDialog({ org, folder, folderName, onDone, onCancel }: Or
 
         <footer className="flex shrink-0 items-center justify-end gap-2 border-t border-line px-5 py-3">
           <button type="button" onClick={onCancel} className="btn btn-ghost" autoFocus>Cancelar</button>
-          <button type="button" onClick={apply} disabled={busy || chosen.size === 0} className="btn btn-primary disabled:opacity-50">
-            {busy ? "Organizando…" : `Organizar ${chosen.size} arquivo${chosen.size === 1 ? "" : "s"}`}
+          <button type="button" onClick={() => void apply()} disabled={busy || chosen.size === 0} className="btn btn-primary disabled:opacity-50">
+            {busy ? `Organizando…${progress ? ` (lote ${progress})` : ""}` : `Organizar ${chosen.size} arquivo${chosen.size === 1 ? "" : "s"}`}
           </button>
         </footer>
       </div>
