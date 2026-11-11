@@ -5,7 +5,7 @@
  * Identifiers and expressions come from the (validated, trusted) template;
  * user-provided filter values are always bound as parameters.
  */
-import type { Field, Measure, Template, Visual } from "../templates/schema";
+import { mainFact, type Field, type Measure, type Template, type Visual } from "../templates/schema";
 import { readParquet } from "../duck/engine";
 import type { CrossSelection } from "./cross";
 import { factFilterSql, type FactFilter } from "./fact-filter";
@@ -28,10 +28,45 @@ const MAX_MAP_AREAS = 6000;
 /** Visuals that run a query (static text does not). */
 export type QueryVisual = Exclude<Visual, { type: "text" }>;
 
-function factTable(t: Template): string {
-  const fact = t.tables.find((tb) => tb.kind === "fact");
-  if (!fact) throw new Error(`template ${t.id} has no fact table`);
-  return fact.name;
+/** A fact table as a query reads it: its file, and the name it goes by in the SQL (its own, or its `sameAs`). */
+export interface FactSource {
+  table: string;
+  alias: string;
+}
+
+/** The fact has no file in this version (an extra fact not loaded yet): its visuals are simply empty. */
+export class MissingFactError extends Error {}
+
+export function factSource(t: Template, name?: string): FactSource {
+  const table = name === undefined ? mainFact(t) : t.tables.find((tb) => tb.kind === "fact" && tb.name === name);
+  if (!table) throw new Error(`template ${t.id} has no fact table ${name}`);
+  return { table: table.name, alias: table.sameAs ?? table.name };
+}
+
+/** Every fact of the template, the main one first. */
+export function factSources(t: Template): FactSource[] {
+  return t.tables.filter((tb) => tb.kind === "fact").map((tb) => factSource(t, tb.name));
+}
+
+const mentions = (sql: string, table: string): boolean => new RegExp(`\\b${table}\\.`).test(sql);
+
+/**
+ * The relationships a fact reaches, in template order: the ones that start at it (by the name it is read
+ * under) and, snowflake, the ones that start at a dimension already reached.
+ */
+function reachOf(t: Template, alias: string): Template["relationships"] {
+  const reached = new Set([alias]);
+  return t.relationships.filter((r) => {
+    if (!reached.has(r.from.table)) return false;
+    reached.add(r.to.table);
+    return true;
+  });
+}
+
+/** Whether an expression only mentions tables a fact reaches: the fact itself (by its alias) and its dimensions. */
+function inScope(t: Template, alias: string, sql: string): boolean {
+  const reach = new Set([alias, ...reachOf(t, alias).map((r) => r.to.table)]);
+  return t.tables.every((tb) => reach.has(tb.name) || !mentions(sql, tb.name));
 }
 
 /**
@@ -43,33 +78,38 @@ export function buildFrom(
   t: Template, files: TableFiles, factFilter: FactFilter = [], params: string[] = [],
   /** Which dimensions the query uses; the others are not joined (a LEFT JOIN on a unique key changes nothing). */
   uses: (table: string) => boolean = () => true,
+  /** The fact this query reads (default: the main one). */
+  source: FactSource = factSource(t),
 ): string {
   const fileFor = (table: string): string => {
     const file = files[table];
     if (!file) throw new Error(`missing file for table ${table}`);
     return readParquet(file);
   };
-  const fact = factTable(t);
-  const where = factFilterSql(factFilter, params);
-  const factSource = where ? `(SELECT * FROM ${fileFor(fact)} ${where})` : fileFor(fact);
+  const main = mainFact(t).name;
+  if (!files[source.table] && source.table !== main) throw new MissingFactError(source.table);
+  // The data filter is written on the main fact's columns: it holds for every fact read under that name.
+  const where = source.alias === main ? factFilterSql(factFilter, params) : "";
+  const factSql = where ? `(SELECT * FROM ${fileFor(source.table)} ${where})` : fileFor(source.table);
+  const relationships = reachOf(t, source.alias);
   // Every table must have its file, used by this query or not: a dashboard is published whole.
-  for (const r of t.relationships) fileFor(r.to.table);
+  for (const r of relationships) fileFor(r.to.table);
   // A used dimension reached through another one (fact → candidato → partido) needs that one joined too.
-  const needed = new Set(t.relationships.filter((r) => uses(r.to.table)).map((r) => r.to.table));
+  const needed = new Set(relationships.filter((r) => uses(r.to.table)).map((r) => r.to.table));
   for (let grew = true; grew;) {
     grew = false;
-    for (const r of t.relationships) {
-      if (needed.has(r.to.table) && r.from.table !== fact && !needed.has(r.from.table)) {
+    for (const r of relationships) {
+      if (needed.has(r.to.table) && r.from.table !== source.alias && !needed.has(r.from.table)) {
         needed.add(r.from.table);
         grew = true;
       }
     }
   }
-  const joins = t.relationships.filter((r) => needed.has(r.to.table)).map(
+  const joins = relationships.filter((r) => needed.has(r.to.table)).map(
     (r) =>
       `LEFT JOIN ${fileFor(r.to.table)} AS ${r.to.table} ON ${r.from.table}.${r.from.column} = ${r.to.table}.${r.to.column}`,
   );
-  return [`FROM ${factSource} AS ${fact}`, ...joins].join("\n");
+  return [`FROM ${factSql} AS ${source.alias}`, ...joins].join("\n");
 }
 
 function lookup<T extends { id: string }>(items: readonly T[], id: string, kind: string): T {
@@ -94,6 +134,8 @@ export interface CrossScope {
 export function buildWhere(
   t: Template, filters: FilterSelection, excludeField?: string | readonly string[], params: string[] = [],
   cross: CrossScope = { selection: [] },
+  /** Name the fact is read under: filters on tables it does not reach are left out (default: the main fact). */
+  alias: string = factSource(t).alias,
 ): BuiltQuery {
   const clauses: string[] = [];
   const excluded = excludeField === undefined ? [] : typeof excludeField === "string" ? [excludeField] : excludeField;
@@ -101,6 +143,7 @@ export function buildWhere(
     const values = picked.slice(0, MAX_FILTER_VALUES);
     if (values.length === 0) return;
     const field = lookup(t.fields, fieldId, "field");
+    if (!inScope(t, alias, field.sql)) return;
     const placeholders = values.map((v) => {
       params.push(String(v));
       return `$${params.length}`;
@@ -197,16 +240,17 @@ export function buildVisualQuery(
   t: Template, files: TableFiles, visual: QueryVisual, filters: FilterSelection, factFilter: FactFilter = [],
   cross: CrossSelection = [],
 ): BuiltQuery {
+  const source = factSource(t, visual.fact);
   const { select, groupBy, tail } = selectFor(t, visual, filters);
   // Built apart first: the FROM only joins the dimensions the query mentions, and its parameters come first.
   const where = buildWhere(t, filters, visual.skipFilters, [], {
     selection: cross, visualId: visual.id, skipFields: visual.skipFilters,
-  });
+  }, source.alias);
   // The visual's own condition narrows the screen filters, never replaces them.
   const whereSql = visual.where ? (where.sql ? `${where.sql} AND (${visual.where})` : `WHERE (${visual.where})`) : where.sql;
   const mentioned = [...select, whereSql, tail].join("\n");
   const params: string[] = [];
-  const from = buildFrom(t, files, factFilter, params, (table) => new RegExp(`\\b${table}\\.`).test(mentioned));
+  const from = buildFrom(t, files, factFilter, params, (table) => mentions(mentioned, table), source);
   const shift = params.length;
   const shiftedWhere = shift === 0 ? whereSql : whereSql.replace(/\$(\d+)/g, (_, n: string) => `$${Number(n) + shift}`);
   params.push(...where.params);
@@ -234,15 +278,16 @@ export function buildFilterOptionsQuery(
 ): BuiltQuery {
   const field = lookup(t.fields, fieldId, "field");
   const params: string[] = [];
-  const from = buildFrom(t, files, factFilter, params);
-  const where = buildWhere(t, filters, fieldId, params, { selection: cross });
-  const sql = [
-    `SELECT DISTINCT ${fieldValue(field)} AS value`,
-    from,
-    where.sql,
-    `ORDER BY value NULLS LAST LIMIT 500`,
-  ]
-    .filter(Boolean)
-    .join("\n");
-  return { sql, params: where.params };
+  // The values of every fact that has the field: the main one always, an extra one once it has data.
+  const [main, ...extras] = factSources(t);
+  const sources = [main, ...extras.filter((s) => files[s.table] && inScope(t, s.alias, field.sql))];
+  const parts = sources.map((source) => {
+    const from = buildFrom(t, files, factFilter, params, undefined, source);
+    const where = buildWhere(t, filters, fieldId, params, { selection: cross }, source.alias);
+    return [`SELECT DISTINCT ${fieldValue(field)} AS value`, from, where.sql].filter(Boolean).join("\n");
+  });
+  const sql = parts.length === 1
+    ? `${parts[0]}\nORDER BY value NULLS LAST LIMIT 500`
+    : `SELECT value FROM (\n${parts.join("\nUNION\n")}\n) AS options\nORDER BY value NULLS LAST LIMIT 500`;
+  return { sql, params };
 }

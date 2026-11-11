@@ -45,6 +45,11 @@ export interface SpedKind {
   identify(first: SpedRecord | undefined): SpedIdentity & { uf: string | null };
   /** Dimension tables this kind builds besides the fact. */
   dimensions: readonly string[];
+  /**
+   * Extra fact tables that keep only some blocks of the file (table → blocks), shaped like the main fact.
+   * Light enough to hold every period, when the whole file of every period would be too much.
+   */
+  blockFacts: Readonly<Record<string, readonly string[]>>;
 }
 
 const DOC = ["NUM_DOC", "NUM_DOC_INI", "NUM_CFE", "NUM_COO_FIN", "NUM_LCTO"] as const;
@@ -90,6 +95,7 @@ export const SPED_KINDS: readonly SpedKind[] = [
     establishmentRecords: new Set(),
     identify: identifyIcms,
     dimensions: ["estabelecimentos", "participantes", "itens"],
+    blockFacts: {},
   },
   {
     templateId: "efd-contribuicoes",
@@ -103,6 +109,17 @@ export const SPED_KINDS: readonly SpedKind[] = [
     establishmentRecords: new Set(["A010", "C010", "D010", "F010", "I010", "P010"]),
     identify: identifyContrib,
     dimensions: ["estabelecimentos", "participantes", "itens"],
+    // Every block but the two heavy ones: 0 (the registers repeated every month) and C (the goods documents).
+    blockFacts: {
+      bloco_a_servicos: ["A"],
+      bloco_d_transporte_comunicacao: ["D"],
+      bloco_f_demais_operacoes: ["F"],
+      bloco_i_instituicoes_financeiras: ["I"],
+      bloco_m_apuracao_pis_cofins: ["M"],
+      bloco_p_previdenciaria_receita_bruta: ["P"],
+      bloco_1_complemento_saldos: ["1"],
+      bloco_9_encerramento: ["9"],
+    },
   },
   {
     templateId: "ecd",
@@ -121,6 +138,7 @@ export const SPED_KINDS: readonly SpedKind[] = [
     establishmentRecords: new Set(),
     identify: identifyEcd,
     dimensions: ["empresas", "plano_contas"],
+    blockFacts: {},
   },
 ];
 

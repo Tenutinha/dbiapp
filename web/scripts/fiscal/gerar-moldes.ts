@@ -73,6 +73,10 @@ function rawSections(kind: SpedKind, opts: { skipFilters?: (reg: string) => stri
       id: "t_registros", type: "table", title: "Linhas por registro", fields: ["bloco", "registro_nome"], measures: ["linhas"], limit: 400, span: 12,
     }],
   }];
+  // A block that has a fact of its own is listed from it: every period, not only the ones loaded whole.
+  const tableOfBlock: Record<string, string> = Object.fromEntries(
+    Object.entries(kind.blockFacts).flatMap(([table, blockCodes]) => blockCodes.map((b) => [b, table])),
+  );
   const known = Object.keys(kind.layout);
   // File order: block 0 first, the lettered ones, then 1 and 9 (object keys alone would put the digits first).
   const rank = (b: string): number => (b === "0" ? 0 : b === "1" ? 2 : b === "9" ? 3 : 1);
@@ -88,6 +92,7 @@ function rawSections(kind: SpedKind, opts: { skipFilters?: (reg: string) => stri
         span: 12,
         where: isReg(code),
         hideEmpty: true,
+        ...(tableOfBlock[block] ? { fact: tableOfBlock[block] } : {}),
         ...(opts.skipFilters?.(code) ? { skipFilters: opts.skipFilters(code) } : {}),
         orderBy: `${F}.arquivo, ${F}.linha`,
         limit: 20,
@@ -102,7 +107,8 @@ function rawSections(kind: SpedKind, opts: { skipFilters?: (reg: string) => stri
       };
     });
     if (visuals.length === 0) continue;
-    sections.push({ id: `bloco_${block.toLowerCase()}`, title: `Bloco ${block} · ${name}`, description: "", visuals });
+    const description = tableOfBlock[block] ? `Todos os períodos enviados, lidos da tabela ${tableOfBlock[block]}.` : "";
+    sections.push({ id: `bloco_${block.toLowerCase()}`, title: `Bloco ${block} · ${name}`, description, visuals });
   }
   sections.push({
     id: "outros_registros",
@@ -145,6 +151,16 @@ function factTable(kind: SpedKind): Json {
   };
 }
 
+/** Extra facts of the kind: some blocks of the file, with the main fact's columns (see SpedKind.blockFacts). */
+function blockFactTables(kind: SpedKind): Json[] {
+  return Object.entries(kind.blockFacts).map(([name, blocks]) => ({
+    ...factTable(kind),
+    name,
+    sameAs: F,
+    description: `Só as linhas ${blocks.length === 1 ? "do bloco" : "dos blocos"} ${blocks.join(", ")} do arquivo ${kind.title}, com as mesmas colunas de "${F}": leve o bastante para guardar todos os períodos.`,
+  }));
+}
+
 const DIM_TABLES: Record<string, Json> = {
   estabelecimentos: { name: "estabelecimentos", kind: "dimension", description: "Estabelecimentos (registros 0000 e 0140).", key: "cnpj", columns: [
     { name: "cnpj", type: "text" }, { name: "nome", type: "text" }, { name: "uf", type: "text", required: false }] },
@@ -185,7 +201,7 @@ function build(kind: SpedKind, p: Parts): Json {
     area: p.area,
     origin: "web",
     description: p.description,
-    tables: [factTable(kind), ...kind.dimensions.map((d) => DIM_TABLES[d])],
+    tables: [factTable(kind), ...blockFactTables(kind), ...kind.dimensions.map((d) => DIM_TABLES[d])],
     relationships: kind.dimensions.map((d) => ({ from: { table: F, column: DIM_LINK[d] }, to: { table: d, column: DIM_LINK[d] } })),
     fields: [
       ...p.fields,
@@ -357,6 +373,14 @@ function efdContrib(): Json {
   const cred = `${cstPis} BETWEEN '50' AND '66'`;
   const debC = `${cstCof} < '50'`;
   const credC = `${cstCof} BETWEEN '50' AND '66'`;
+  // Bloco A (serviços): a nota (A100) e seus itens (A170). Notas canceladas ficam fora dos valores.
+  const a100 = (name: string): string => col(k, "A100", name);
+  const a170 = (name: string): string => col(k, "A170", name);
+  const isA100 = isReg("A100");
+  const isA170 = isReg("A170");
+  const notaValida = `${isA100} AND ${a100("COD_SIT")} <> '02'`;
+  const nota = (name: string, extra = ""): string => sumWhen(`${notaValida}${extra}`, num(a100(name)));
+  const itemServico = (name: string): string => sumWhen(isA170, num(a170(name)));
   const m200 = isReg("M200");
   const m600 = isReg("M600");
   const pisDeb = sumWhen(deb, vlPis);
@@ -380,6 +404,10 @@ function efdContrib(): Json {
     { id: "ncm", label: "NCM", sql: "itens.ncm" },
     { id: "participante", label: "Participante", sql: "participantes.nome" },
     { id: "uf_participante", label: "UF do participante", sql: "participantes.uf" },
+    { id: "nota_servico", label: "Nota de serviço", sql: `${F}.doc` },
+    { id: "servico_operacao", label: "Operação do serviço", sql: `CASE ${F}.oper WHEN '0' THEN 'Serviço contratado' WHEN '1' THEN 'Serviço prestado' END` },
+    { id: "servico_situacao", label: "Situação da nota de serviço", sql: `CASE ${a100("COD_SIT")} WHEN '00' THEN '00 - Regular' WHEN '02' THEN '02 - Cancelada' ELSE ${a100("COD_SIT")} END` },
+    { id: "servico_aliquotas", label: "Alíquotas de PIS e COFINS", sql: `concat(${a170("ALIQ_PIS")}, '% e ', ${a170("ALIQ_COFINS")}, '%')` },
   ];
   const measures: Measure[] = [
     { id: "receita", label: "Receita", sql: sumWhen(deb, vlItem), format: "currency" },
@@ -401,7 +429,94 @@ function efdContrib(): Json {
     { id: "cofins_apurado", label: "COFINS apurada não cumulativa (M600)", sql: sumWhen(m600, num(col(k, "M600", "VL_TOT_CONT_NC_PER"))), format: "currency" },
     { id: "cofins_credito_descontado", label: "Crédito de COFINS descontado (M600)", sql: sumWhen(m600, num(col(k, "M600", "VL_TOT_CRED_DESC"))), format: "currency" },
     { id: "documentos", label: "Notas fiscais (C100)", sql: countWhen(isReg("C100")), format: "integer" },
+    { id: "serv_valor", label: "Valor dos serviços", sql: nota("VL_DOC"), format: "currency" },
+    { id: "serv_prestados", label: "Serviços prestados", sql: nota("VL_DOC", ` AND ${F}.oper = '1'`), format: "currency" },
+    { id: "serv_contratados", label: "Serviços contratados", sql: nota("VL_DOC", ` AND ${F}.oper = '0'`), format: "currency" },
+    { id: "serv_desconto", label: "Descontos", sql: nota("VL_DESC"), format: "currency" },
+    { id: "serv_base_pis", label: "Base de cálculo do PIS", sql: nota("VL_BC_PIS"), format: "currency" },
+    { id: "serv_pis", label: "PIS", sql: nota("VL_PIS"), format: "currency" },
+    { id: "serv_cofins", label: "COFINS", sql: nota("VL_COFINS"), format: "currency" },
+    { id: "serv_pis_cofins", label: "PIS + COFINS", sql: `${nz(nota("VL_PIS"))} + ${nz(nota("VL_COFINS"))}`, format: "currency" },
+    { id: "serv_pis_retido", label: "PIS retido na fonte", sql: nota("VL_PIS_RET"), format: "currency" },
+    { id: "serv_cofins_retido", label: "COFINS retida na fonte", sql: nota("VL_COFINS_RET"), format: "currency" },
+    { id: "serv_retencoes", label: "PIS + COFINS retidos", sql: `${nz(nota("VL_PIS_RET"))} + ${nz(nota("VL_COFINS_RET"))}`, format: "currency" },
+    { id: "serv_iss", label: "ISS", sql: nota("VL_ISS"), format: "currency" },
+    { id: "serv_carga", label: "Carga de PIS + COFINS sobre os serviços", sql: `(${nz(nota("VL_PIS"))} + ${nz(nota("VL_COFINS"))}) / NULLIF(${nota("VL_DOC")}, 0)`, format: "percent" },
+    { id: "serv_notas", label: "Notas de serviço", sql: countWhen(notaValida), format: "integer" },
+    { id: "serv_canceladas", label: "Notas canceladas", sql: countWhen(`${isA100} AND ${a100("COD_SIT")} = '02'`), format: "integer" },
+    { id: "serv_ticket", label: "Valor médio por nota", sql: `${nota("VL_DOC")} / NULLIF(${countWhen(notaValida)}, 0)`, format: "currency" },
+    { id: "serv_itens_valor", label: "Valor dos itens (A170)", sql: itemServico("VL_ITEM"), format: "currency" },
+    { id: "serv_itens_liquido", label: "Itens menos descontos (A170)", sql: `${nz(itemServico("VL_ITEM"))} - ${nz(itemServico("VL_DESC"))}`, format: "currency" },
+    { id: "serv_itens_base", label: "Base de cálculo dos itens", sql: itemServico("VL_BC_PIS"), format: "currency" },
+    { id: "serv_itens_pis", label: "PIS dos itens", sql: itemServico("VL_PIS"), format: "currency" },
+    { id: "serv_itens_cofins", label: "COFINS dos itens", sql: itemServico("VL_COFINS"), format: "currency" },
+    { id: "serv_diferenca", label: "Diferença entre nota e itens", sql: `abs(${nz(nota("VL_DOC"))} - (${nz(itemServico("VL_ITEM"))} - ${nz(itemServico("VL_DESC"))}))`, format: "currency" },
   ];
+  // Bloco M: only fields whose position is the same in every layout version (M210/M610 changed after the third field).
+  const mReg = (pis: string, cofins: string, name: string): string =>
+    `CASE ${F}.registro WHEN '${pis}' THEN ${col(k, pis, name)} WHEN '${cofins}' THEN ${col(k, cofins, name)} END`;
+  const mSum = (reg: string, name: string): string => sumWhen(isReg(reg), num(col(k, reg, name)));
+  fields.push(
+    { id: "m_cod_cont", label: "Código da contribuição", sql: mReg("M210", "M610", "COD_CONT") },
+    { id: "m_cod_cred", label: "Tipo de crédito", sql: mReg("M100", "M500", "COD_CRED") },
+  );
+  measures.push(
+    { id: "m_receita_bruta_pis", label: "Receita bruta (M210)", sql: mSum("M210", "VL_REC_BRT"), format: "currency" },
+    { id: "m_receita_bruta_cofins", label: "Receita bruta (M610)", sql: mSum("M610", "VL_REC_BRT"), format: "currency" },
+    { id: "m_credito_pis", label: "Crédito de PIS do período (M100)", sql: mSum("M100", "VL_CRED"), format: "currency" },
+    { id: "m_credito_cofins", label: "Crédito de COFINS do período (M500)", sql: mSum("M500", "VL_CRED"), format: "currency" },
+    { id: "m_credito_periodo", label: "Créditos apurados no período", sql: `${nz(mSum("M100", "VL_CRED"))} + ${nz(mSum("M500", "VL_CRED"))}`, format: "currency" },
+    { id: "m_apurado", label: "PIS + COFINS apurados", sql: `${nz(mSum("M200", "VL_TOT_CONT_NC_PER"))} + ${nz(mSum("M600", "VL_TOT_CONT_NC_PER"))}`, format: "currency" },
+    { id: "m_credito_descontado", label: "Crédito descontado (PIS + COFINS)", sql: `${nz(mSum("M200", "VL_TOT_CRED_DESC"))} + ${nz(mSum("M600", "VL_TOT_CRED_DESC"))}`, format: "currency" },
+  );
+  /** Receipts, purchases and credits of one block (D, F), item by item, for every period: the block's own fact. */
+  const blockPanel = (block: string, table: string, id: string, title: string, description: string): Section => {
+    const p = block.toLowerCase();
+    const inBlock = `${det} AND ${F}.bloco = '${block}'`;
+    const values = ["receita", "aquisicoes_com_credito", "aquisicoes_sem_credito", "pis_debito", "cofins_debito", "pis_credito", "cofins_credito"];
+    return {
+      id, title, description,
+      visuals: [
+        kpi(`k_${p}_receita`, "Receita", "receita", 3, inBlock), kpi(`k_${p}_aquisicoes`, "Aquisições com crédito", "aquisicoes_com_credito", 3, inBlock),
+        kpi(`k_${p}_pis_credito`, "PIS a crédito", "pis_credito", 3, inBlock), kpi(`k_${p}_cofins_credito`, "COFINS a crédito", "cofins_credito", 3, inBlock),
+        { id: `b_${p}_mes`, type: "bar", title: "Receita e aquisições com crédito por mês", field: "mes", measures: ["receita", "aquisicoes_com_credito"], sort: "field", limit: 240, span: 12, where: inBlock },
+        { id: `l_${p}_creditos_mes`, type: "line", title: "Créditos de PIS e COFINS por mês", field: "mes", measures: ["pis_credito", "cofins_credito"], sort: "field", limit: 240, span: 12, where: inBlock },
+        { id: `t_${p}_ano`, type: "table", title: "Por ano e operação", fields: ["ano", "operacao"], measures: values, orderBy: "aquisicoes_com_credito", limit: 60, span: 12, where: inBlock },
+        { id: `t_${p}_registro`, type: "table", title: "Por registro, CST e natureza do crédito", fields: ["registro_nome", "cst_pis", "nat_bc_cred"], measures: values, orderBy: "aquisicoes_com_credito", limit: 100, span: 12, where: inBlock },
+        { id: `t_${p}_participantes`, type: "table", title: "Participantes", fields: ["participante", "uf_participante", "operacao"], measures: values, orderBy: "aquisicoes_com_credito", limit: 200, span: 12, where: inBlock },
+      ].map((v) => ({ ...v, fact: table })),
+    };
+  };
+  /** The bloco A section reads the fact that holds that block for every period. */
+  const servico = (v: Json): Json => ({ ...v, fact: "bloco_a_servicos" });
+  const servicos: Section = {
+    id: "servicos_bloco_a", title: "Serviços (bloco A)",
+    description: "Notas fiscais de serviço (A100) e seus itens (A170) de todos os períodos enviados, lidos de uma tabela só com o bloco A. Notas canceladas ficam fora dos valores. PIS, COFINS, retenções e ISS são os informados em cada nota.",
+    visuals: [
+      kpi("k_serv_valor", "Valor dos serviços", "serv_valor", 3, isA100), kpi("k_serv_notas", "Notas de serviço", "serv_notas", 3, isA100),
+      kpi("k_serv_ticket", "Valor médio por nota", "serv_ticket", 3, isA100), kpi("k_serv_canceladas", "Notas canceladas", "serv_canceladas", 3, isA100),
+      kpi("k_serv_pis", "PIS", "serv_pis", 3, isA100), kpi("k_serv_cofins", "COFINS", "serv_cofins", 3, isA100),
+      kpi("k_serv_retencoes", "PIS + COFINS retidos na fonte", "serv_retencoes", 3, isA100), kpi("k_serv_iss", "ISS", "serv_iss", 3, isA100),
+      { id: "b_serv_mes", type: "bar", title: "Serviços prestados e contratados por mês", field: "mes", measures: ["serv_prestados", "serv_contratados"], sort: "field", limit: 240, span: 12, where: isA100 },
+      { id: "l_serv_tributos_mes", type: "line", title: "PIS + COFINS, retenções e ISS por mês", field: "mes", measures: ["serv_pis_cofins", "serv_retencoes", "serv_iss"], sort: "field", limit: 240, span: 8, where: isA100 },
+      { id: "d_serv_situacao", type: "donut", title: "Notas por situação", field: "servico_situacao", measure: "linhas", span: 4, where: isA100 },
+      { id: "t_serv_ano", type: "table", title: "Serviços por ano", fields: ["ano", "servico_operacao"], measures: ["serv_valor", "serv_notas", "serv_desconto", "serv_base_pis", "serv_pis", "serv_cofins", "serv_pis_retido", "serv_cofins_retido", "serv_iss", "serv_carga"], limit: 60, span: 12, where: isA100 },
+      { id: "t_serv_participantes", type: "table", title: "Tomadores e prestadores", fields: ["participante", "uf_participante", "servico_operacao"], measures: ["serv_valor", "serv_notas", "serv_pis", "serv_cofins", "serv_retencoes", "serv_iss"], limit: 200, span: 12, where: isA100 },
+      { id: "b_serv_itens", type: "bar", title: "Valor por serviço (itens A170)", field: "item", measures: ["serv_itens_valor"], sort: "measure_desc", horizontal: true, limit: 15, span: 6, where: isA170 },
+      { id: "t_serv_cst", type: "table", title: "CST e alíquotas dos itens", fields: ["cst_pis", "cst_cofins", "servico_aliquotas"], measures: ["serv_itens_valor", "serv_itens_base", "serv_itens_pis", "serv_itens_cofins"], limit: 60, span: 6, where: isA170 },
+      { id: "t_serv_estabelecimentos", type: "table", title: "Serviços por estabelecimento", fields: ["estabelecimento"], measures: ["serv_valor", "serv_notas", "serv_pis", "serv_cofins", "serv_iss"], limit: 100, span: 12, where: isA100 },
+      { id: "t_serv_conferencia", type: "table", title: "Conferência: valor da nota (A100) e soma dos itens (A170)", fields: ["mes", "nota_servico", "participante"], measures: ["serv_diferenca", "serv_valor", "serv_itens_liquido"], limit: 100, span: 12, where: isReg("A100", "A170") },
+      {
+        id: "r_serv_notas", type: "rows", title: "Notas de serviço (A100), como estão nos arquivos", span: 12, where: isA100, hideEmpty: true,
+        orderBy: `${F}.arquivo, ${F}.linha`, limit: 50, expand: { filter: "mes", limit: 2000 },
+        columns: [
+          { label: "Arquivo", sql: `${F}.arquivo` }, { label: "Estabelecimento", sql: `${F}.cnpj` }, { label: "Participante", sql: "participantes.nome" },
+          ...["IND_OPER", "COD_SIT", "SER", "NUM_DOC", "CHV_NFSE", "DT_DOC", "DT_EXE_SERV", "VL_DOC", "VL_DESC", "VL_BC_PIS", "VL_PIS", "VL_BC_COFINS", "VL_COFINS", "VL_PIS_RET", "VL_COFINS_RET", "VL_ISS"]
+            .map((name) => ({ label: name, sql: a100(name) })),
+        ],
+      },
+    ].map(servico),
+  };
   const mx = isReg("M200", "M600");
   const panels: Section[] = [
     {
@@ -448,6 +563,27 @@ function efdContrib(): Json {
         { id: "t_participantes", type: "table", title: "Participantes", fields: ["participante", "uf_participante"], measures: ["receita", "aquisicoes_com_credito", "pis_credito", "cofins_credito"], limit: 100, span: 12, where: det },
       ],
     },
+    servicos,
+    {
+      id: "apuracao_periodos", title: "Apuração de todos os períodos (bloco M)",
+      description: "Consolidação de PIS (M200) e COFINS (M600) e receita bruta do detalhamento (M210 e M610) de todos os períodos enviados, lidas de uma tabela só com o bloco M.",
+      visuals: [
+        kpi("k_m_pis_apurado", "PIS apurado não cumulativo", "pis_apurado", 3, m200), kpi("k_m_pis_credito", "Crédito de PIS descontado", "pis_credito_descontado", 3, m200),
+        kpi("k_m_pis_recolher", "PIS a recolher", "pis_recolher", 3, m200), kpi("k_m_receita_bruta", "Receita bruta (M210)", "m_receita_bruta_pis", 3, isReg("M210")),
+        kpi("k_m_cofins_apurado", "COFINS apurada não cumulativa", "cofins_apurado", 3, m600), kpi("k_m_cofins_credito", "Crédito de COFINS descontado", "cofins_credito_descontado", 3, m600),
+        kpi("k_m_cofins_recolher", "COFINS a recolher", "cofins_recolher", 3, m600), kpi("k_m_credito_periodo", "Créditos apurados no período (M100 + M500)", "m_credito_periodo", 3, isReg("M100", "M500")),
+        { id: "b_m_recolher_mes", type: "bar", title: "PIS e COFINS a recolher por mês", field: "mes", measures: ["pis_recolher", "cofins_recolher"], sort: "field", limit: 240, span: 12, where: mx },
+        { id: "l_m_apurado_credito_mes", type: "line", title: "Contribuição apurada e crédito descontado por mês", field: "mes", measures: ["m_apurado", "m_credito_descontado"], sort: "field", limit: 240, span: 12, where: mx },
+        { id: "t_m_ano", type: "table", title: "Apuração por ano", fields: ["ano"], measures: ["pis_apurado", "pis_credito_descontado", "pis_recolher", "cofins_apurado", "cofins_credito_descontado", "cofins_recolher"], orderBy: "cofins_recolher", limit: 30, span: 12, where: mx },
+        { id: "t_m_mes", type: "table", title: "Apuração por mês", fields: ["mes"], measures: ["pis_apurado", "pis_credito_descontado", "pis_recolher", "cofins_apurado", "cofins_credito_descontado", "cofins_recolher"], limit: 240, span: 12, where: mx },
+        { id: "t_m_cod_cont", type: "table", title: "Receita bruta por código de contribuição (M210 e M610)", fields: ["m_cod_cont"], measures: ["m_receita_bruta_pis", "m_receita_bruta_cofins"], limit: 40, span: 6, where: isReg("M210", "M610") },
+        { id: "t_m_cod_cred", type: "table", title: "Créditos apurados por tipo (M100 e M500)", fields: ["m_cod_cred"], measures: ["m_credito_pis", "m_credito_cofins"], limit: 40, span: 6, where: isReg("M100", "M500") },
+      ].map((v) => ({ ...v, fact: "bloco_m_apuracao_pis_cofins" })),
+    },
+    blockPanel("D", "bloco_d_transporte_comunicacao", "transporte_bloco_d", "Transporte e comunicação (bloco D)",
+      "Documentos de transporte e de comunicação de todos os períodos enviados (D100 e D500 com seus complementos de PIS e COFINS), lidos de uma tabela só com o bloco D."),
+    blockPanel("F", "bloco_f_demais_operacoes", "demais_operacoes_bloco_f", "Demais documentos e operações (bloco F)",
+      "Demais operações geradoras de contribuição e de crédito de todos os períodos enviados (F100, bens do imobilizado, retenções), lidas de uma tabela só com o bloco F."),
   ];
   return build(k, {
     name: "EFD Contribuições", area: "Fiscal",

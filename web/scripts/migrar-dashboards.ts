@@ -1,7 +1,8 @@
 /**
- * Moves the dashboards' Parquet files from orgs/<org>/datasets/<dashboard>/… (the former layout) to the
- * space they belong to: orgs/<org>/clientes/<cliente>/dashboards/<dashboard>/… (or orgs/<org>/dashboards/…
- * for the organization's own space). See storage-keys.ts.
+ * Moves the dashboards' Parquet files to their folder in the space they belong to:
+ * orgs/<org>/clientes/<cliente>/dashboards/<molde>-<id>/… (or orgs/<org>/dashboards/… for the organization's
+ * own space), e.g. dashboards/efd-contribuicoes-c680b903/. They come from orgs/<org>/datasets/<dashboard>/…
+ * (the first layout) or from dashboards/<dashboard>/… (the folder named by the whole id). See storage-keys.ts.
  *
  *   node --env-file=<.env de produção> --import tsx scripts/migrar-dashboards.ts            plano (não muda nada)
  *   node --env-file=<.env de produção> --import tsx scripts/migrar-dashboards.ts aplicar    move de verdade
@@ -14,6 +15,7 @@
 import path from "node:path";
 import { Storage, type Bucket } from "@google-cloud/storage";
 import postgres from "postgres";
+import { dashboardFolderName } from "../src/lib/storage-keys";
 
 const APPLY = process.argv.includes("aplicar");
 const BUCKET = process.env.GCS_BUCKET ?? process.env.DBI_STORAGE_BUCKET ?? "dbi-app-br-arquivos";
@@ -24,6 +26,7 @@ interface Row {
   versionId: string;
   status: "active" | "draft" | "archived";
   instanceId: string;
+  templateId: string;
   orgSlug: string;
   clientSlug: string | null;
   storagePath: string;
@@ -31,13 +34,15 @@ interface Row {
 
 const parts = (p: string): string[] => p.split(SEPARATOR).filter((x) => x !== "");
 const legacyPrefix = (r: Row): string => `orgs/${r.orgSlug}/datasets/${r.instanceId}/`;
-const newPrefix = (r: Row): string =>
-  `orgs/${r.orgSlug}/${r.clientSlug ? `clientes/${r.clientSlug}/` : ""}dashboards/${r.instanceId}/`;
+const spacePrefix = (r: Row): string => `orgs/${r.orgSlug}/${r.clientSlug ? `clientes/${r.clientSlug}/` : ""}dashboards/`;
+/** The folder the dashboard had at first in its space, named by its whole id. */
+const byIdPrefix = (r: Row): string => `${spacePrefix(r)}${r.instanceId}/`;
+const newPrefix = (r: Row): string => `${spacePrefix(r)}${dashboardFolderName(r.templateId, r.instanceId)}/`;
 
 /** Where a part goes (null = already in the new layout, or not one of ours to move). */
 function target(r: Row, key: string): string | null {
-  const from = legacyPrefix(r);
-  return key.startsWith(from) ? `${newPrefix(r)}${key.slice(from.length)}` : null;
+  const from = [legacyPrefix(r), byIdPrefix(r)].find((prefix) => key.startsWith(prefix));
+  return from ? `${newPrefix(r)}${key.slice(from.length)}` : null;
 }
 
 async function md5(bucket: Bucket, key: string): Promise<string | null> {
@@ -64,7 +69,7 @@ async function main(): Promise<void> {
 
   try {
     const rows = await sql<Row[]>`
-      SELECT f.id AS "fileId", v.id AS "versionId", v.status, i.id AS "instanceId",
+      SELECT f.id AS "fileId", v.id AS "versionId", v.status, i.id AS "instanceId", i.template_id AS "templateId",
              o.slug AS "orgSlug", c.slug AS "clientSlug", f.storage_path AS "storagePath"
       FROM dataset_files f
       JOIN dataset_versions v ON v.id = f.version_id
@@ -81,7 +86,7 @@ async function main(): Promise<void> {
       .filter((k) => !used.has(k) && k.includes("/datasets/"));
 
     console.log(`${rows.length} tabelas registradas · ${toMove.length} a mover (${toMove.reduce((n, r) => n + parts(r.storagePath).length, 0)} arquivos) · ${toDelete.length} arquivos de versões antigas a apagar`);
-    for (const r of toMove) console.log(`  ${r.status.padEnd(6)} ${legacyPrefix(r)} → ${newPrefix(r)} (${parts(r.storagePath).length} arquivo(s))`);
+    for (const r of toMove) console.log(`  ${r.status.padEnd(6)} ${path.posix.dirname(path.posix.dirname(parts(r.storagePath)[0]))}/ → ${newPrefix(r)} (${parts(r.storagePath).length} arquivo(s))`);
     if (!APPLY) {
       console.log("\nPlano apenas. Rode com \"aplicar\" para mover.");
       return;
