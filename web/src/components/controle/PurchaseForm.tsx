@@ -51,9 +51,9 @@ function withTotal(line: Line): Line {
 
 /** The purchase as the API takes it, or the first thing the person has to fix. */
 function build(fields: { day: string; supplier: string; total: string; payment: PaymentMethod | null; notes: string }, lines: Line[]): PurchaseInput | string {
-  if (!isValidDay(fields.day)) return "Informe a data da compra.";
+  if (!isValidDay(fields.day)) return "Informe a data da despesa.";
   const totalCents = parseMoney(fields.total);
-  if (totalCents === null) return "Informe o valor total da compra.";
+  if (totalCents === null) return "Informe o valor total da despesa.";
   const items: PurchaseInput["items"] = [];
   for (const [index, line] of lines.entries()) {
     const description = line.description.trim();
@@ -128,7 +128,7 @@ export function PurchaseForm({ api, today, draft, receipt, fromReceipt, onSaved,
           <input inputMode="decimal" value={total} onChange={(e) => setTotal(e.target.value)} placeholder="0,00" className={`${INPUT} font-semibold`} />
         </Field>
         <Field label="Fornecedor" className="col-span-2">
-          <input value={supplier} onChange={(e) => setSupplier(e.target.value)} placeholder="Onde foi a compra" maxLength={120} className={INPUT} />
+          <input value={supplier} onChange={(e) => setSupplier(e.target.value)} placeholder="Onde foi a despesa" maxLength={120} className={INPUT} />
         </Field>
       </div>
 
@@ -193,9 +193,9 @@ export function PurchaseForm({ api, today, draft, receipt, fromReceipt, onSaved,
       </Field>
 
       <ErrorNote message={error} />
-      <div className="sticky bottom-0 -mx-4 flex gap-2 border-t border-line bg-bg/95 px-4 py-3 backdrop-blur">
+      <div className="sticky bottom-0 -mx-4 flex gap-2 border-t border-line bg-card/95 px-4 py-3 backdrop-blur">
         <button type="button" onClick={onCancel} disabled={saving} className="btn btn-ghost flex-1 justify-center">Cancelar</button>
-        <button className="btn btn-primary flex-[2] justify-center" disabled={saving}>{saving ? "Salvando…" : "Salvar compra"}</button>
+        <button className="btn btn-primary flex-[2] justify-center" disabled={saving}>{saving ? "Salvando…" : "Salvar despesa"}</button>
       </div>
     </form>
   );

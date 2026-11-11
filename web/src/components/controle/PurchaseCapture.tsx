@@ -68,7 +68,7 @@ export function PurchaseCapture({ api, today, readerEnabled }: PurchaseCapturePr
 
     const base = { receipt, preview: file.type.startsWith("image/") ? URL.createObjectURL(file) : null };
     if (!readerEnabled) {
-      setStage({ name: "review", ...base, draft: EMPTY, fromReceipt: false, notice: "Comprovante guardado. Preencha os dados da compra." });
+      setStage({ name: "review", ...base, draft: EMPTY, fromReceipt: false, notice: "Comprovante guardado. Preencha os dados da despesa." });
       return;
     }
     try {
@@ -103,7 +103,7 @@ export function PurchaseCapture({ api, today, readerEnabled }: PurchaseCapturePr
 
   if (stage.name === "working") {
     return (
-      <div className="card flex flex-col items-center gap-3 p-8 text-center" role="status" aria-live="polite">
+      <div className="flex flex-col items-center gap-3 p-8 text-center" role="status" aria-live="polite">
         <span className="size-8 animate-spin rounded-full border-2 border-line border-t-brand" aria-hidden />
         <p className="font-semibold">{stage.step}</p>
         <p className="text-xs text-muted">Leva alguns segundos. Não feche esta tela.</p>
@@ -113,9 +113,9 @@ export function PurchaseCapture({ api, today, readerEnabled }: PurchaseCapturePr
 
   if (stage.name === "review") {
     return (
-      <div className="card flex flex-col gap-4 p-4">
+      <div className="flex flex-col gap-4">
         <div>
-          <h2 className="text-lg font-bold">{stage.fromReceipt ? "Confira a compra" : "Nova compra"}</h2>
+          <h2 className="text-lg font-bold">{stage.fromReceipt ? "Confira a despesa" : "Dados da despesa"}</h2>
           {stage.fromReceipt && <p className="text-sm text-muted">Li o comprovante. Corrija o que estiver errado antes de salvar.</p>}
           {stage.notice && <p className="mt-1 rounded-lg border border-accent/40 bg-accent/10 px-3 py-2 text-sm">{stage.notice}</p>}
         </div>
@@ -141,7 +141,7 @@ export function PurchaseCapture({ api, today, readerEnabled }: PurchaseCapturePr
   }
 
   return (
-    <div className="card flex flex-col gap-3 p-4">
+    <div className="flex flex-col gap-3">
       <input ref={cameraRef} type="file" accept="image/*" capture="environment" hidden onChange={(e) => { void handleFile(e.target.files?.[0]); e.target.value = ""; }} />
       <input ref={fileRef} type="file" accept={RECEIPT_ACCEPT} hidden onChange={(e) => { void handleFile(e.target.files?.[0]); e.target.value = ""; }} />
       <button type="button" onClick={() => cameraRef.current?.click()} className="btn btn-primary justify-center py-4 text-base">
@@ -157,7 +157,7 @@ export function PurchaseCapture({ api, today, readerEnabled }: PurchaseCapturePr
           Lançar à mão
         </button>
       </div>
-      {saved && <p role="status" className="text-center text-sm text-ok">Compra salva.</p>}
+      {saved && <p role="status" className="text-center text-sm text-ok">Despesa salva.</p>}
       <ErrorNote message={error} />
     </div>
   );

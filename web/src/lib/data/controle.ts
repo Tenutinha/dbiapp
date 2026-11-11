@@ -6,6 +6,7 @@
 import "server-only";
 import { sql } from "../db";
 import type { Purchase, PurchaseInput, Sale, SaleInput } from "../controle/schema";
+import type { SeriesPoint } from "../controle/series";
 
 export interface Space {
   orgId: string;
@@ -117,9 +118,8 @@ export async function deletePurchase(clientId: string, purchaseId: string): Prom
 export async function listSales(clientId: string, month: string): Promise<Sale[]> {
   const start = monthStart(month);
   return sql<Sale[]>`
-    SELECT id, to_char(sold_on, 'YYYY-MM-DD') AS "soldOn", product, quantity::float8 AS quantity,
-           unit_price_cents::float8 AS "unitPriceCents", total_cents::float8 AS "totalCents",
-           payment_method AS "paymentMethod", notes
+    SELECT id, to_char(sold_on, 'YYYY-MM-DD') AS "soldOn", total_cents::float8 AS "totalCents",
+           payment_method AS "paymentMethod", customer_name AS "customerName", product
     FROM controle_sales
     WHERE client_id = ${clientId} AND sold_on >= ${start}::date AND sold_on < ${start}::date + interval '1 month'
     ORDER BY sold_on DESC, created_at DESC`;
@@ -128,9 +128,9 @@ export async function listSales(clientId: string, month: string): Promise<Sale[]
 export async function insertSale(space: Space, userId: string, input: SaleInput): Promise<string> {
   const [row] = await sql<{ id: string }[]>`
     INSERT INTO controle_sales
-      (organization_id, client_id, sold_on, product, quantity, unit_price_cents, total_cents, payment_method, notes, created_by)
-    VALUES (${space.orgId}, ${space.clientId}, ${input.soldOn}::date, ${input.product}, ${input.quantity},
-            ${input.unitPriceCents}, ${input.totalCents}, ${input.paymentMethod}, ${input.notes}, ${userId})
+      (organization_id, client_id, sold_on, total_cents, payment_method, customer_name, created_by)
+    VALUES (${space.orgId}, ${space.clientId}, ${input.soldOn}::date, ${input.totalCents},
+            ${input.paymentMethod}, ${input.customerName}, ${userId})
     RETURNING id`;
   return row.id;
 }
@@ -140,18 +140,28 @@ export async function deleteSale(clientId: string, saleId: string): Promise<bool
   return deleted.count > 0;
 }
 
-export interface KnownProduct {
-  product: string;
-  /** Price of its latest sale, to pre-fill the next one. */
-  unitPriceCents: number | null;
+// ---------- evolution ----------
+
+/** Sales and purchases of each day of a month (days with nothing come as zero). */
+export async function dailySeries(clientId: string, month: string): Promise<SeriesPoint[]> {
+  const start = monthStart(month);
+  return sql<SeriesPoint[]>`
+    SELECT to_char(d, 'YYYY-MM-DD') AS period,
+      COALESCE((SELECT SUM(total_cents) FROM controle_sales WHERE client_id = ${clientId} AND sold_on = d::date), 0)::float8 AS "salesCents",
+      COALESCE((SELECT SUM(total_cents) FROM controle_purchases WHERE client_id = ${clientId} AND purchased_on = d::date), 0)::float8 AS "purchasesCents"
+    FROM generate_series(${start}::date, (${start}::date + interval '1 month' - interval '1 day')::date, interval '1 day') d
+    ORDER BY d`;
 }
 
-/** Products this client already sold, most recent first — suggestions for the sale form. */
-export async function listKnownProducts(clientId: string, limit = 60): Promise<KnownProduct[]> {
-  return sql<KnownProduct[]>`
-    SELECT product, "unitPriceCents" FROM (
-      SELECT DISTINCT ON (lower(product)) product, unit_price_cents::float8 AS "unitPriceCents", created_at
-      FROM controle_sales WHERE client_id = ${clientId}
-      ORDER BY lower(product), created_at DESC) latest
-    ORDER BY created_at DESC LIMIT ${limit}`;
+/** Sales and purchases of each of the `months` months that end in `month`, oldest first. */
+export async function monthlySeries(clientId: string, month: string, months = 6): Promise<SeriesPoint[]> {
+  const start = monthStart(month);
+  return sql<SeriesPoint[]>`
+    SELECT to_char(m, 'YYYY-MM') AS period,
+      COALESCE((SELECT SUM(total_cents) FROM controle_sales
+        WHERE client_id = ${clientId} AND sold_on >= m::date AND sold_on < (m + interval '1 month')::date), 0)::float8 AS "salesCents",
+      COALESCE((SELECT SUM(total_cents) FROM controle_purchases
+        WHERE client_id = ${clientId} AND purchased_on >= m::date AND purchased_on < (m + interval '1 month')::date), 0)::float8 AS "purchasesCents"
+    FROM generate_series(${start}::date - make_interval(months => ${months - 1}::int), ${start}::date, interval '1 month') m
+    ORDER BY m`;
 }

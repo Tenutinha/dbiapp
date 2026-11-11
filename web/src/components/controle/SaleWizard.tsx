@@ -1,0 +1,221 @@
+"use client";
+
+import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import { formatMoney, parseMoney } from "@/lib/controle/money";
+import {
+  dayLabel, isValidDay, PAYMENT_LABEL, PAYMENT_METHODS, shiftDay, type PaymentMethod, type SaleInput,
+} from "@/lib/controle/schema";
+import { call, ControleError } from "./api";
+import { ErrorNote, INPUT } from "./fields";
+
+const STEPS = ["valor", "pagamento", "data", "cliente"] as const;
+type Step = (typeof STEPS)[number] | "pronto";
+
+interface SaleWizardProps {
+  api: string;
+  today: string;
+  onClose: () => void;
+}
+
+const QUESTION = "text-xl font-bold leading-tight";
+const CHOICE = "rounded-xl border border-line px-4 py-4 text-left text-base font-semibold transition hover:border-brand";
+
+/**
+ * A sale, one question at a time: how much, how it was paid, when, and — only if the person wants —
+ * who bought. Every answer moves to the next question; the arrow goes back without losing anything.
+ */
+export function SaleWizard({ api, today, onClose }: SaleWizardProps) {
+  const router = useRouter();
+  const [step, setStep] = useState<Step>("valor");
+  const [value, setValue] = useState("");
+  const [payment, setPayment] = useState<PaymentMethod | null>(null);
+  const [day, setDay] = useState(today);
+  const [customer, setCustomer] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const fieldRef = useRef<HTMLInputElement>(null);
+
+  const cents = parseMoney(value);
+  const index = step === "pronto" ? STEPS.length : STEPS.indexOf(step);
+  const yesterday = shiftDay(today, -1);
+
+  // The question's own field is ready to type as soon as it shows up.
+  useEffect(() => {
+    fieldRef.current?.focus();
+  }, [step]);
+
+  const go = (to: Step): void => {
+    setError(null);
+    setStep(to);
+  };
+
+  function confirmValue(e: React.FormEvent): void {
+    e.preventDefault();
+    if (cents === null || cents <= 0) {
+      setError("Digite o valor da venda.");
+      return;
+    }
+    go("pagamento");
+  }
+
+  function confirmDay(chosen: string): void {
+    if (!isValidDay(chosen)) {
+      setError("Escolha uma data até hoje.");
+      return;
+    }
+    setDay(chosen);
+    go("cliente");
+  }
+
+  async function save(e: React.FormEvent): Promise<void> {
+    e.preventDefault();
+    if (cents === null) return;
+    const sale: SaleInput = { soldOn: day, totalCents: cents, paymentMethod: payment, customerName: customer.trim() || null };
+    setSaving(true);
+    setError(null);
+    try {
+      await call(api, { action: "saleSave", sale });
+      setStep("pronto");
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof ControleError ? err.message : "Não foi possível salvar. Tente de novo.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function another(): void {
+    setValue("");
+    setCustomer("");
+    go("valor"); // payment and day stay: sales of the same day usually come in a row
+  }
+
+  if (step === "pronto") {
+    return (
+      <div className="flex flex-col items-center gap-4 py-6 text-center" role="status">
+        <span className="grid size-14 place-items-center rounded-full bg-ok/15 text-2xl text-ok" aria-hidden>✓</span>
+        <p className={QUESTION}>Venda de {formatMoney(cents ?? 0)} lançada</p>
+        <div className="grid w-full grid-cols-2 gap-2">
+          <button type="button" onClick={onClose} className="btn btn-ghost justify-center py-3">Fechar</button>
+          <button type="button" onClick={another} className="btn btn-primary justify-center py-3">Lançar outra</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-5">
+      <div className="flex items-center gap-3">
+        {index > 0 ? (
+          <button type="button" onClick={() => go(STEPS[index - 1])} aria-label="Voltar à pergunta anterior" className="grid size-10 place-items-center rounded-lg text-xl text-muted hover:bg-text/5">
+            ‹
+          </button>
+        ) : (
+          <span className="size-10" aria-hidden />
+        )}
+        <div className="flex flex-1 gap-1.5" role="progressbar" aria-valuemin={1} aria-valuemax={STEPS.length} aria-valuenow={index + 1} aria-label={`Pergunta ${index + 1} de ${STEPS.length}`}>
+          {STEPS.map((s, i) => (
+            <span key={s} className={`h-1.5 flex-1 rounded-full ${i <= index ? "bg-brand" : "bg-line"}`} />
+          ))}
+        </div>
+        <span className="w-10 text-right text-xs tabular-nums text-muted">{index + 1}/{STEPS.length}</span>
+      </div>
+
+      {index > 0 && cents !== null && (
+        <p className="text-sm text-muted">
+          {formatMoney(cents)}
+          {index > 1 ? ` · ${payment ? PAYMENT_LABEL[payment] : "pagamento não informado"}` : ""}
+          {index > 2 ? ` · ${day === today ? "hoje" : dayLabel(day)}` : ""}
+        </p>
+      )}
+
+      {step === "valor" && (
+        <form onSubmit={confirmValue} className="flex flex-col gap-4" noValidate>
+          <label htmlFor="venda-valor" className={QUESTION}>Qual o valor da venda?</label>
+          <div className="flex items-center gap-2 rounded-xl border border-line bg-bg px-4 focus-within:border-brand">
+            <span className="text-2xl font-semibold text-muted">R$</span>
+            <input
+              id="venda-valor"
+              ref={fieldRef}
+              inputMode="decimal"
+              autoComplete="off"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              placeholder="0,00"
+              className="w-full bg-transparent py-4 text-3xl font-bold outline-none"
+            />
+          </div>
+          <ErrorNote message={error} />
+          <button className="btn btn-primary justify-center py-3 text-base">Continuar</button>
+        </form>
+      )}
+
+      {step === "pagamento" && (
+        <div className="flex flex-col gap-4">
+          <p className={QUESTION}>Como foi o pagamento?</p>
+          <div className="grid grid-cols-2 gap-2">
+            {PAYMENT_METHODS.map((method) => (
+              <button
+                key={method}
+                type="button"
+                onClick={() => { setPayment(method); go("data"); }}
+                className={`${CHOICE} ${payment === method ? "border-brand bg-brand/15" : ""}`}
+              >
+                {PAYMENT_LABEL[method]}
+              </button>
+            ))}
+          </div>
+          <button type="button" onClick={() => { setPayment(null); go("data"); }} className="self-center text-sm text-muted underline underline-offset-4">
+            Não informar
+          </button>
+        </div>
+      )}
+
+      {step === "data" && (
+        <div className="flex flex-col gap-4">
+          <p className={QUESTION}>Quando foi a venda?</p>
+          <div className="grid grid-cols-2 gap-2">
+            <button type="button" onClick={() => confirmDay(today)} className={`${CHOICE} ${day === today ? "border-brand bg-brand/15" : ""}`}>
+              Hoje <span className="block text-sm font-normal text-muted">{dayLabel(today)}</span>
+            </button>
+            <button type="button" onClick={() => confirmDay(yesterday)} className={`${CHOICE} ${day === yesterday ? "border-brand bg-brand/15" : ""}`}>
+              Ontem <span className="block text-sm font-normal text-muted">{dayLabel(yesterday)}</span>
+            </button>
+          </div>
+          <label className="flex flex-col gap-1 text-xs text-muted">
+            Outra data
+            <span className="flex gap-2">
+              <input type="date" value={day} max={today} onChange={(e) => setDay(e.target.value)} className={INPUT} />
+              <button type="button" onClick={() => confirmDay(day)} className="btn btn-ghost shrink-0">Usar</button>
+            </span>
+          </label>
+          <ErrorNote message={error} />
+        </div>
+      )}
+
+      {step === "cliente" && (
+        <form onSubmit={save} className="flex flex-col gap-4" noValidate>
+          <label htmlFor="venda-cliente" className={QUESTION}>
+            Quer colocar o nome do cliente?
+            <span className="mt-1 block text-sm font-normal text-muted">Opcional — pode salvar em branco.</span>
+          </label>
+          <input
+            id="venda-cliente"
+            ref={fieldRef}
+            value={customer}
+            onChange={(e) => setCustomer(e.target.value)}
+            placeholder="Nome do cliente"
+            maxLength={120}
+            autoComplete="off"
+            className={INPUT}
+          />
+          <ErrorNote message={error} />
+          <button className="btn btn-primary justify-center py-3 text-base" disabled={saving}>
+            {saving ? "Salvando…" : customer.trim() ? "Salvar venda" : "Salvar sem nome"}
+          </button>
+        </form>
+      )}
+    </div>
+  );
+}

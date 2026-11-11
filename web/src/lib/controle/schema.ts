@@ -52,6 +52,13 @@ export function monthLabel(month: string): string {
   return new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${month}-01T00:00:00Z`));
 }
 
+/** "2026-11-11" + -1 → "2026-11-10". */
+export function shiftDay(day: string, by: number): string {
+  const date = new Date(`${day}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + by);
+  return date.toISOString().slice(0, 10);
+}
+
 /** "2026-11-11" → "11/11" */
 export function dayLabel(day: string): string {
   return `${day.slice(8, 10)}/${day.slice(5, 7)}`;
@@ -88,14 +95,12 @@ export const purchaseInput = z.object({
   items: z.array(purchaseItemInput).max(MAX_ITEMS),
 });
 
+/** A sale is its amount; how it was paid, when, and (only if the person wants) who bought. */
 export const saleInput = z.object({
   soldOn: day,
-  product: z.string().trim().min(1).max(120),
-  quantity,
-  unitPriceCents: cents.nullish().transform((v) => v ?? null),
-  totalCents: cents,
+  totalCents: cents.min(1),
   paymentMethod: payment,
-  notes: optionalText(500),
+  customerName: optionalText(120),
 });
 
 export type PurchaseItemInput = z.output<typeof purchaseItemInput>;
@@ -135,10 +140,9 @@ export interface Purchase {
 export interface Sale {
   id: string;
   soldOn: string;
-  product: string;
-  quantity: number;
-  unitPriceCents: number | null;
   totalCents: number;
   paymentMethod: PaymentMethod | null;
-  notes: string | null;
+  customerName: string | null;
+  /** Only on sales recorded before the amount-only form. */
+  product: string | null;
 }
