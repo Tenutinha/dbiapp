@@ -114,6 +114,8 @@ describe.each(FISCAL_IMPORTERS.map((i) => [i.templateId, i] as const))("template
         competencia: "2025-01", a_notas: 1, a_itens: 1, a_vl_doc: 600, a_vl_item: 600, a_vl_desc: 0, a_vl_bc_pis: 600, a_vl_pis: 9.9,
         a_vl_bc_cofins: 600, a_vl_cofins: 45.6, a_vl_pis_ret: 0, a_vl_cofins_ret: 0, a_vl_iss: 24,
       }]);
+      // … and closes with the totals of every competência.
+      expect(data.visuals.find((v) => v.visual.id === "t_a_competencia")?.total).toMatchObject({ a_notas: 1, a_vl_doc: 600, a_vl_pis: 9.9, a_vl_iss: 24 });
       // The original lines of bloco C stay with the main fact: its extra facts are summaries.
       expect(t.visuals.find((v) => v.id === "r_c100")?.fact).toBeUndefined();
       // The summaries hold the item of the sample (C170) with its values, without the note it came from.

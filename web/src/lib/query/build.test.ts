@@ -51,6 +51,7 @@ describe("buildVisualQuery", () => {
       id: "t", type: "table", title: "Por ano", span: 12, limit: 50, sort: "field", fields: ["ano"], measures: ["receita"],
     };
     expect(buildVisualQuery(t, files, table, {}).sql).toMatch(/ORDER BY ano ASC LIMIT 50$/);
+    expect(buildVisualQuery(t, files, { ...table, sort: "field_desc" }, {}).sql).toMatch(/ORDER BY ano DESC LIMIT 50$/);
     expect(buildVisualQuery(t, files, { ...table, sort: "measure_desc" }, {}).sql).toMatch(/ORDER BY receita DESC NULLS LAST LIMIT 50$/);
   });
 

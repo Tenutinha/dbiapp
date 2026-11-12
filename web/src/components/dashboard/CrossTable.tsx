@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { isPicked } from "@/lib/query/cross";
-import { ScrollTable, type ScrollColumn, type SortValue } from "./ScrollTable";
+import { ScrollTable, type ScrollColumn, type SortValue, type TableSort } from "./ScrollTable";
 import { useCrossFilter } from "./useCrossFilter";
 
 interface CrossTableProps {
@@ -16,10 +16,14 @@ interface CrossTableProps {
   rows: readonly (readonly string[])[];
   sortValues?: readonly (readonly SortValue[])[];
   note?: string;
+  /** The order the rows come in, when it is by one column (see ScrollTable). */
+  initialSort?: TableSort;
+  /** The line of totals, in column order (see ScrollTable). */
+  footer?: readonly string[];
 }
 
 /** Aggregated table whose rows cross-filter the other visuals when clicked. */
-export function CrossTable({ visualId, fields, keys, columns, rows, sortValues, note }: CrossTableProps) {
+export function CrossTable({ visualId, fields, keys, columns, rows, sortValues, note, initialSort, footer }: CrossTableProps) {
   const { own, pick, pending } = useCrossFilter(visualId, fields);
 
   const selected = useMemo(() => {
@@ -36,7 +40,7 @@ export function CrossTable({ visualId, fields, keys, columns, rows, sortValues, 
 
   return (
     <div className={`transition-opacity ${pending ? "opacity-60" : ""}`}>
-      <ScrollTable columns={columns} rows={rows} sortValues={sortValues} note={note} selectedRows={selected} onRowClick={onRowClick} />
+      <ScrollTable columns={columns} rows={rows} sortValues={sortValues} note={note} selectedRows={selected} onRowClick={onRowClick} initialSort={initialSort} footer={footer} />
     </div>
   );
 }

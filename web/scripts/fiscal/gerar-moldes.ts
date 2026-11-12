@@ -594,7 +594,7 @@ function efdContrib(): Json {
   measures.push(...totalsA);
   const totalsByCompetencia: Json = {
     id: "t_a_competencia", type: "table", title: "Totais por competência: itens (A170) e notas (A100)",
-    fields: ["competencia"], measures: totalsA.map((m) => m.id), sort: "field", limit: 240, span: 12,
+    fields: ["competencia"], measures: totalsA.map((m) => m.id), sort: "field_desc", total: true, limit: 240, span: 12,
     where: isReg("A100", "A170"), fact: "bloco_a_servicos",
   };
   /** The bloco A section reads the fact that holds that block for every period. */

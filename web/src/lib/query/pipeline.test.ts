@@ -129,6 +129,14 @@ describe("ingest + dashboard pipeline", () => {
     expect(kpi(sul, "k_receita").receita).toBe(40_000);
     expect(all.filters.find((f) => f.fieldId === "regiao")?.values).toEqual(["(sem cadastro)", "Norte", "Sul"]);
 
+    // A table's line of totals covers everything under the filters, not only the lines the table shows.
+    const base = t.visuals.find((v) => v.type === "table");
+    if (!base || base.type !== "table") throw new Error("the sample template has no table");
+    const short = { ...t, visuals: [{ ...base, limit: 1, total: true }] };
+    const [table] = (await runDashboard(root, short, files, { regiao: ["Sul"] })).visuals;
+    expect(table.rows).toHaveLength(1);
+    expect(table.total?.receita).toBe(40_000);
+
     // A part of the page: only the visuals asked for, and no filter options when they are not wanted.
     const part = await runDashboard(root, t, files, { regiao: ["Sul"] }, [], [], { only: new Set(["k_margem", "k_receita"]), filterOptions: false });
     expect(part.visuals.map((v) => v.visual.id).sort()).toEqual(["k_margem", "k_receita"]);
