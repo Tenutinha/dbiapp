@@ -20,12 +20,20 @@ interface DashboardOutlineProps {
 /** Section whose top already passed this line (px from the viewport top) counts as the current one. */
 const CURRENT_LINE = 140;
 
-/** The analysis on screen: the last section whose top has scrolled above the current line. */
+/**
+ * The analysis on screen: the last section whose top has scrolled above the current line. Sections turned
+ * sideways (pages of a strip, see PageStrip) count only while on screen, i.e. with their middle inside the strip.
+ */
 function currentAnchor(anchors: readonly string[]): string | null {
   let current: string | null = null;
   for (const anchor of anchors) {
     const el = document.getElementById(anchor);
-    if (el && el.getBoundingClientRect().top <= CURRENT_LINE) current = anchor;
+    if (!el) continue;
+    const box = el.getBoundingClientRect();
+    const strip = el.parentElement?.hasAttribute("data-page-strip") ? el.parentElement.getBoundingClientRect() : null;
+    const middle = (box.left + box.right) / 2;
+    const inside = strip === null || (middle >= strip.left && middle <= strip.right);
+    if (box.top <= CURRENT_LINE && inside) current = anchor;
   }
   return current;
 }
@@ -42,11 +50,12 @@ function useActiveAnchor(key: string, enabled: boolean): string | null {
       frame = requestAnimationFrame(() => setActive(currentAnchor(list)));
     };
     update();
-    window.addEventListener("scroll", update, { passive: true });
+    // Captured: a strip of pages scrolls by itself, sideways, and its scroll does not bubble.
+    window.addEventListener("scroll", update, { passive: true, capture: true });
     window.addEventListener("resize", update);
     return () => {
       cancelAnimationFrame(frame);
-      window.removeEventListener("scroll", update);
+      window.removeEventListener("scroll", update, { capture: true });
       window.removeEventListener("resize", update);
     };
   }, [key, enabled]);

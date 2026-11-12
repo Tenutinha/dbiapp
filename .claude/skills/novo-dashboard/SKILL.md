@@ -105,7 +105,7 @@ Escreva `relatorio.md` na pasta de trabalho e resuma para a pessoa:
 
 Diga com clareza quando o pedido esbarra nisto, em vez de entregar algo que parece atender:
 
-- Uma tabela fato por dashboard. Duas fatos viram dois dashboards.
+- Uma medida lê uma fato só. Um dashboard pode ter várias fatos (cada visual escolhe a sua com `fact`), mas uma conta que mistura duas (realizado ÷ meta) precisa das colunas na mesma fato: veja "Mais de uma fato" em `visuais.md`.
 - Sem comparação com o período anterior, acumulado no ano nem percentual do total geral (não há inteligência de tempo nem cálculo que ignore os filtros).
 - Filtro de tela vale para a página toda; cada visual pode ignorar filtros (`skipFilters`) ou ter condição própria (`where`), mas não há filtro cruzado ao clicar num gráfico.
 - Mapa só por município ou UF, com código IBGE.

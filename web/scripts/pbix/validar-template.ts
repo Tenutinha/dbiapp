@@ -71,21 +71,42 @@ async function runVisual(conn: Conn, t: Template, files: TableFiles, visual: Que
   return queryRows(conn, q.sql, q.params);
 }
 
+/**
+ * The fact an expression is read from: the main one when it reaches every table the expression mentions,
+ * otherwise the first extra fact that does (e.g. a field of the targets, or of the bills to pay).
+ * Undefined means the main fact.
+ */
+function factFor(t: Template, sql: string): string | undefined {
+  const facts = t.tables.filter((tb) => tb.kind === "fact");
+  const mentioned = t.tables.filter((tb) => new RegExp(`\\b${tb.name}\\.`).test(sql)).map((tb) => tb.name);
+  for (const [i, fact] of facts.entries()) {
+    // One pass, like the engine (reachOf): the schema requires each relationship to start at a table already joined.
+    const reached = new Set([fact.sameAs ?? fact.name]);
+    for (const r of t.relationships) if (reached.has(r.from.table)) reached.add(r.to.table);
+    if (mentioned.every((name) => reached.has(name) || name === fact.name)) return i === 0 ? undefined : fact.name;
+  }
+  return undefined;
+}
+
 async function checkModel(conn: Conn, t: Template, files: TableFiles, failures: string[]): Promise<void> {
   console.log("\nMedidas (total geral, sem filtros):");
   for (const m of t.measures) {
+    // A measure of an extra fact (e.g. the targets) is read from that fact.
+    const fact = factFor(t, m.sql);
     await check(m.id, failures, async () => {
-      const rows = await runVisual(conn, t, files, { id: "v", type: "kpi", title: m.label, span: 12, measure: m.id });
+      const rows = await runVisual(conn, t, files, { id: "v", type: "kpi", title: m.label, span: 12, measure: m.id, fact });
       return fmt(rows, 1);
     });
   }
   const firstMeasure = t.measures[0].id;
-  console.log(`\nCampos (top 3 por ${firstMeasure}):`);
+  console.log(`\nCampos (top 3 pela 1ª medida da fato que o campo alcança):`);
   for (const f of t.fields) {
+    const fact = factFor(t, f.sql);
+    const measure = t.measures.find((m) => factFor(t, m.sql) === fact)?.id ?? firstMeasure;
     await check(f.id, failures, async () => {
       const visual: QueryVisual = {
-        id: "v", type: "bar", title: f.label, span: 12, field: f.id, measures: [firstMeasure],
-        sort: "measure_desc", limit: 3, horizontal: false,
+        id: "v", type: "bar", title: f.label, span: 12, field: f.id, measures: [measure],
+        sort: "measure_desc", limit: 3, horizontal: false, fact,
       };
       return fmt(await runVisual(conn, t, files, visual));
     });
