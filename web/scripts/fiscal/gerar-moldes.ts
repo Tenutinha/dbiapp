@@ -13,7 +13,7 @@ import { templateSchema } from "../../src/lib/templates/schema";
 type Json = Record<string, unknown>;
 interface Field { id: string; label: string; sql: string }
 interface Measure { id: string; label: string; sql: string; format: "currency" | "currency_exact" | "number" | "integer" | "percent" | "text" }
-interface Section { id: string; title: string; description: string; visuals: Json[] }
+interface Section { id: string; title: string; description: string; visuals: Json[]; layout?: "grid" | "row" }
 
 const F = "registros";
 const kindOf = (id: string): SpedKind => SPED_KINDS.find((k) => k.templateId === id)!;
@@ -69,6 +69,8 @@ function rawSections(
     lead?: Readonly<Record<string, Json[]>>;
     /** Blocks whose section keeps only those visuals: the listings of the raw records are left out. */
     leadOnly?: ReadonlySet<string>;
+    /** Blocks whose section lays its visuals side by side, in a strip that scrolls sideways. */
+    rowLayout?: ReadonlySet<string>;
   },
 ): Section[] {
   const blocks = BLOCKS[kind.templateId];
@@ -123,7 +125,10 @@ function rawSections(
     visuals.unshift(...(opts.lead?.[block] ?? []));
     if (visuals.length === 0) continue;
     const description = tableOfBlock[block] ? `Todos os períodos enviados, lidos da tabela ${tableOfBlock[block]}.` : "";
-    sections.push({ id: `bloco_${block.toLowerCase()}`, title: `Bloco ${block} · ${name}`, description, visuals });
+    sections.push({
+      id: `bloco_${block.toLowerCase()}`, title: `Bloco ${block} · ${name}`, description, visuals,
+      ...(opts.rowLayout?.has(block) ? { layout: "row" as const } : {}),
+    });
   }
   sections.push({
     id: "outros_registros",
@@ -257,10 +262,12 @@ interface Parts {
   lead?: Readonly<Record<string, Json[]>>;
   /** Blocks whose original-data section keeps only its `lead` visuals, without the raw record listings. */
   leadOnly?: ReadonlySet<string>;
+  /** Blocks whose original-data section lays its visuals side by side (see rawSections). */
+  rowLayout?: ReadonlySet<string>;
 }
 
 function build(kind: SpedKind, p: Parts): Json {
-  const raw = rawSections(kind, { skipFilters: p.skipFilters, lead: p.lead, leadOnly: p.leadOnly });
+  const raw = rawSections(kind, { skipFilters: p.skipFilters, lead: p.lead, leadOnly: p.leadOnly, rowLayout: p.rowLayout });
   const sections = [...p.panels, ...raw];
   return {
     id: kind.templateId,
@@ -280,7 +287,9 @@ function build(kind: SpedKind, p: Parts): Json {
     filters: [...p.filters, "bloco", "registro_nome"],
     filterDefaults: p.filterDefaults ?? {},
     visuals: sections.flatMap((s) => s.visuals),
-    analyses: sections.map((s) => ({ id: s.id, title: s.title, description: s.description, visuals: s.visuals.map((v) => v.id as string) })),
+    analyses: sections.map((s) => ({
+      id: s.id, title: s.title, description: s.description, visuals: s.visuals.map((v) => v.id as string), ...(s.layout ? { layout: s.layout } : {}),
+    })),
     summary: [
       { title: p.panelGroup, analyses: p.panels.map((s) => s.id) },
       { title: "Dados originais", analyses: raw.map((s) => s.id) },
@@ -603,6 +612,27 @@ function efdContrib(): Json {
     fields: ["competencia"], measures: totalsA.map((m) => m.id), sort: "field_desc", total: true, limit: 240, span: 12,
     where: isReg("A100", "A170"), fact: "bloco_a_servicos",
   };
+  // The same values note by note (A100), one line per NFS-e: the note's own totals, as the file states them.
+  const a100Field = (id: string, label: string, sql: string): Field => ({ id, label, sql: `CASE WHEN ${isA100} THEN ${sql} END` });
+  fields.push(
+    a100Field("a_chv_nfse", "CHV_NFSE", `COALESCE(${a100("CHV_NFSE")}, '(sem chave)')`),
+    a100Field("a_num_doc", "NUM_DOC", a100("NUM_DOC")),
+    a100Field("a_dt_doc", "DT_DOC", `strftime(${F}.dt_doc, '%Y-%m-%d')`),
+  );
+  const byNote: Measure[] = [
+    { id: "a_vl_doc", label: "VL_DOC", sql: "", format: "currency_exact" },
+    ...["VL_DESC", "VL_BC_PIS", "VL_PIS", "VL_BC_COFINS", "VL_COFINS"].map((name): Measure => (
+      { id: `n_${name.toLowerCase()}`, label: name, sql: nota(name), format: "currency_exact" }
+    )),
+  ];
+  measures.push(...byNote.filter((m) => m.sql !== ""));
+  const byNoteTable: Json = {
+    id: "t_a_nota", type: "table", title: "Notas de serviço (A100), uma linha por chave",
+    fields: ["a_chv_nfse", "competencia", "a_num_doc", "a_dt_doc", "participante"],
+    measures: [...byNote.map((m) => m.id), "a_vl_pis_ret", "a_vl_cofins_ret", "a_vl_iss"],
+    sort: "field_desc", total: true, limit: 5000, span: 12,
+    where: notaValida, fact: "bloco_a_servicos",
+  };
   /** The bloco A section reads the fact that holds that block for every period. */
   const servico = (v: Json): Json => ({ ...v, fact: "bloco_a_servicos" });
   const servicos: Section = {
@@ -706,7 +736,9 @@ function efdContrib(): Json {
     name: "EFD Contribuições", area: "Fiscal",
     description: "Escrituração de PIS e COFINS completa: receitas, débitos, créditos e apuração em painéis, e todos os registros do arquivo com todos os campos para consulta.",
     fields, measures, filters: ["ano", "mes", "estabelecimento"], panels, panelGroup: "Painéis",
-    lead: { A: [totalsByCompetencia] },
+    lead: { A: [totalsByCompetencia, byNoteTable] },
+    // By month, then note by note, side by side: the reader scrolls sideways from one to the other.
+    rowLayout: new Set(["A"]),
     // The raw lines of bloco A (A001 … A990) say little on their own: its section is its totals.
     leadOnly: new Set(["A"]),
   });

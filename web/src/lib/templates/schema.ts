@@ -134,7 +134,8 @@ const visualSchema = z.discriminatedUnion("type", [
     type: z.literal("table"),
     fields: z.array(ident).min(1),
     measures: z.array(ident).min(1),
-    limit: z.number().int().min(1).max(1000).default(20),
+    // Up to one line per document of a few years (the table draws them 25 at a time).
+    limit: z.number().int().min(1).max(5000).default(20),
     /** Measure to sort by (default: the first one), always descending. */
     orderBy: ident.optional(),
     /**
@@ -207,6 +208,11 @@ const analysisSchema = z.object({
   description: z.string().max(2000).default(""),
   /** Visual ids shown in this section, in order. */
   visuals: z.array(ident).default([]),
+  /**
+   * "row": the visuals side by side in one strip that scrolls sideways, each almost as wide as the page
+   * (e.g. the same values by month, then by document), instead of the usual grid.
+   */
+  layout: z.enum(["grid", "row"]).optional(),
   /**
    * Off the air (e.g. while it is being built): left out of the summary and of the page for whoever
    * reads the dashboard; still shown, marked, in the catalog preview.
