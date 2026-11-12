@@ -676,7 +676,7 @@ function efdContrib(): Json {
   const panels: Section[] = [
     {
       id: "visao_geral", title: "Visão geral",
-      description: "Receitas, débitos e créditos somados item a item dos blocos A, C, D e F. Os valores a recolher vêm da apuração (M200 e M600).",
+      description: "Receitas, débitos e créditos somados item a item dos blocos A, C, D e F, de todos os períodos enviados. Os valores a recolher vêm da apuração (M200 e M600).",
       visuals: [
         kpi("k_receita", "Receita", "receita", 3, det), kpi("k_receita_tributada", "Receita tributada", "receita_tributada", 3, det),
         kpi("k_receita_nao_tributada", "Receita não tributada", "receita_nao_tributada", 3, det), kpi("k_aquisicoes_credito", "Aquisições com crédito", "aquisicoes_com_credito", 3, det),
@@ -741,10 +741,15 @@ function efdContrib(): Json {
     blockPanel("F", "bloco_f_demais_operacoes", "demais_operacoes_bloco_f", "Demais documentos e operações (bloco F)",
       "Demais operações geradoras de contribuição e de crédito de todos os períodos enviados (F100, bens do imobilizado, retenções), lidas de uma tabela só com o bloco F."),
   ];
+  // The general panels read every period from the table made for them (the main fact holds one file whole).
+  const allPeriods = new Set(["visao_geral", "apuracao", "tributacao", "estabelecimentos"]);
+  const panelsAllPeriods = panels.map((s) => (allPeriods.has(s.id)
+    ? { ...s, visuals: s.visuals.map((v) => (v.fact ? v : { ...v, fact: "paineis_todos_periodos" })) }
+    : s));
   return build(k, {
     name: "EFD Contribuições", area: "Fiscal",
     description: "Escrituração de PIS e COFINS completa: receitas, débitos, créditos e apuração em painéis, e todos os registros do arquivo com todos os campos para consulta.",
-    fields, measures, filters: ["ano", "mes", "estabelecimento"], panels, panelGroup: "Painéis",
+    fields, measures, filters: ["ano", "mes", "estabelecimento"], panels: panelsAllPeriods, panelGroup: "Painéis",
     lead: { A: [totalsByCompetencia, byNoteTable] },
     // By month, then note by note, side by side: the reader scrolls sideways from one to the other.
     rowLayout: new Set(["A"]),

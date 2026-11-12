@@ -65,6 +65,8 @@ describe.each(FISCAL_IMPORTERS.map((i) => [i.templateId, i] as const))("template
           bloco_a_servicos: 6, bloco_f_demais_operacoes: 2, bloco_m_apuracao_pis_cofins: 4, bloco_d_transporte_comunicacao: 0,
           // C010 and C170 (the note, C100, is left out); and the item alone.
           bloco_c_resumo: 2, bloco_c_resumo_itens: 1,
+          // A (6), C010 and the summed C170 (2), F (2) and M (4).
+          paineis_todos_periodos: 14,
         });
       }
     } else {
@@ -107,6 +109,9 @@ describe.each(FISCAL_IMPORTERS.map((i) => [i.templateId, i] as const))("template
       // The sections of the blocks read their own facts; the original data of a block too.
       const first = (id: string): unknown => Object.values(data.visuals.find((v) => v.visual.id === id)?.rows[0] ?? {})[0];
       expect([first("k_m_pis_recolher"), first("k_m_cofins_recolher"), first("k_f_aquisicoes")]).toEqual([23.1, 106.4, 200]);
+      // The general panels read every period from their own table, with the same numbers the whole file gives.
+      expect(t.visuals.find((v) => v.id === "k_receita")?.fact).toBe("paineis_todos_periodos");
+      expect([first("k_receita"), first("k_pis_debito"), first("k_pis_recolher")]).toEqual([1600, 26.4, 23.1]);
       expect(t.visuals.find((v) => v.id === "r_m200")?.fact).toBe("bloco_m_apuracao_pis_cofins");
       // Bloco A opens with its totals by competência: the item and the valid note of the sample, the cancelled one left out.
       // Bloco A is its totals: the listings of its raw records are left out.
