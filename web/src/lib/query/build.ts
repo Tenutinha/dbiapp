@@ -227,7 +227,9 @@ function selectFor(t: Template, visual: QueryVisual, filters: FilterSelection): 
       return {
         select: [...fs.map(fieldCol), ...visual.measures.map((m) => measureCol(measure(m)))],
         groupBy: fs.map((_, i) => String(i + 1)),
-        tail: `ORDER BY ${visual.orderBy ?? visual.measures[0]} DESC NULLS LAST LIMIT ${visual.limit}`,
+        tail: visual.sort === "field"
+          ? `ORDER BY ${fs[0].id} ASC LIMIT ${visual.limit}`
+          : `ORDER BY ${visual.orderBy ?? visual.measures[0]} DESC NULLS LAST LIMIT ${visual.limit}`,
       };
     }
     case "rows":

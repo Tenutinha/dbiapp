@@ -46,6 +46,14 @@ describe("buildVisualQuery", () => {
     expect(skipped.sql).not.toContain("$1");
   });
 
+  it("orders a table by its first field when asked, instead of by a measure", () => {
+    const table: QueryVisual = {
+      id: "t", type: "table", title: "Por ano", span: 12, limit: 50, sort: "field", fields: ["ano"], measures: ["receita"],
+    };
+    expect(buildVisualQuery(t, files, table, {}).sql).toMatch(/ORDER BY ano ASC LIMIT 50$/);
+    expect(buildVisualQuery(t, files, { ...table, sort: "measure_desc" }, {}).sql).toMatch(/ORDER BY receita DESC NULLS LAST LIMIT 50$/);
+  });
+
   it("lists rows as they are, without grouping", () => {
     const rows: QueryVisual = {
       id: "r", type: "rows", title: "Linhas", span: 12, limit: 50, orderBy: "fato_vendas.id_venda",
