@@ -6,16 +6,18 @@ import { formatMoney, parseMoney } from "@/lib/controle/money";
 import {
   dayLabel, isValidDay, PAYMENT_LABEL, PAYMENT_METHODS, shiftDay, type PaymentMethod, type PurchaseInput, type SaleInput,
 } from "@/lib/controle/schema";
+import { STATUS_LABEL, type EntryStatus } from "@/lib/controle/status";
 import { call, ControleError } from "./api";
 import { ErrorNote, INPUT } from "./fields";
 
-const STEPS = ["valor", "pagamento", "data", "nome"] as const;
+const STEPS = ["valor", "pagamento", "data", "situacao", "nome"] as const;
 type Step = (typeof STEPS)[number] | "pronto";
 
 interface Answers {
   day: string;
   totalCents: number;
   payment: PaymentMethod | null;
+  status: EntryStatus;
   /** The optional last answer: who bought (venda) or where the money went (despesa). */
   name: string | null;
 }
@@ -26,6 +28,8 @@ interface Kind {
   askValue: string;
   missingValue: string;
   askDay: string;
+  /** Whether the money already moved: the entry is born "efetivado" or "pendente". */
+  askStatus: string;
   askName: string;
   namePlaceholder: string;
   saveNamed: string;
@@ -39,12 +43,13 @@ const KINDS: Record<"venda" | "despesa", Kind> = {
     askValue: "Qual o valor da venda?",
     missingValue: "Digite o valor da venda.",
     askDay: "Quando foi a venda?",
+    askStatus: "Já recebeu esse valor?",
     askName: "Quer colocar o nome do cliente?",
     namePlaceholder: "Nome do cliente",
     saveNamed: "Salvar venda",
     done: (amount) => `Venda de ${amount} lançada`,
     body: (a) => {
-      const sale: SaleInput = { soldOn: a.day, totalCents: a.totalCents, paymentMethod: a.payment, customerName: a.name };
+      const sale: SaleInput = { soldOn: a.day, totalCents: a.totalCents, paymentMethod: a.payment, customerName: a.name, status: a.status };
       return { action: "saleSave", sale };
     },
   },
@@ -53,6 +58,7 @@ const KINDS: Record<"venda" | "despesa", Kind> = {
     askValue: "Qual o valor da despesa?",
     missingValue: "Digite o valor da despesa.",
     askDay: "Quando foi a despesa?",
+    askStatus: "Essa despesa já foi paga?",
     askName: "Quer dizer onde foi a despesa?",
     namePlaceholder: "Mercado, fornecedor, conta…",
     saveNamed: "Salvar despesa",
@@ -60,7 +66,7 @@ const KINDS: Record<"venda" | "despesa", Kind> = {
     body: (a) => {
       const purchase: PurchaseInput = {
         purchasedOn: a.day, totalCents: a.totalCents, paymentMethod: a.payment, supplier: a.name,
-        notes: null, receipt: null, fromReceipt: false, items: [],
+        notes: null, receipt: null, fromReceipt: false, status: a.status, items: [],
       };
       return { action: "purchaseSave", purchase };
     },
@@ -91,6 +97,7 @@ export function EntryWizard({ kind, api, today, onClose, onBack }: EntryWizardPr
   const [value, setValue] = useState("");
   const [payment, setPayment] = useState<PaymentMethod | null>(null);
   const [day, setDay] = useState(today);
+  const [status, setStatus] = useState<EntryStatus | null>(null);
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -125,7 +132,7 @@ export function EntryWizard({ kind, api, today, onClose, onBack }: EntryWizardPr
       return;
     }
     setDay(chosen);
-    go("nome");
+    go("situacao");
   }
 
   async function save(e: React.FormEvent): Promise<void> {
@@ -134,7 +141,7 @@ export function EntryWizard({ kind, api, today, onClose, onBack }: EntryWizardPr
     setSaving(true);
     setError(null);
     try {
-      await call(api, copy.body({ day, totalCents: cents, payment, name: name.trim() || null }));
+      await call(api, copy.body({ day, totalCents: cents, payment, status: status ?? "efetivado", name: name.trim() || null }));
       setStep("pronto");
       router.refresh();
     } catch (err) {
@@ -191,6 +198,7 @@ export function EntryWizard({ kind, api, today, onClose, onBack }: EntryWizardPr
           {formatMoney(cents)}
           {index > 1 ? ` · ${payment ? PAYMENT_LABEL[payment] : "pagamento não informado"}` : ""}
           {index > 2 ? ` · ${day === today ? "hoje" : dayLabel(day)}` : ""}
+          {index > 3 && status ? ` · ${STATUS_LABEL[kind][status]}` : ""}
         </p>
       )}
 
@@ -255,6 +263,28 @@ export function EntryWizard({ kind, api, today, onClose, onBack }: EntryWizardPr
             </span>
           </label>
           <ErrorNote message={error} />
+        </div>
+      )}
+
+      {step === "situacao" && (
+        <div className="flex flex-col gap-4">
+          <p className={QUESTION}>
+            {copy.askStatus}
+            {day > today && <span className="mt-1 block text-sm font-normal text-muted">A data é futura: costuma ficar {STATUS_LABEL[kind].pendente.toLowerCase()} até acontecer.</span>}
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            {(["efetivado", "pendente"] as const).map((option) => (
+              <button
+                key={option}
+                type="button"
+                onClick={() => { setStatus(option); go("nome"); }}
+                className={`${CHOICE} ${status === option ? "border-brand bg-brand/15" : ""}`}
+              >
+                {option === "efetivado" ? "Sim" : "Ainda não"}
+                <span className="block text-sm font-normal text-muted">{STATUS_LABEL[kind][option]}</span>
+              </button>
+            ))}
+          </div>
         </div>
       )}
 

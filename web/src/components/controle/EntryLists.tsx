@@ -6,6 +6,7 @@ import { Avatar } from "@/components/admin/Avatar";
 import type { Entry } from "@/lib/controle/entries";
 import { formatMoney, formatQuantity } from "@/lib/controle/money";
 import { dayLabel, PAYMENT_LABEL, type Purchase, type Sale } from "@/lib/controle/schema";
+import { STATUS_LABEL, type EntryStatus } from "@/lib/controle/status";
 import { call, ControleError } from "./api";
 import { ErrorNote } from "./fields";
 import { PurchaseForm } from "./PurchaseForm";
@@ -58,6 +59,59 @@ function RemoveButton({ api, action, id, what, onError }: RemoveButtonProps) {
   );
 }
 
+interface StatusToggleProps {
+  api: string;
+  entry: Entry;
+  status: EntryStatus;
+  /** "icon": the ✓ of a pending row; "text": the link inside an opened row. */
+  look: "icon" | "text";
+  onError: (message: string | null) => void;
+}
+
+/** Confirms a pending entry (the money moved) or puts a confirmed one back as pending. */
+function StatusToggle({ api, entry, status, look, onError }: StatusToggleProps) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const next: EntryStatus = status === "pendente" ? "efetivado" : "pendente";
+  const label = `Marcar como ${STATUS_LABEL[entry.kind][next].toLowerCase()}`;
+
+  async function change(e: React.MouseEvent): Promise<void> {
+    e.preventDefault(); // the icon sits in the row's summary: the tap must not open or close the row
+    setBusy(true);
+    onError(null);
+    try {
+      await call(api, { action: "statusSet", kind: entry.kind, id: entry.id, status: next });
+      router.refresh();
+    } catch (err) {
+      onError(err instanceof ControleError ? err.message : "Não foi possível mudar a situação.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (look === "text") {
+    return (
+      <button type="button" onClick={change} disabled={busy} className="self-start text-sm font-semibold text-brand underline-offset-2 hover:underline disabled:opacity-50">
+        {busy ? "Salvando…" : label}
+      </button>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={change}
+      disabled={busy}
+      aria-label={`${label}: ${describe(entry)}`}
+      title={label}
+      className={`${ROW_BUTTON} text-ok hover:bg-ok/10 disabled:animate-pulse disabled:opacity-50`}
+    >
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <path d="M20 6 9 17l-5-5" />
+      </svg>
+    </button>
+  );
+}
+
 function EditButton({ what, onEdit }: { what: string; onEdit: () => void }) {
   return (
     <button
@@ -81,15 +135,21 @@ function describe(entry: Entry): string {
   return `a despesa de ${amount}${entry.purchase.supplier ? ` em ${entry.purchase.supplier}` : ""}`;
 }
 
-/** What kind of entry a row is: an arrow going out (despesa) or coming in (venda), also named for screen readers. */
-function KindIcon({ kind }: { kind: Entry["kind"] }) {
+/**
+ * What kind of entry a row is: an arrow going out (despesa) or coming in (venda), also named for
+ * screen readers. A dashed outline marks the ones still pending.
+ */
+function KindIcon({ kind, pending }: { kind: Entry["kind"]; pending: boolean }) {
   const sale = kind === "venda";
+  const name = `${sale ? "Venda" : "Despesa"}${pending ? ` (${STATUS_LABEL[kind].pendente.toLowerCase()})` : ""}`;
   return (
     <span
       role="img"
-      aria-label={sale ? "Venda" : "Despesa"}
-      title={sale ? "Venda" : "Despesa"}
-      className={`grid size-9 shrink-0 place-items-center rounded-full ${sale ? "bg-ok/15 text-ok" : "bg-danger/15 text-danger"}`}
+      aria-label={name}
+      title={name}
+      className={`grid size-9 shrink-0 place-items-center rounded-full ${sale ? "bg-ok/15 text-ok" : "bg-danger/15 text-danger"} ${
+        pending ? "outline-2 outline-offset-2 outline-dashed outline-accent" : ""
+      }`}
     >
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
         {sale ? <path d="M12 19V5M5 12l7-7 7 7" /> : <path d="M12 5v14M5 12l7 7 7-7" />}
@@ -175,22 +235,27 @@ export function EntryList({ api, today, entries, canRecord }: EntryListProps) {
         const sale = entry.kind === "venda";
         const title = sale ? saleTitle(entry.sale) : purchaseTitle(entry.purchase);
         const author = sale ? entry.sale.author : entry.purchase.author;
+        const status = sale ? entry.sale.status : entry.purchase.status;
+        const pending = status === "pendente";
         return (
           <details key={`${entry.kind}-${entry.id}`} className="card group shrink-0">
             <summary className="flex cursor-pointer list-none items-center gap-2 p-3 sm:gap-3 sm:p-4 [&::-webkit-details-marker]:hidden">
-              <KindIcon kind={entry.kind} />
+              <KindIcon kind={entry.kind} pending={pending} />
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-semibold">{title}</span>
                 <span className="flex items-center gap-1.5 text-xs text-muted">
                   {author && <Avatar name={author.name} email="" imageUrl={author.avatarUrl} size="xs" title={`Lançado por ${author.name}`} className="ring-1" />}
-                  <span className="truncate">{dayLabel(entry.day)} · {sale ? saleDetail(entry.sale) : purchaseDetail(entry.purchase)}</span>
+                  <span className="truncate">
+                    {pending && <span className="font-semibold text-accent">{STATUS_LABEL[entry.kind].pendente} · </span>}
+                    {dayLabel(entry.day)} · {sale ? saleDetail(entry.sale) : purchaseDetail(entry.purchase)}</span>
                 </span>
               </span>
-              <span className={`shrink-0 font-semibold tabular-nums ${sale ? "text-ok" : ""}`}>
+              <span className={`shrink-0 font-semibold tabular-nums ${sale ? "text-ok" : ""} ${pending ? "opacity-60" : ""}`}>
                 {sale ? "+" : "−"} {formatMoney(entry.totalCents)}
               </span>
               {canRecord && (
                 <span className="flex shrink-0">
+                  {pending && <StatusToggle api={api} entry={entry} status={status} look="icon" onError={setError} />}
                   <EditButton what={describe(entry)} onEdit={() => { setError(null); setEditing(entry); }} />
                   <RemoveButton api={api} action={sale ? "saleRemove" : "purchaseRemove"} id={entry.id} what={describe(entry)} onError={setError} />
                 </span>
@@ -202,7 +267,9 @@ export function EntryList({ api, today, entries, canRecord }: EntryListProps) {
               <span className="text-xs text-muted">
                 {sale ? "Venda" : entry.purchase.hasReceipt ? "Despesa" : "Despesa lançada à mão"} de {dayLabel(entry.day)}
                 {author ? ` · lançado por ${author.name}` : ""}
+                {` · ${STATUS_LABEL[entry.kind][status].toLowerCase()}`}
               </span>
+              {canRecord && <StatusToggle api={api} entry={entry} status={status} look="text" onError={setError} />}
             </div>
           </details>
         );

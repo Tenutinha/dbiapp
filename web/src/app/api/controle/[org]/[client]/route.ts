@@ -2,8 +2,9 @@ import { unstable_rethrow } from "next/navigation";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { purchaseInput, saleInput } from "@/lib/controle/schema";
+import { STATUSES } from "@/lib/controle/status";
 import {
-  discardReceipt, editPurchase, editSale, extractReceipt, planReceiptUpload, removePurchase, removeSale, requireRecord, savePurchase, saveSale,
+  changeStatus, discardReceipt, editPurchase, editSale, extractReceipt, planReceiptUpload, removePurchase, removeSale, requireRecord, savePurchase, saveSale,
 } from "@/lib/services/controle";
 import { fail, handleError } from "../../../instances/[id]/upload/respond";
 import { spaceParams } from "./params";
@@ -25,6 +26,7 @@ const body = z.discriminatedUnion("action", [
   z.object({ action: z.literal("saleSave"), sale: saleInput }),
   z.object({ action: z.literal("saleUpdate"), id, sale: saleInput }),
   z.object({ action: z.literal("saleRemove"), id }),
+  z.object({ action: z.literal("statusSet"), kind: z.enum(["venda", "despesa"]), id, status: z.enum(STATUSES) }),
 ]);
 
 /**
@@ -48,6 +50,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ org: string; c
         case "saleSave": return saveSale(access, input.sale);
         case "saleUpdate": return editSale(access, input.id, input.sale);
         case "saleRemove": return removeSale(access, input.id);
+        case "statusSet": return changeStatus(access, input.kind, input.id, input.status);
       }
     })();
     return NextResponse.json({ success: true, data: data ?? null });
