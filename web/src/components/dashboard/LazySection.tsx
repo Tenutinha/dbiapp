@@ -12,6 +12,8 @@ interface LazySectionProps {
   anchor: string;
   /** Title and description of the analysis: on screen from the start, so the page has its outline. */
   header: React.ReactNode;
+  /** A page of a strip turned sideways (PageStrip): its own classes, and the page never scrolls to keep its end. */
+  pageClass?: string;
 }
 
 type State =
@@ -55,7 +57,7 @@ function Waiting() {
  * are asked for when the reader gets near it (scrolling, or jumping from the summary) and take the
  * skeleton's place. A dashboard with dozens of analyses then opens as fast as its first one.
  */
-export function LazySection({ ticket, analysisId, search, anchor, header }: LazySectionProps) {
+export function LazySection({ ticket, analysisId, search, anchor, header, pageClass }: LazySectionProps) {
   const ref = useRef<HTMLElement>(null);
   /** Marks where the analysis ends, also when it leaves the page (nothing to show). */
   const end = useRef<HTMLDivElement>(null);
@@ -103,13 +105,13 @@ export function LazySection({ ticket, analysisId, search, anchor, header }: Lazy
   useLayoutEffect(() => {
     const was = before.current;
     before.current = null;
-    if (state.status !== "done" || was === null || was.top >= 0) return;
+    if (state.status !== "done" || was === null || was.top >= 0 || pageClass !== undefined) return;
     const frame = requestAnimationFrame(() => {
       const after = end.current?.getBoundingClientRect().top;
       if (after !== undefined && Math.abs(after - was.end) > NOTICEABLE_PX) window.scrollBy({ top: after - was.end, behavior: "instant" });
     });
     return () => cancelAnimationFrame(frame);
-  }, [state]);
+  }, [state, pageClass]);
 
   // Nothing to show under these filters: the analysis leaves the page, as it does when computed with it.
   const gone = state.status === "done" && state.body === null;
@@ -122,7 +124,7 @@ export function LazySection({ ticket, analysisId, search, anchor, header }: Lazy
           id={anchor}
           aria-labelledby={`${anchor}-titulo`}
           aria-busy={state.status === "loading" || undefined}
-          className="mt-14 scroll-mt-24 first:mt-0"
+          className={pageClass ?? "mt-14 scroll-mt-24 first:mt-0"}
         >
           {header}
           {state.status === "done" && state.body}

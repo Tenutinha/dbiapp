@@ -255,6 +255,11 @@ export const templateSchema = z
     analyses: z.array(analysisSchema).default([]),
     /** Sidebar summary: groups of analyses, in reading order. */
     summary: z.array(summaryGroupSchema).default([]),
+    /**
+     * "horizontal": each analysis is a page of its own, side by side, and the reader turns them sideways
+     * (tabs above, the summary or a swipe), like the pages of a report. Default: one below the other.
+     */
+    paging: z.enum(["vertical", "horizontal"]).optional(),
   })
   .superRefine((t, ctx) => {
     const issue = (message: string): void => ctx.addIssue({ code: "custom", message });

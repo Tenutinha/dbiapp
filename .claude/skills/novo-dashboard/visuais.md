@@ -100,6 +100,18 @@ Cada visual entra em **uma** seção. Seção: `id` em snake_case, título curto
 
 `summary` agrupa as seções no menu lateral. Com até seis seções, um grupo só. Com mais, dois ou três grupos por assunto ("Painéis" e "Dados originais"; "Vendas" e "Clientes").
 
+## Páginas de lado (`paging`)
+
+Com `"paging": "horizontal"` no molde, cada seção vira uma página, e as páginas ficam lado a lado, como num relatório do Power BI. Abas no alto, o sumário lateral ou um arrasto de lado trocam de página, e a faixa tem a altura da página que está na tela. Sem a opção, as seções ficam uma abaixo da outra.
+
+Use quando o pedido vem de um relatório com páginas (o .pbix com navegação por botões) ou quando cada seção é um assunto que se lê sozinho. Cada página deve caber em uma ou duas telas.
+
+## Mais de uma fato
+
+O motor lê fatos extras: o visual diz qual com `"fact": "<tabela>"` (sem isso, lê a primeira fato do molde). Um filtro vale para o visual quando a fato dele alcança a tabela do campo. Por isso, para Ano/Mês/Filial valerem em todas as fatos, ligue as fatos à **mesma** dimensão de calendário e de filial (`calendario.mes`, e não `strftime(vendas.data, …)`). Medida não cruza fatos: "realizado ÷ meta" só sai se as duas colunas estiverem na mesma fato.
+
+Para cruzar fatos (estoque × entradas × vendas, por exemplo), prefira montar na carga uma fato de **movimento**: uma linha por item, filial e mês, com uma coluna de cada origem (`estoque_valor`, `entrada_valor`, `venda_custo`). Assim giro, cobertura e margem viram contas da mesma linha. Foto de estoque ou de saldo vira duas colunas: a do mês (para a evolução) e `*_atual`, que só tem valor no período mais recente (para os cartões, com `skipFilters: ["ano", "mes"]`).
+
 ## Desempenho
 
 Cada visual é uma consulta, e todas rodam a cada abertura da página.

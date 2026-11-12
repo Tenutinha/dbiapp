@@ -92,3 +92,37 @@ describe("DashboardView with analyses", () => {
     expect(html).toContain("Como ler");
   });
 });
+
+describe("DashboardView with pages turned sideways", () => {
+  const twoPages = templateSchema.parse({
+    ...template,
+    paging: "horizontal",
+    analyses: [
+      { id: "visao_geral", title: "Visão geral", visuals: ["k_margem"] },
+      { id: "nota_pagina", title: "Notas", visuals: ["nota"] },
+    ],
+    summary: [{ title: "Visão geral", analyses: ["visao_geral"] }, { title: "Notas", analyses: ["nota_pagina"] }],
+  });
+
+  it("keeps the option when the template is parsed", () => {
+    expect(twoPages.paging).toBe("horizontal");
+    expect(template.paging).toBeUndefined();
+  });
+
+  it("puts every analysis as a page of one strip, with a tab for each", () => {
+    const html = render(twoPages);
+    expect(html).toContain('aria-label="Páginas do dashboard"');
+    expect(html).toContain("snap-x");
+    const strip = html.indexOf("snap-x");
+    expect(html.indexOf(`id="${analysisAnchor("visao_geral")}"`)).toBeGreaterThan(strip);
+    expect(html.indexOf(`id="${analysisAnchor("nota_pagina")}"`)).toBeGreaterThan(strip);
+    expect(html.match(/snap-start snap-always/g)).toHaveLength(2);
+    expect(html).toContain('aria-current="page"');
+  });
+
+  it("keeps sections one below the other by default", () => {
+    const html = render();
+    expect(html).not.toContain("Páginas do dashboard");
+    expect(html).toContain("mt-14 scroll-mt-24 first:mt-0");
+  });
+});

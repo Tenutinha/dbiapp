@@ -6,6 +6,7 @@ import { Chart, type ChartMeasure } from "./Chart";
 import { FilterBar } from "./FilterBar";
 import { LazySection } from "./LazySection";
 import { MapChart, type MapMeasure } from "./MapChart";
+import { PAGE_CLASS, PageStrip } from "./PageStrip";
 import { CrossTable } from "./CrossTable";
 import { ScrollTable, type ScrollColumn, type SortValue } from "./ScrollTable";
 import { VisualCard } from "./VisualCard";
@@ -195,28 +196,34 @@ export function DashboardView({ template, data, totalRows, later }: DashboardVie
       {s.analysis.description && <p className="mt-3 max-w-3xl leading-relaxed text-text/75">{s.analysis.description}</p>}
     </header>
   );
+  const sideways = template.paging === "horizontal";
+  const pageClass = sideways ? PAGE_CLASS : undefined;
+  // An analysis computed with the page that has nothing to show under these filters leaves the page.
+  const shown = sections.filter(
+    (s) => (later !== undefined && pending.has(s.analysis.id)) || s.results.length === 0 || visibleResults(s.results).length > 0,
+  );
+  const body = shown.map((s) => {
+    if (later && pending.has(s.analysis.id)) {
+      // Keyed by the filters too: a new selection starts the analysis over, as it does the computed ones.
+      return (
+        <LazySection
+          key={`${s.analysis.id}?${later.search}`}
+          ticket={later.ticket} analysisId={s.analysis.id} search={later.search} anchor={s.anchor} header={header(s)} pageClass={pageClass}
+        />
+      );
+    }
+    return (
+      <section key={s.analysis.id} id={s.anchor} aria-labelledby={`${s.anchor}-titulo`} className={pageClass ?? "mt-14 scroll-mt-24 first:mt-0"}>
+        {header(s)}
+        <VisualGrid template={template} results={s.results} layout={s.analysis.layout} />
+      </section>
+    );
+  });
   return (
     <>
       <FilterBar filters={data.filters} cross={data.cross} />
       <VisualGrid template={template} results={loose} />
-      {sections.map((s) => {
-        if (later && pending.has(s.analysis.id)) {
-          // Keyed by the filters too: a new selection starts the analysis over, as it does the computed ones.
-          return (
-            <LazySection
-              key={`${s.analysis.id}?${later.search}`}
-              ticket={later.ticket} analysisId={s.analysis.id} search={later.search} anchor={s.anchor} header={header(s)}
-            />
-          );
-        }
-        if (s.results.length > 0 && visibleResults(s.results).length === 0) return null;
-        return (
-          <section key={s.analysis.id} id={s.anchor} aria-labelledby={`${s.anchor}-titulo`} className="mt-14 scroll-mt-24 first:mt-0">
-            {header(s)}
-            <VisualGrid template={template} results={s.results} layout={s.analysis.layout} />
-          </section>
-        );
-      })}
+      {sideways ? <PageStrip pages={shown.map((s) => ({ anchor: s.anchor, title: s.analysis.title }))}>{body}</PageStrip> : body}
       <p className="mt-6 text-right font-mono text-xs text-muted">
         {totalRows.toLocaleString("pt-BR")} linhas na fato · {data.visuals.length} visuais calculados em {data.elapsedMs} ms
         {pending.size > 0 && " · as demais análises carregam ao chegar nelas"}
