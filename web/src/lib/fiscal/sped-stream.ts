@@ -8,7 +8,7 @@ import { createInterface } from "node:readline";
 import { csvLine } from "./csv";
 import type { FiscalTables } from "./importers";
 import { FiscalFileError, parseLine } from "./sped";
-import { SpedReader, type SpedKind } from "./sped-kinds";
+import { keepsRecord, SpedReader, type SpedKind } from "./sped-kinds";
 
 /** Fact rows buffered before each write to the CSV. */
 const WRITE_BATCH = 2000;
@@ -69,9 +69,19 @@ export async function appendSpedFile(kind: SpedKind, localPath: string, outputs:
   const tablesOfBlock = new Map<string, string[]>();
   for (const [table, out] of Object.entries(outputs.blocks ?? {})) {
     blockBatches.set(table, new Batch(out));
-    for (const block of kind.blockFacts[table] ?? []) tablesOfBlock.set(block, [...(tablesOfBlock.get(block) ?? []), table]);
+    for (const block of kind.blockFacts[table]?.blocks ?? []) tablesOfBlock.set(block, [...(tablesOfBlock.get(block) ?? []), table]);
   }
   const openBlocks = new Set(tablesOfBlock.keys());
+  /** Tables that keep each record, worked out once per record code. */
+  const targetsOf = new Map<string, string[]>();
+  const tablesFor = (record: string): string[] => {
+    let tables = targetsOf.get(record);
+    if (!tables) {
+      tables = (tablesOfBlock.get(record[0] ?? "") ?? []).filter((table) => keepsRecord(kind.blockFacts[table], record));
+      targetsOf.set(record, tables);
+    }
+    return tables;
+  };
   let reader: SpedReader | null = null;
   let total = 0;
   for await (const line of lines) {
@@ -81,11 +91,11 @@ export async function appendSpedFile(kind: SpedKind, localPath: string, outputs:
     const row = reader.push(record);
     total += 1;
     const block = record[0][0] ?? "";
-    const targets = tablesOfBlock.get(block);
-    if (fact || targets) {
+    const targets = tablesFor(record[0]);
+    if (fact || targets.length > 0) {
       const csv = csvLine(row);
       if (fact) await fact.add(csv);
-      for (const table of targets ?? []) await blockBatches.get(table)?.add(csv);
+      for (const table of targets) await blockBatches.get(table)?.add(csv);
     }
     if (record[0] === "9999") break; // what follows is the signature block
     if (record[0] === `${block}990`) {

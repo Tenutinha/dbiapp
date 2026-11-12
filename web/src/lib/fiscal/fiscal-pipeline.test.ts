@@ -61,7 +61,11 @@ describe.each(FISCAL_IMPORTERS.map((i) => [i.templateId, i] as const))("template
       // Like the service: a block the file does not bring leaves its fact out (the ingest refuses empty tables).
       for (const name of blockTables) (read.blockLines[name] > 0 ? streamed : absent).add(name);
       if (templateId === "efd-contribuicoes") {
-        expect(read.blockLines).toMatchObject({ bloco_a_servicos: 6, bloco_f_demais_operacoes: 2, bloco_m_apuracao_pis_cofins: 4, bloco_d_transporte_comunicacao: 0 });
+        expect(read.blockLines).toMatchObject({
+          bloco_a_servicos: 6, bloco_f_demais_operacoes: 2, bloco_m_apuracao_pis_cofins: 4, bloco_d_transporte_comunicacao: 0,
+          // C010 and C170 (the note, C100, is left out); and the item alone.
+          bloco_c_resumo: 2, bloco_c_resumo_itens: 1,
+        });
       }
     } else {
       tables = mergeTables(importer, [importer.parse(SAMPLE_FILES[templateId])]);
@@ -104,7 +108,12 @@ describe.each(FISCAL_IMPORTERS.map((i) => [i.templateId, i] as const))("template
       const first = (id: string): unknown => Object.values(data.visuals.find((v) => v.visual.id === id)?.rows[0] ?? {})[0];
       expect([first("k_m_pis_recolher"), first("k_m_cofins_recolher"), first("k_f_aquisicoes")]).toEqual([23.1, 106.4, 200]);
       expect(t.visuals.find((v) => v.id === "r_m200")?.fact).toBe("bloco_m_apuracao_pis_cofins");
+      // The original lines of bloco C stay with the main fact: its extra facts are summaries.
       expect(t.visuals.find((v) => v.id === "r_c100")?.fact).toBeUndefined();
+      // The summaries hold the item of the sample (C170) with its values, without the note it came from.
+      expect([first("k_c_receita"), first("k_c_pis_debito"), first("k_c_cofins_debito")]).toEqual([1000, 16.5, 76]);
+      const item = data.visuals.find((v) => v.visual.id === "t_c_itens")?.rows[0];
+      expect(item).toMatchObject({ item: "AMORTECEDOR", ncm: "87088000", receita: 1000 });
     }
   }, 120_000);
 });

@@ -7,7 +7,7 @@
  */
 import { writeFileSync } from "node:fs";
 import path from "node:path";
-import { factColumns, fieldColumn, FACT_BASE, SPED_KINDS, type SpedKind } from "../../src/lib/fiscal/sped-kinds";
+import { factColumns, fieldColumn, FACT_BASE, SPED_KINDS, type Collapse, type SpedKind } from "../../src/lib/fiscal/sped-kinds";
 import { templateSchema } from "../../src/lib/templates/schema";
 
 type Json = Record<string, unknown>;
@@ -74,8 +74,11 @@ function rawSections(kind: SpedKind, opts: { skipFilters?: (reg: string) => stri
     }],
   }];
   // A block that has a fact of its own is listed from it: every period, not only the ones loaded whole.
+  // (Only a fact that keeps the block as it came: a summary has no original lines to list.)
   const tableOfBlock: Record<string, string> = Object.fromEntries(
-    Object.entries(kind.blockFacts).flatMap(([table, blockCodes]) => blockCodes.map((b) => [b, table])),
+    Object.entries(kind.blockFacts)
+      .filter(([, fact]) => !fact.collapse && !fact.only && !fact.skip)
+      .flatMap(([table, fact]) => fact.blocks.map((b) => [b, table])),
   );
   const known = Object.keys(kind.layout);
   // File order: block 0 first, the lettered ones, then 1 and 9 (object keys alone would put the digits first).
@@ -153,12 +156,61 @@ function factTable(kind: SpedKind): Json {
 
 /** Extra facts of the kind: some blocks of the file, with the main fact's columns (see SpedKind.blockFacts). */
 function blockFactTables(kind: SpedKind): Json[] {
-  return Object.entries(kind.blockFacts).map(([name, blocks]) => ({
-    ...factTable(kind),
-    name,
-    sameAs: F,
-    description: `Só as linhas ${blocks.length === 1 ? "do bloco" : "dos blocos"} ${blocks.join(", ")} do arquivo ${kind.title}, com as mesmas colunas de "${F}": leve o bastante para guardar todos os períodos.`,
-  }));
+  return Object.entries(kind.blockFacts).map(([name, fact]) => {
+    const blocks = `${fact.blocks.length === 1 ? "do bloco" : "dos blocos"} ${fact.blocks.join(", ")}`;
+    const table = { ...factTable(kind), name, sameAs: F };
+    if (!fact.collapse) {
+      return { ...table, description: `Só as linhas ${blocks} do arquivo ${kind.title}, com as mesmas colunas de "${F}": leve o bastante para guardar todos os períodos.` };
+    }
+    const by = [fact.collapse.byEstablishment ? "estabelecimento" : null, fact.collapse.byItem ? "item" : null, ...fact.collapse.keys].filter(Boolean).join(", ");
+    return {
+      ...table,
+      description: `Resumo ${blocks} do arquivo ${kind.title}: as linhas do registro ${fact.collapse.record} somadas por arquivo, operação, ${by}, no mesmo layout de "${F}". Para os painéis de todos os períodos.`,
+      source: collapseSource(kind, fact.collapse),
+    };
+  });
+}
+
+/**
+ * How the ingest sums a record up (see Collapse): the raw file has the fact's columns, one line per line of
+ * the SPED file; the lines of the record are grouped, the others stay one by one (their line number keeps them apart).
+ */
+function collapseSource(kind: SpedKind, c: Collapse): Json {
+  const is = `registro = '${c.record}'`;
+  const position = (name: string): string => {
+    const i = kind.layout[c.record]?.c.indexOf(name) ?? -1;
+    if (i < 0) throw new Error(`${kind.templateId}: ${c.record} não tem o campo ${name}`);
+    return fieldColumn(i + 1);
+  };
+  const keys = new Set(c.keys.map(position));
+  const sums = new Set(c.sums.map(position));
+  /** Kept on the other records, emptied on the summed one. */
+  const others = (col: string): string => `any_value(CASE WHEN ${is} THEN NULL ELSE ${col} END)`;
+  const derive: Record<string, string> = {
+    // The declarant's CNPJ starts the file's name.
+    ...(c.byEstablishment ? {} : { cnpj: `CASE WHEN ${is} THEN left(arquivo, 14) ELSE cnpj END` }),
+    periodo: "any_value(periodo)",
+    linha: `CASE WHEN ${is} THEN 0 ELSE linha END`,
+    bloco: "any_value(bloco)",
+    doc: others("doc"),
+    dt_doc: others("dt_doc"),
+  };
+  for (const link of Object.keys(kind.links)) {
+    if (!(link === "id_item" && c.byItem)) derive[link] = others(link);
+  }
+  for (let i = 1; i <= kind.width; i += 1) {
+    const col = fieldColumn(i);
+    if (keys.has(col)) continue;
+    derive[col] = sums.has(col)
+      ? `CASE WHEN any_value(registro) = '${c.record}' THEN replace(CAST(SUM(TRY_CAST(replace(${col}, ',', '.') AS DECIMAL(28, 5))) AS VARCHAR), '.', ',') ELSE any_value(${col}) END`
+      : others(col);
+  }
+  return {
+    description: `As linhas ${kind.title} como vieram do arquivo; as do registro ${c.record} são somadas na entrada.`,
+    columns: factTable(kind).columns,
+    derive,
+    groupBy: ["arquivo", "cnpj", "linha", "registro", "oper", ...(c.byItem ? ["id_item"] : []), ...keys],
+  };
 }
 
 const DIM_TABLES: Record<string, Json> = {
@@ -487,6 +539,34 @@ function efdContrib(): Json {
       ].map((v) => ({ ...v, fact: table })),
     };
   };
+  /** Bloco C for every period, from its two summaries: by establishment (CFOP, CST) and by item. */
+  const inC = `${det} AND ${F}.bloco = 'C'`;
+  const debCred = ["receita", "aquisicoes_com_credito", "pis_debito", "cofins_debito", "pis_credito", "cofins_credito"];
+  const mercadorias: Section = {
+    id: "mercadorias_bloco_c", title: "Mercadorias (bloco C)",
+    description: "Itens das notas de mercadorias (C170) e energia (C501 e C505) de todos os períodos enviados, lidos de dois resumos do bloco C: um por estabelecimento, CFOP, CST e alíquota, e outro por item. Os valores são os mesmos dos itens somados; as notas e os participantes não entram no resumo.",
+    visuals: [
+      ...[
+        kpi("k_c_receita", "Receita", "receita", 3, inC), kpi("k_c_receita_tributada", "Receita tributada", "receita_tributada", 3, inC),
+        kpi("k_c_receita_nao_tributada", "Receita não tributada", "receita_nao_tributada", 3, inC), kpi("k_c_aquisicoes", "Aquisições com crédito", "aquisicoes_com_credito", 3, inC),
+        kpi("k_c_pis_debito", "PIS a débito", "pis_debito", 3, inC), kpi("k_c_pis_credito", "PIS a crédito", "pis_credito", 3, inC),
+        kpi("k_c_cofins_debito", "COFINS a débito", "cofins_debito", 3, inC), kpi("k_c_cofins_credito", "COFINS a crédito", "cofins_credito", 3, inC),
+        { id: "b_c_mes", type: "bar", title: "Receita e aquisições com crédito por mês", field: "mes", measures: ["receita", "aquisicoes_com_credito"], sort: "field", limit: 240, span: 12, where: inC },
+        { id: "l_c_tributos_mes", type: "line", title: "Débitos e créditos de PIS e COFINS por mês", field: "mes", measures: ["pis_debito", "cofins_debito", "pis_credito", "cofins_credito"], sort: "field", limit: 240, span: 8, where: inC },
+        { id: "d_c_tributacao", type: "donut", title: "Receita por tributação", field: "tributacao_receita", measure: "receita", span: 4, where: `${inC} AND ${deb}` },
+        { id: "t_c_ano", type: "table", title: "Por ano", fields: ["ano"], measures: [...debCred, "carga_receita"], limit: 30, span: 12, where: inC },
+        { id: "t_c_cfop", type: "table", title: "CFOP", fields: ["operacao", "cfop"], measures: debCred, limit: 150, span: 12, where: inC },
+        { id: "t_c_cst", type: "table", title: "CST de PIS e COFINS", fields: ["cst_pis", "cst_cofins"], measures: debCred, limit: 100, span: 12, where: inC },
+        { id: "b_c_uf", type: "bar", title: "Receita por UF do estabelecimento", field: "uf_estabelecimento", measures: ["receita", "aquisicoes_com_credito"], sort: "measure_desc", limit: 28, span: 12, where: inC },
+        { id: "t_c_estabelecimentos", type: "table", title: "Estabelecimentos", fields: ["estabelecimento", "uf_estabelecimento"], measures: [...debCred, "saldo_documentos"], limit: 300, span: 12, where: inC },
+      ].map((v) => ({ ...v, fact: "bloco_c_resumo" })),
+      ...[
+        { id: "t_c_itens", type: "table", title: "Itens", fields: ["item", "ncm"], measures: ["receita", "receita_nao_tributada", "aquisicoes_com_credito", "pis_debito", "cofins_debito", "pis_credito", "cofins_credito"], limit: 300, span: 12, where: inC },
+        { id: "b_c_ncm", type: "bar", title: "Receita por NCM", field: "ncm", measures: ["receita"], sort: "measure_desc", horizontal: true, limit: 20, span: 6, where: inC },
+        { id: "b_c_ncm_credito", type: "bar", title: "Aquisições com crédito por NCM", field: "ncm", measures: ["aquisicoes_com_credito"], sort: "measure_desc", horizontal: true, limit: 20, span: 6, where: inC },
+      ].map((v) => ({ ...v, fact: "bloco_c_resumo_itens" })),
+    ],
+  };
   /** The bloco A section reads the fact that holds that block for every period. */
   const servico = (v: Json): Json => ({ ...v, fact: "bloco_a_servicos" });
   const servicos: Section = {
@@ -582,6 +662,7 @@ function efdContrib(): Json {
     },
     blockPanel("D", "bloco_d_transporte_comunicacao", "transporte_bloco_d", "Transporte e comunicação (bloco D)",
       "Documentos de transporte e de comunicação de todos os períodos enviados (D100 e D500 com seus complementos de PIS e COFINS), lidos de uma tabela só com o bloco D."),
+    mercadorias,
     blockPanel("F", "bloco_f_demais_operacoes", "demais_operacoes_bloco_f", "Demais documentos e operações (bloco F)",
       "Demais operações geradoras de contribuição e de crédito de todos os períodos enviados (F100, bens do imobilizado, retenções), lidas de uma tabela só com o bloco F."),
   ];
