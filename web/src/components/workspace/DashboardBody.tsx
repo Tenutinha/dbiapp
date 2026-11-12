@@ -1,5 +1,6 @@
 import { DashboardSkeleton } from "@/components/dashboard/DashboardSkeleton";
 import { DashboardView } from "@/components/dashboard/DashboardView";
+import { issueSectionTicket } from "@/lib/section-ticket";
 import { loadDashboard } from "@/lib/services/dashboard";
 import { DashboardLanding } from "./DashboardArrival";
 
@@ -15,6 +16,16 @@ interface DashboardBodyProps {
   before: React.ReactNode;
   /** Shown under the visuals once they are ready (the way on to the next dashboard). */
   after: React.ReactNode;
+}
+
+/** The page's search params as one query string, in a stable order (it tells a selection from another). */
+function searchString(searchParams: Readonly<Record<string, string | string[] | undefined>>): string {
+  const query = new URLSearchParams();
+  for (const name of Object.keys(searchParams).sort()) {
+    const value = searchParams[name];
+    for (const v of Array.isArray(value) ? value : value === undefined ? [] : [value]) query.append(name, v);
+  }
+  return query.toString();
 }
 
 /**
@@ -40,12 +51,16 @@ export function DashboardFallback({ header, hasPrevious }: { header: React.React
 export async function DashboardBody({
   instanceId, templateId, activeVersionId, searchParams, anchorsKey, before, after,
 }: DashboardBodyProps) {
-  const dashboard = await loadDashboard(instanceId, templateId, activeVersionId, searchParams);
+  // Only the first analysis is computed with the page; the others arrive when the reader gets near them.
+  const dashboard = await loadDashboard(instanceId, templateId, activeVersionId, searchParams, "opening");
+  const later = dashboard.pending.length > 0
+    ? { pending: dashboard.pending, ticket: issueSectionTicket({ instanceId, templateId, activeVersionId }), search: searchString(searchParams) }
+    : undefined;
   return (
     <>
       <DashboardLanding anchorsKey={anchorsKey} />
       {before}
-      <DashboardView template={dashboard.template} data={dashboard.data} totalRows={dashboard.totalRows} />
+      <DashboardView template={dashboard.template} data={dashboard.data} totalRows={dashboard.totalRows} later={later} />
       {after}
     </>
   );

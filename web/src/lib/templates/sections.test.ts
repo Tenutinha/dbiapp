@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { loadTemplate } from "../test-helpers";
 import { templateSchema } from "./schema";
-import { analysisAnchor, buildOutline, buildSections, buildSummary, withoutHidden } from "./sections";
+import { analysisAnchor, buildOutline, buildSections, buildSummary, openingVisuals, withoutHidden } from "./sections";
 
 const base = templateSchema.parse(loadTemplate("vendas-executivo"));
 const t = templateSchema.parse({
@@ -36,6 +36,26 @@ describe("buildSections", () => {
   it("numbers sections as the summary does; analyses outside the summary get no number", () => {
     const s = buildSections(t, results);
     expect(s.sections.map((x) => x.number)).toEqual([2, 1, null]);
+  });
+});
+
+describe("openingVisuals", () => {
+  it("computes the loose visuals and the first analysis with the page, and leaves the others for later", () => {
+    const opening = openingVisuals(t);
+    // "canais" is the first analysis of the page; "visao" and "extra" wait.
+    expect(opening.pending).toEqual(["visao", "extra"]);
+    expect(opening.only.has("receita_canal")).toBe(true);
+    expect(opening.only.has("k_margem")).toBe(false);
+    const placed = new Set(t.analyses.flatMap((a) => a.visuals));
+    const loose = t.visuals.filter((v) => !placed.has(v.id)).map((v) => v.id);
+    expect(loose.length).toBeGreaterThan(0);
+    expect(loose.every((id) => opening.only.has(id))).toBe(true);
+  });
+
+  it("leaves nothing for later on a dashboard without analyses", () => {
+    const opening = openingVisuals(base);
+    expect(opening.pending).toEqual([]);
+    expect(opening.only.size).toBe(base.visuals.length);
   });
 });
 
