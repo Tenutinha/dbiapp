@@ -1,10 +1,12 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono, Newsreader } from "next/font/google";
+import { AppUpdater } from "@/components/AppUpdater";
 import { DevUserSwitcher } from "@/components/DevUserSwitcher";
 import { ElementInspector } from "@/components/dev/ElementInspector";
 import { NavigationProgress } from "@/components/NavigationProgress";
 import { UploadCenterProvider } from "@/components/storage/UploadCenter";
 import { Suspense } from "react";
+import { resolveAppVersion } from "@/lib/app-version";
 import { APP_BACKGROUND, APP_DESCRIPTION, APP_NAME } from "@/lib/pwa";
 import { defaultUiTheme, themeBootScript } from "@/lib/theme/ui-theme";
 import "./globals.css";
@@ -40,6 +42,8 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         </Suspense>
         <DevUserSwitcher />
         <ElementInspector />
+        {/* Reopening the app after a new version was published reloads it (phones keep the old screen alive). */}
+        <AppUpdater version={resolveAppVersion(process.env)} />
       </body>
     </html>
   );
