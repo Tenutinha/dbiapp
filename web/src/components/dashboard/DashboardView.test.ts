@@ -126,3 +126,15 @@ describe("DashboardView with pages turned sideways", () => {
     expect(html).toContain("mt-14 scroll-mt-24 first:mt-0");
   });
 });
+
+describe("DashboardView with the descriptions in the summary", () => {
+  it("leaves each analysis's description out of the page and keeps its title", () => {
+    const html = renderToStaticMarkup(createElement(DashboardView, { template, data, totalRows: 10, notesInSummary: true }));
+    expect(html).toContain("Visão geral");
+    expect(html).not.toContain("Os números do período.");
+  });
+
+  it("shows the descriptions on the page by default", () => {
+    expect(render()).toContain("Os números do período.");
+  });
+});

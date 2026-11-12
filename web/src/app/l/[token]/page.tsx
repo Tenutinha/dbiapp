@@ -59,7 +59,7 @@ export default async function PublicSpacePage({ params, searchParams }: Props) {
   const chosenId = chooseDashboard(toc.flatMap((g) => g.items.map((i) => i.id)), requested);
   const chosen = chosenId ? await getPublishedDashboard(link.orgId, link.clientId, chosenId) : null;
   // Only what the frame of the page needs is awaited here; the data arrives inside the Suspense below.
-  const [template, outlines] = await Promise.all([chosen ? getTemplate(chosen.templateId) : null, loadOutlines(toc)]);
+  const [template, { outlines, notes }] = await Promise.all([chosen ? getTemplate(chosen.templateId) : null, loadOutlines(toc)]);
   const next = chosen ? nextItem(toc, chosen.instanceId) : null;
   const previous = chosen ? previousItem(toc, chosen.instanceId) : null;
 
@@ -68,7 +68,6 @@ export default async function PublicSpacePage({ params, searchParams }: Props) {
       kicker={link.clientName ? `${link.orgName} · ${link.clientName}` : link.orgName}
       meta={chosen.publishedAt ? `Atualizado em ${formatDateLong(chosen.publishedAt)}` : undefined}
       title={chosen.name}
-      lead={chosen.description ?? template?.description}
     />
   ) : null;
 
@@ -132,7 +131,7 @@ export default async function PublicSpacePage({ params, searchParams }: Props) {
           </div>
         }
       >
-        <SidebarNav toc={toc} currentId={chosen?.instanceId ?? null} outlines={outlines} hrefFor={hrefFor} />
+        <SidebarNav toc={toc} currentId={chosen?.instanceId ?? null} outlines={outlines} notes={notes} hrefFor={hrefFor} />
       </SidebarShell>
     </ThemeScope>
   );

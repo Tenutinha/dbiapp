@@ -29,6 +29,11 @@ interface DashboardViewProps {
     /** The page's filters and picked items, as a query string. */
     search: string;
   };
+  /**
+   * The sidebar summary shows each analysis's description when the mouse rests on it: the page then
+   * leaves the descriptions out and keeps the section titles small, so the numbers come first.
+   */
+  notesInSummary?: boolean;
 }
 
 function VisualBody({ template, result }: { template: Template; result: VisualResult }) {
@@ -177,23 +182,26 @@ export function VisualGrid({ template, results: all, layout }: VisualGridProps) 
   );
 }
 
-export function DashboardView({ template, data, totalRows, later }: DashboardViewProps) {
+export function DashboardView({ template, data, totalRows, later, notesInSummary = false }: DashboardViewProps) {
   const { loose, sections } = buildSections(template, data.visuals);
   const pending = new Set(later?.pending ?? []);
   // Only previews get here with analyses off the air: readers never receive them (withoutHidden).
   const off = offTheAir(template);
   const header = (s: (typeof sections)[number]): React.ReactNode => (
-    <header className="mb-5 border-t border-line pt-6">
+    <header className={notesInSummary ? "mb-4 border-t border-line pt-4" : "mb-5 border-t border-line pt-6"}>
       {s.number !== null && <p className="font-mono text-xs tabular-nums text-muted">{String(s.number).padStart(2, "0")}</p>}
       {off.has(s.analysis.id) && (
         <p className="w-fit rounded bg-accent/15 px-2 py-0.5 text-xs font-medium text-accent">
           {s.analysis.hidden ? "Oculta" : "Fora do sumário"}: fora do ar para quem vê o dashboard
         </p>
       )}
-      <h2 id={`${s.anchor}-titulo`} className="mt-1 font-serif text-3xl leading-tight tracking-[-0.01em] sm:text-4xl">
+      <h2
+        id={`${s.anchor}-titulo`}
+        className={`mt-1 font-serif leading-tight tracking-[-0.01em] ${notesInSummary ? "text-2xl sm:text-3xl" : "text-3xl sm:text-4xl"}`}
+      >
         {s.analysis.title}
       </h2>
-      {s.analysis.description && <p className="mt-3 max-w-3xl leading-relaxed text-text/75">{s.analysis.description}</p>}
+      {s.analysis.description && !notesInSummary && <p className="mt-3 max-w-3xl leading-relaxed text-text/75">{s.analysis.description}</p>}
     </header>
   );
   const sideways = template.paging === "horizontal";

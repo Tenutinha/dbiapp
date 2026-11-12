@@ -138,12 +138,11 @@ export function DashboardSwitch({ children }: { children: React.ReactNode }) {
     <>
       {name !== null && (
         <div className="dash-enter">
-          <header className="pb-10 pt-8 lg:pt-14">
+          <header className="pb-6 pt-6 lg:pt-8">
             <div className="border-b border-line pb-4">
               <div className={`${BLOCK} h-4 w-48`} />
             </div>
-            <h1 className="mt-8 font-serif text-[clamp(2.6rem,6.5vw,5.75rem)] font-normal leading-[1.02] tracking-[-0.02em]">{name}</h1>
-            <div className={`${BLOCK} mt-6 h-6 max-w-3xl`} />
+            <h1 className="mt-5 font-serif text-[clamp(2rem,3.6vw,3rem)] font-normal leading-[1.05] tracking-[-0.02em]">{name}</h1>
           </header>
           <DashboardSkeleton />
         </div>

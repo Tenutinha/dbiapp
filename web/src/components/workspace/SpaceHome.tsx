@@ -12,7 +12,7 @@ import { DashboardArrival } from "./DashboardArrival";
 import { DashboardBody, DashboardFallback } from "./DashboardBody";
 import { NextDashboard } from "./NextDashboard";
 import { DashboardOpener, DashboardSwitch } from "./switching";
-import type { Outlines } from "./SidebarNav";
+import type { Notes, Outlines } from "./SidebarNav";
 import { MainHeader, Workspace } from "./Workspace";
 
 type SearchParams = Record<string, string | string[] | undefined>;
@@ -38,26 +38,39 @@ async function openable(instanceId: string, org: OrgRef, client: ClientRef | nul
   }
 }
 
+interface TemplateSummary {
+  outline: SummaryItem[];
+  description: string | null;
+}
+
 /**
- * Analyses of every dashboard in the summary, for the sidebar. A template that cannot be read only
- * leaves its dashboard without nested analyses; the page still opens.
+ * Analyses of every dashboard in the summary, and what each dashboard is about (its own description,
+ * else its template's), for the sidebar and its hover notes. A template that cannot be read only leaves
+ * its dashboard without nested analyses; the page still opens.
  */
-export async function loadOutlines(toc: readonly TocGroup[]): Promise<Outlines> {
+export async function loadOutlines(toc: readonly TocGroup[]): Promise<{ outlines: Outlines; notes: Notes }> {
   const items = toc.flatMap((g) => g.items);
   const templateIds = [...new Set(items.map((i) => i.templateId))];
   const loaded = await Promise.all(
-    templateIds.map(async (id): Promise<[string, SummaryItem[]]> => {
+    templateIds.map(async (id): Promise<[string, TemplateSummary]> => {
       try {
         const template = await getTemplate(id);
-        return [id, template ? buildOutline(template) : []];
+        return [id, { outline: template ? buildOutline(template) : [], description: template?.description.trim() || null }];
       } catch (err) {
         console.error(`[space] could not read the summary of template ${id}`, err);
-        return [id, []];
+        return [id, { outline: [], description: null }];
       }
     }),
   );
   const byTemplate = new Map(loaded);
-  return Object.fromEntries(items.map((i) => [i.id, byTemplate.get(i.templateId) ?? []]));
+  const outlines: Outlines = Object.fromEntries(items.map((i) => [i.id, byTemplate.get(i.templateId)?.outline ?? []]));
+  const notes: Notes = Object.fromEntries(
+    items.flatMap((i) => {
+      const note = i.description?.trim() || byTemplate.get(i.templateId)?.description;
+      return note ? [[i.id, note]] : [];
+    }),
+  );
+  return { outlines, notes };
 }
 
 /**
@@ -79,7 +92,7 @@ export async function SpaceHome({ org, client, membership, user, searchParams }:
   }
 
   // Only what the frame of the page needs is awaited here; the data arrives inside the Suspense below.
-  const [template, outlines] = await Promise.all([getTemplate(access.templateId), loadOutlines(space.toc)]);
+  const [template, { outlines, notes }] = await Promise.all([getTemplate(access.templateId), loadOutlines(space.toc)]);
   const anchorsKey = template ? buildOutline(template).map((i) => i.anchor).join("|") : "";
   const next = nextItem(space.toc, access.instanceId);
   const previous = previousItem(space.toc, access.instanceId);
@@ -91,7 +104,6 @@ export async function SpaceHome({ org, client, membership, user, searchParams }:
       kicker={client ? `${org.name} · ${client.name}` : org.name}
       meta={`Atualizado em ${formatDateLong(access.publishedAt)}`}
       title={access.name}
-      lead={access.description ?? template?.description}
       links={shareLink}
     />
   );
@@ -102,6 +114,7 @@ export async function SpaceHome({ org, client, membership, user, searchParams }:
       currentId={access.instanceId}
       userName={user.name}
       outlines={outlines}
+      notes={notes}
     >
       <DashboardArrival dashboardId={access.instanceId} />
       <DashboardSwitch>
