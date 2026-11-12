@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import type { ExplorerItem } from "@/components/storage/api";
 import { FileExplorer } from "@/components/storage/FileExplorer";
-import { fileKind, parentOf } from "@/lib/storage-explorer";
+import { clientScopeOf, fileKind, parentOf } from "@/lib/storage-explorer";
 import type { FilePick } from "./types";
 
 interface FilePickerDialogProps {
@@ -57,6 +57,7 @@ export function FilePickerDialog({ org, table, folder, onPick, onClose }: FilePi
           org={org.slug}
           orgName={org.name}
           initialFolder={folder}
+          root={clientScopeOf(folder)}
           pick={{
             label: table,
             multiple: true,

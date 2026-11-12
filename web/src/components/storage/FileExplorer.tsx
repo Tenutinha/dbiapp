@@ -36,6 +36,11 @@ interface FileExplorerProps {
   onFolderChange?: (folder: string) => void;
   /** Choosing a file (or files) for a dashboard table instead of only browsing. */
   pick?: PickMode;
+  /**
+   * Top folder it shows: "" = the whole organization; a client's folder ("clientes/<slug>") when opened
+   * from that client, so the other clients' folders never show up.
+   */
+  root?: string;
 }
 
 const VIEW_KEY = "dbi:arquivos-visao";
@@ -62,8 +67,8 @@ function fromInput(files: File[]): DroppedFile[] {
  * The organization's storage as a desktop file manager: folder tree, details or large icons, Windows-like
  * selection, drag to move, drop files or whole folders anywhere to upload (with a queue), rename, delete.
  */
-export function FileExplorer({ org, orgName, initialFolder, onFolderChange, pick }: FileExplorerProps) {
-  const ex = useExplorer(org, initialFolder, onFolderChange);
+export function FileExplorer({ org, orgName, initialFolder, onFolderChange, pick, root: scope = "" }: FileExplorerProps) {
+  const ex = useExplorer(org, initialFolder, onFolderChange, scope);
   const uploads = useUploadCenter();
   const { stored } = ex;
   // Files landing in this organization refresh the open listing (the queue itself lives above every page).
@@ -231,6 +236,7 @@ export function FileExplorer({ org, orgName, initialFolder, onFolderChange, pick
       className="relative flex h-full min-h-[520px] flex-col overflow-hidden rounded-xl border border-line bg-card text-text outline-none"
     >
       <ExplorerToolbar
+        root={scope}
         folder={ex.folder} orgName={orgName} clientNames={clientNames}
         canBack={ex.canBack} canForward={ex.canForward} query={query} view={view} busy={ex.busy}
         onBack={ex.goBack} onForward={ex.goForward} onUp={ex.goUp} onOpen={ex.go} onQuery={setQuery} onView={chooseView}
@@ -240,7 +246,7 @@ export function FileExplorer({ org, orgName, initialFolder, onFolderChange, pick
 
       <div className="grid min-h-0 flex-1 grid-cols-[220px_1fr] max-md:grid-cols-1">
         <aside className="min-h-0 overflow-hidden border-r border-line bg-bg/40 max-md:hidden">
-          <ExplorerTree org={org} orgName={orgName} clientNames={clientNames} current={ex.folder} version={ex.version} onOpen={ex.go} onDrop={drop} />
+          <ExplorerTree org={org} orgName={orgName} clientNames={clientNames} current={ex.folder} version={ex.version} onOpen={ex.go} onDrop={drop} root={scope} />
         </aside>
         <div
           className="relative min-h-0 overflow-auto"
@@ -330,6 +336,7 @@ export function FileExplorer({ org, orgName, initialFolder, onFolderChange, pick
       )}
       {dialog === "move" && (
         <MoveDialog
+          root={scope}
           org={org} orgName={orgName} clientNames={clientNames} count={selectedItems.length} start={ex.folder} busy={ex.busy}
           onCancel={() => {
             setDialog(null);

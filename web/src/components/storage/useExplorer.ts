@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { joinPath, parentOf, type ExplorerMeta } from "@/lib/storage-explorer";
+import { joinPath, parentOf, type ExplorerMeta, withinRoot } from "@/lib/storage-explorer";
 import { explorerApi, type BatchResult, type ExplorerFolder, type ExplorerItem, type FileInsight } from "./api";
 import { forgetFolders, loadFolder, loadInsights, loadMeta, peekFolder, peekInsights } from "./cache";
 
@@ -17,8 +17,8 @@ function batchNotice(verb: string, res: BatchResult): Notice {
 }
 
 /** Navigation (with back/forward history), listing, Windows-like selection and the organizing actions. */
-export function useExplorer(org: string, initialFolder: string, onFolderChange?: (folder: string) => void) {
-  const [folder, setFolder] = useState(initialFolder);
+export function useExplorer(org: string, initialFolder: string, onFolderChange?: (folder: string) => void, root = "") {
+  const [folder, setFolder] = useState(withinRoot(initialFolder, root) ? initialFolder : root);
   const [back, setBack] = useState<string[]>([]);
   const [forward, setForward] = useState<string[]>([]);
   const [data, setData] = useState<ExplorerFolder | null>(() => peekFolder(org, initialFolder) ?? null);
@@ -101,7 +101,8 @@ export function useExplorer(org: string, initialFolder: string, onFolderChange?:
   }, [org, folder, reload]);
 
   const go = useCallback((path: string, history: "push" | "back" | "forward" = "push") => {
-    if (path === folder) return;
+    // A client's explorer never leaves that client's folder.
+    if (path === folder || !withinRoot(path, root)) return;
     if (history === "push") {
       setBack((b) => [...b, folder]);
       setForward([]);
@@ -111,7 +112,7 @@ export function useExplorer(org: string, initialFolder: string, onFolderChange?:
     anchor.current = null;
     setRenaming(null);
     onFolderChange?.(path);
-  }, [folder, onFolderChange]);
+  }, [folder, onFolderChange, root]);
 
   const goBack = useCallback(() => {
     const prev = back[back.length - 1];
@@ -129,7 +130,7 @@ export function useExplorer(org: string, initialFolder: string, onFolderChange?:
     go(next, "forward");
   }, [forward, folder, go]);
 
-  const goUp = useCallback(() => folder !== "" && go(parentOf(folder)), [folder, go]);
+  const goUp = useCallback(() => folder !== root && go(parentOf(folder)), [folder, go, root]);
 
   /** Click / Ctrl+click / Shift+click over the items in their shown order. */
   const select = useCallback((item: ExplorerItem, e: { ctrlKey: boolean; metaKey: boolean; shiftKey: boolean }, order: ExplorerItem[]) => {

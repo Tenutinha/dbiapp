@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { clientSlugOf, CLIENTS_DIR, joinPath } from "@/lib/storage-explorer";
+import { clientSlugOf, CLIENTS_DIR, joinPath, levelsFrom } from "@/lib/storage-explorer";
 import { loadFolder, peekFolder, prefetchFolder } from "./cache";
 import { FileIcon } from "./FileIcon";
 
@@ -16,6 +16,8 @@ interface ExplorerTreeProps {
   onOpen: (path: string) => void;
   /** Something was dropped on a folder (items being moved or files from the computer). */
   onDrop: (e: React.DragEvent, target: string) => void;
+  /** Top of the tree: "" = the organization; a client's folder when opened from that client. */
+  root?: string;
 }
 
 /** Label of a folder: a client's folder shows the client's name. */
@@ -30,13 +32,9 @@ export function folderLabel(path: string, clientNames: ReadonlyMap<string, strin
 
 const foldersIn = (data: { entries: { name: string; folder: boolean }[] }): string[] => data.entries.filter((i) => i.folder).map((i) => i.name);
 
-const ancestors = (path: string): string[] => {
-  const parts = path.split("/").filter(Boolean);
-  return ["", ...parts.map((_, i) => parts.slice(0, i + 1).join("/"))];
-};
-
 /** Folder tree on the left of the explorer, loaded level by level as folders are expanded. */
-export function ExplorerTree({ org, orgName, clientNames, current, version, onOpen, onDrop }: ExplorerTreeProps) {
+export function ExplorerTree({ org, orgName, clientNames, current, version, onOpen, onDrop, root = "" }: ExplorerTreeProps) {
+  const ancestors = (path: string): string[] => levelsFrom(path, root);
   // Levels already listed somewhere on the page show at once.
   const [children, setChildren] = useState<Map<string, string[]>>(() => {
     const known = new Map<string, string[]>();
@@ -60,8 +58,8 @@ export function ExplorerTree({ org, orgName, clientNames, current, version, onOp
 
   // The way to the open folder is always expanded.
   useEffect(() => {
-    setOpen((s) => new Set([...s, ...ancestors(current)]));
-  }, [current]);
+    setOpen((s) => new Set([...s, ...levelsFrom(current, root)]));
+  }, [current, root]);
 
   // (Re)load every expanded level after a change.
   useEffect(() => {
@@ -124,7 +122,7 @@ export function ExplorerTree({ org, orgName, clientNames, current, version, onOp
 
   return (
     <nav aria-label="Pastas" className="min-h-0 overflow-auto py-2 pl-1 pr-2">
-      <ul>{node("", 0)}</ul>
+      <ul>{node(root, 0)}</ul>
     </nav>
   );
 }

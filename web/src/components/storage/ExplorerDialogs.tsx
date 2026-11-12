@@ -71,15 +71,17 @@ interface MoveDialogProps {
   busy: boolean;
   onConfirm: (target: string) => void;
   onCancel: () => void;
+  /** The explorer's scope: destinations only inside it. */
+  root?: string;
 }
 
 /** "Mover para…": pick the destination folder in a tree. */
-export function MoveDialog({ org, orgName, clientNames, count, start, busy, onConfirm, onCancel }: MoveDialogProps) {
+export function MoveDialog({ org, orgName, clientNames, count, start, busy, onConfirm, onCancel, root = "" }: MoveDialogProps) {
   const [target, setTarget] = useState(start);
   return (
     <Overlay title={`Mover ${count === 1 ? "1 item" : `${count} itens`} para…`} onCancel={onCancel}>
       <div className="mt-3 h-64 overflow-hidden rounded-lg border border-line">
-        <ExplorerTree org={org} orgName={orgName} clientNames={clientNames} current={target} version={0} onOpen={setTarget} onDrop={(e) => e.preventDefault()} />
+        <ExplorerTree org={org} orgName={orgName} clientNames={clientNames} current={target} version={0} onOpen={setTarget} onDrop={(e) => e.preventDefault()} root={root} />
       </div>
       <p className="mt-2 truncate text-xs text-muted">Destino: <b className="text-text">{folderLabel(target, clientNames, orgName)}</b> ({target || "/"})</p>
       <div className="mt-4 flex justify-end gap-2">

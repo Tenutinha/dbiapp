@@ -98,7 +98,11 @@ export default async function AdminPage({ params, searchParams }: {
       {/* Opened in the browser only (?arquivos=), so it is instant: no new request for this page. */}
       {orgActions(ctx).has("manageData") && (
         <Suspense>
-          <FilesModal orgSlug={ctx.org.slug} orgName={ctx.org.name} />
+          <FilesModal
+            orgSlug={ctx.org.slug}
+            orgName={ctx.org.name}
+            clients={groups.flatMap((g) => (g.slug ? [{ slug: g.slug, name: g.name }] : []))}
+          />
         </Suspense>
       )}
       {typeof sumario === "string" && /^[a-z0-9-]{1,40}$/.test(sumario) && (

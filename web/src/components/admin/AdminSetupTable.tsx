@@ -298,6 +298,7 @@ function SpaceBlock({
             <FilesLink
               orgSlug={org.slug}
               folder={group.scope === ORG_SCOPE ? "" : `clientes/${group.slug}`}
+              scope={group.scope === ORG_SCOPE ? "" : `clientes/${group.slug}`}
               title={`Arquivos de ${group.scope === ORG_SCOPE ? org.name : group.name}`}
               className={`flex items-center gap-1 ${SUBTLE_LINK}`}
             >

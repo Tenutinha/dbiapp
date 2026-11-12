@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef } from "react";
+import { levelsFrom } from "@/lib/storage-explorer";
 import { folderLabel } from "./ExplorerTree";
 
 export type ViewMode = "details" | "icons";
@@ -36,6 +37,8 @@ interface ExplorerToolbarProps {
   onOrganize: () => void;
   statusFilter: StatusFilter;
   onStatusFilter: (f: StatusFilter) => void;
+  /** Top folder the explorer may show ("" = the organization; a client's folder). */
+  root: string;
 }
 
 const NAV = "grid size-8 place-items-center rounded-md text-muted transition hover:bg-text/5 hover:text-text disabled:opacity-30 disabled:hover:bg-transparent";
@@ -49,9 +52,8 @@ function Icon({ d, size = 16 }: { d: string; size?: number }) {
 }
 
 /** Trail of the open folder: every level is clickable, client folders show the client's name. */
-function Crumbs({ folder, orgName, clientNames, onOpen }: Pick<ExplorerToolbarProps, "folder" | "orgName" | "clientNames" | "onOpen">) {
-  const parts = folder.split("/").filter(Boolean);
-  const levels = ["", ...parts.map((_, i) => parts.slice(0, i + 1).join("/"))];
+function Crumbs({ folder, orgName, clientNames, onOpen, root }: Pick<ExplorerToolbarProps, "folder" | "orgName" | "clientNames" | "onOpen" | "root">) {
+  const levels = levelsFrom(folder, root);
   return (
     <nav aria-label="Local" className="flex min-w-0 flex-1 items-center overflow-x-auto rounded-md border border-line bg-bg px-1.5 py-1 text-[13px]">
       {levels.map((path, i) => (
@@ -85,8 +87,8 @@ export function ExplorerToolbar(p: ExplorerToolbarProps) {
       <div className="flex items-center gap-1">
         <button type="button" onClick={p.onBack} disabled={!p.canBack} aria-label="Voltar" title="Voltar (Alt+←)" className={NAV}><Icon d="M15 18l-6-6 6-6" /></button>
         <button type="button" onClick={p.onForward} disabled={!p.canForward} aria-label="Avançar" title="Avançar (Alt+→)" className={NAV}><Icon d="M9 18l6-6-6-6" /></button>
-        <button type="button" onClick={p.onUp} disabled={p.folder === ""} aria-label="Pasta acima" title="Pasta acima (Backspace)" className={NAV}><Icon d="M12 19V5M5 12l7-7 7 7" /></button>
-        <Crumbs folder={p.folder} orgName={p.orgName} clientNames={p.clientNames} onOpen={p.onOpen} />
+        <button type="button" onClick={p.onUp} disabled={p.folder === p.root} aria-label="Pasta acima" title="Pasta acima (Backspace)" className={NAV}><Icon d="M12 19V5M5 12l7-7 7 7" /></button>
+        <Crumbs folder={p.folder} orgName={p.orgName} clientNames={p.clientNames} onOpen={p.onOpen} root={p.root} />
         <label className="relative hidden w-56 shrink-0 sm:block">
           <span className="sr-only">Buscar nesta pasta</span>
           <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted"><Icon d="M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-3.5-3.5" size={14} /></span>

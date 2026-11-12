@@ -1,6 +1,7 @@
 "use client";
 
 import { FilesLink } from "@/components/admin/FilesModal";
+import { clientScopeOf } from "@/lib/storage-explorer";
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { DataFilterPanel } from "../DataFilterPanel";
 import { FilePickerDialog } from "./FilePickerDialog";
@@ -83,7 +84,7 @@ export function DataConnector({ instanceId, org, tables, initialFolder, canUploa
             Relacione cada tabela a um ou mais arquivos já guardados no armazenamento (vários arquivos do mesmo layout, como um
             por ano, alimentam a mesma tabela); conferimos as colunas de cada um antes de engatar. Para
             enviar ou organizar arquivos, use o explorador:{" "}
-            <FilesLink orgSlug={org.slug} folder={initialFolder} className="font-semibold text-brand-2 hover:underline">📁 Arquivos ↗</FilesLink>
+            <FilesLink orgSlug={org.slug} folder={initialFolder} scope={clientScopeOf(initialFolder)} className="font-semibold text-brand-2 hover:underline">📁 Arquivos ↗</FilesLink>
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

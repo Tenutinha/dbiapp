@@ -8,6 +8,9 @@ import {
   isDashboardsPath,
   isReadOnlyPath,
   isSystemPath,
+  levelsFrom,
+  clientScopeOf,
+  withinRoot,
   pickableItems,
   joinPath,
   parentOf,
@@ -229,5 +232,34 @@ describe("dashboards folder", () => {
     expect(targetProblem("clientes/martinello/dashboards", new Set(["martinello"]))).toMatch(/publicar/);
     expect(canMoveTo({ path: "clientes/martinello/dashboards/abc/v1/t.parquet", folder: false }, "clientes/martinello")).toMatch(/publicar/);
     expect(canMoveTo({ path: "clientes/martinello/a.csv", folder: false }, "clientes/martinello/dashboards")).toMatch(/publicar/);
+  });
+});
+
+describe("explorer scope", () => {
+  it("keeps a client's explorer inside that client's folder", () => {
+    expect(withinRoot("clientes/martinello/fiscal", "clientes/martinello")).toBe(true);
+    expect(withinRoot("clientes/martinello", "clientes/martinello")).toBe(true);
+    expect(withinRoot("clientes/posto-aldo", "clientes/martinello")).toBe(false);
+    expect(withinRoot("clientes/martinello-2", "clientes/martinello")).toBe(false);
+    expect(withinRoot("clientes", "clientes/martinello")).toBe(false);
+    expect(withinRoot("", "clientes/martinello")).toBe(false);
+    expect(withinRoot("clientes/posto-aldo", "")).toBe(true);
+  });
+
+  it("lists the levels from the scope down", () => {
+    expect(levelsFrom("clientes/martinello/fiscal/nfe", "clientes/martinello")).toEqual([
+      "clientes/martinello", "clientes/martinello/fiscal", "clientes/martinello/fiscal/nfe",
+    ]);
+    expect(levelsFrom("clientes/martinello", "")).toEqual(["", "clientes", "clientes/martinello"]);
+    expect(levelsFrom("clientes/outro", "clientes/martinello")).toEqual(["clientes/martinello"]);
+  });
+});
+
+describe("clientScopeOf", () => {
+  it("is the client folder of a path, or the whole organization outside clients", () => {
+    expect(clientScopeOf("clientes/martinello/fiscal")).toBe("clientes/martinello");
+    expect(clientScopeOf("clientes/martinello")).toBe("clientes/martinello");
+    expect(clientScopeOf("")).toBe("");
+    expect(clientScopeOf("fiscal/nfe")).toBe("");
   });
 });

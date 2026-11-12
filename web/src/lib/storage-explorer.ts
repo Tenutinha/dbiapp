@@ -230,3 +230,24 @@ export function pickableItems<T extends { folder: boolean }>(selected: readonly 
   if (selected.length === 0 || (!multiple && selected.length > 1)) return [];
   return selected.every((i) => !i.folder && accept(i)) ? [...selected] : [];
 }
+
+/**
+ * Whether `path` is inside the explorer's scope: "" = the whole organization; "clientes/<slug>" = one
+ * client's folder (the explorer opened from that client never shows another client's folders).
+ */
+export function withinRoot(path: string, root: string): boolean {
+  return root === "" || path === root || path.startsWith(`${root}/`);
+}
+
+/** The folders from the scope down to `path`, in order (the tree's open branch, the trail on top). */
+export function levelsFrom(path: string, root: string): string[] {
+  if (!withinRoot(path, root)) return [root];
+  const below = path.slice(root.length).split("/").filter(Boolean);
+  return [root, ...below.map((_, i) => joinPath(root, below.slice(0, i + 1).join("/")))];
+}
+
+/** The client folder a path is in ("clientes/<slug>"), or "" outside every client: the scope of an explorer opened there. */
+export function clientScopeOf(path: string): string {
+  const slug = clientSlugOf(path);
+  return slug ? `${CLIENTS_DIR}/${slug}` : "";
+}
