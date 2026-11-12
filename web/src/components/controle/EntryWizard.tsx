@@ -66,7 +66,7 @@ const KINDS: Record<"venda" | "despesa", Kind> = {
     body: (a) => {
       const purchase: PurchaseInput = {
         purchasedOn: a.day, totalCents: a.totalCents, paymentMethod: a.payment, supplier: a.name,
-        notes: null, receipt: null, fromReceipt: false, status: a.status, items: [],
+        notes: null, receipt: null, fromReceipt: false, status: a.status, nfceKey: null, items: [],
       };
       return { action: "purchaseSave", purchase };
     },

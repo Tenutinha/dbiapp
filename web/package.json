@@ -23,6 +23,7 @@
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.119.0",
     "echarts": "^6.1.0",
+    "jsqr": "1.4.0",
     "nanoid": "^6.0.2",
     "next": "15.5.29",
     "postgres": "^4.1.0",

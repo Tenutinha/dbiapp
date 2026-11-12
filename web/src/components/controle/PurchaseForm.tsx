@@ -26,6 +26,8 @@ interface PurchaseFormProps {
   fromReceipt: boolean;
   /** Set when correcting a saved purchase: it is rewritten instead of created (its receipt is kept). */
   editId?: string;
+  /** The NFC-e it came from, when it was read by the QR Code (saved with it, so the note is not entered twice). */
+  nfceKey?: string | null;
   onSaved: () => void;
   onCancel: () => void;
 }
@@ -76,12 +78,13 @@ function build(fields: { day: string; supplier: string; total: string; payment: 
     receipt: null,
     fromReceipt: false,
     status: fields.status,
+    nfceKey: null,
     items,
   };
 }
 
 /** Checking screen of a purchase: everything the reader found is editable before it is saved. */
-export function PurchaseForm({ api, today, draft, receipt, fromReceipt, editId, onSaved, onCancel }: PurchaseFormProps) {
+export function PurchaseForm({ api, today, draft, receipt, fromReceipt, editId, nfceKey = null, onSaved, onCancel }: PurchaseFormProps) {
   const [day, setDay] = useState(draft.purchasedOn ?? today);
   const [supplier, setSupplier] = useState(draft.supplier ?? "");
   const [total, setTotal] = useState(moneyInput(draft.totalCents));
@@ -116,7 +119,7 @@ export function PurchaseForm({ api, today, draft, receipt, fromReceipt, editId, 
     setError(null);
     try {
       if (editId) await call(api, { action: "purchaseUpdate", id: editId, purchase: built });
-      else await call(api, { action: "purchaseSave", purchase: { ...built, receipt, fromReceipt: fromReceipt && receipt !== null } });
+      else await call(api, { action: "purchaseSave", purchase: { ...built, receipt, nfceKey, fromReceipt: fromReceipt && (receipt !== null || nfceKey !== null) } });
       onSaved();
     } catch (err) {
       setError(err instanceof ControleError ? err.message : "Não foi possível salvar. Tente de novo.");

@@ -66,7 +66,7 @@ export async function listPurchases(clientId: string, days: readonly string[], s
   const list = dayList(days);
   const rows = await sql<Authored<Purchase>[]>`
     SELECT p.id, u.name AS "authorName", to_jsonb(u) ->> 'avatar_key' AS "authorAvatarKey", to_char(p.purchased_on, 'YYYY-MM-DD') AS "purchasedOn", p.supplier,
-           p.total_cents::float8 AS "totalCents", p.payment_method AS "paymentMethod", p.notes, p.status,
+           p.total_cents::float8 AS "totalCents", p.payment_method AS "paymentMethod", p.notes, p.status, p.nfce_key AS "nfceKey",
            (p.receipt_path IS NOT NULL) AS "hasReceipt", (p.source = 'ai') AS "fromReceipt",
            to_char(p.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US') AS "createdAt",
            COALESCE((
@@ -85,10 +85,10 @@ export async function insertPurchase(space: Space, userId: string, input: Purcha
   return sql.begin(async (tx) => {
     const [row] = await tx<{ id: string }[]>`
       INSERT INTO controle_purchases
-        (organization_id, client_id, purchased_on, supplier, total_cents, payment_method, notes, status, receipt_path, receipt_mime, source, created_by)
+        (organization_id, client_id, purchased_on, supplier, total_cents, payment_method, notes, status, receipt_path, receipt_mime, source, nfce_key, created_by)
       VALUES (${space.orgId}, ${space.clientId}, ${input.purchasedOn}::date, ${input.supplier}, ${input.totalCents},
               ${input.paymentMethod}, ${input.notes}, ${input.status}, ${input.receipt?.path ?? null}, ${input.receipt?.mime ?? null},
-              ${input.fromReceipt ? "ai" : "manual"}, ${userId})
+              ${input.fromReceipt ? "ai" : "manual"}, ${input.nfceKey}, ${userId})
       RETURNING id`;
     const lines = input.items.map((item, position) => ({
       purchase_id: row.id,
@@ -120,6 +120,13 @@ export async function findReceipt(clientId: string, purchaseId: string): Promise
 export async function receiptInUse(clientId: string, path: string): Promise<boolean> {
   const [row] = await sql<{ used: boolean }[]>`
     SELECT EXISTS (SELECT 1 FROM controle_purchases WHERE client_id = ${clientId} AND receipt_path = ${path}) AS used`;
+  return row.used;
+}
+
+/** Whether an NFC-e (by its access key) is already a purchase of this client. */
+export async function nfceInUse(clientId: string, key: string): Promise<boolean> {
+  const [row] = await sql<{ used: boolean }[]>`
+    SELECT EXISTS (SELECT 1 FROM controle_purchases WHERE client_id = ${clientId} AND nfce_key = ${key}) AS used`;
   return row.used;
 }
 

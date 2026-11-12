@@ -104,6 +104,8 @@ export const purchaseInput = z.object({
   fromReceipt: z.boolean().default(false),
   /** "pendente" until someone confirms the money went out; entries sent without it are taken as done. */
   status: z.enum(STATUSES).default("efetivado"),
+  /** Access key of the NFC-e it came from (read from the receipt's QR Code), so the same note is never entered twice. */
+  nfceKey: z.string().regex(/^\d{44}$/).nullish().transform((v) => v ?? null),
   items: z.array(purchaseItemInput).max(MAX_ITEMS),
 });
 
@@ -160,6 +162,8 @@ export interface Purchase {
   hasReceipt: boolean;
   fromReceipt: boolean;
   status: EntryStatus;
+  /** Set when it came from an NFC-e's QR Code. */
+  nfceKey: string | null;
   /** When it was recorded (UTC, sortable text) — orders entries of the same day. */
   createdAt: string;
   items: PurchaseItem[];
