@@ -55,7 +55,7 @@ async function loadAdmin(orgSlug: string) {
   const spaceLinks = Object.fromEntries(
     groups.map((g) => {
       const link = activeLink(links.filter((l) => (l.clientId ?? ORG_SCOPE) === g.scope));
-      return [g.scope, link ? { token: link.token, expiresAt: link.expiresAt ? new Date(link.expiresAt).toISOString() : null } : null];
+      return [g.scope, link ? { token: link.token, expiresAt: link.expiresAt ? new Date(link.expiresAt).toISOString() : null, hasPassword: link.hasPassword } : null];
     }),
   );
   return { ctx, people, groups, spaceLinks, pickerItems: templates.map(toPickerItem) };

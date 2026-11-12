@@ -150,6 +150,11 @@ outros espaços nem menu do usuário.
 - Clicar abre, na mesma linha, a validade (1, 7, 30 dias — padrão — ou sem expiração) e **Liberar**. Um link ativo
   por espaço: liberar de novo troca o link (o anterior para de abrir). Ligado, a linha mostra **Link público · até
   dd/mm** (endereço completo na dica), **Copiar** e **Desligar** (com confirmação).
+- **Com senha** (opcional, mín. 6 caracteres): ao liberar, marque "Com senha" e digite a senha (anote para enviar —
+  ela não é mostrada depois). Quem abre o link vê primeiro "Acesso protegido"; acertando, aquele navegador fica liberado
+  por 12 h (cookie só daquele link, assinado). Só o hash (scrypt) é guardado; 10 erros seguidos travam o link por
+  15 min. Trocar a senha = liberar um link novo (o antigo e as liberações dele param). Ligado, a linha mostra
+  **Link público · com senha**. Colunas `password_hash`, `failed_attempts`, `locked_until` (migração **019**).
 - Só admins da organização; a ação confere o espaço no servidor. Link revogado, expirado ou desconhecido → 404.
 - Tabela `space_share_links` (migração **014**). Sem ela, a coluna avisa que a migração falta e nenhum link abre.
 - Os links por dashboard (`/s/<token>`, página "Compartilhar" de cada dashboard) continuam existindo.

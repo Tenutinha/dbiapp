@@ -9,6 +9,8 @@ export interface SpaceLinkView {
   token: string;
   /** ISO date, or null when it never expires. */
   expiresAt: string | null;
+  /** Asks for a password before opening. */
+  hasPassword: boolean;
 }
 
 interface SpaceLinkControlProps {
@@ -66,6 +68,7 @@ export function SpaceLinkControl({ orgSlug, clientId, spaceName, link, published
   const [created, create, creating] = useActionState(createSpaceLinkAction, IDLE);
   const [revoked, revoke, revoking] = useActionState(revokeSpaceLinkAction, IDLE);
   const [mode, setMode] = useState<"idle" | "creating" | "revoking">("idle");
+  const [withPassword, setWithPassword] = useState(false);
   const feedback = [created, revoked].find((s) => s.message && !s.ok);
   const hidden = (
     <>
@@ -89,9 +92,9 @@ export function SpaceLinkControl({ orgSlug, clientId, spaceName, link, published
       <span className="flex items-center gap-1">
         <span
           className="flex items-center gap-1 text-xs text-ok"
-          title={`dbi.app.br${path}\nQuem tiver o link vê ${published} dashboard${published === 1 ? "" : "s"} de ${spaceName}, sem login · ${until}`}
+          title={`dbi.app.br${path}\nQuem tiver o link${link.hasPassword ? " e a senha" : ""} vê ${published} dashboard${published === 1 ? "" : "s"} de ${spaceName}, sem login · ${until}`}
         >
-          <LinkIcon /> Link público{link.expiresAt ? ` · até ${shortDate(link.expiresAt)}` : ""}
+          <LinkIcon /> Link público{link.hasPassword ? " · com senha" : ""}{link.expiresAt ? ` · até ${shortDate(link.expiresAt)}` : ""}
         </span>
         <CopyLink path={path} />
         <button type="button" onClick={() => setMode("revoking")} className={`${MINI} text-muted hover:text-danger`} title="Desligar o link">
@@ -101,18 +104,37 @@ export function SpaceLinkControl({ orgSlug, clientId, spaceName, link, published
     );
   } else if (mode === "creating") {
     body = (
-      <form action={create} className="flex items-center gap-1">
+      <form action={create} className="flex flex-col gap-1">
         {hidden}
-        <select
-          name="expiry"
-          defaultValue="30"
-          aria-label="Validade do link"
-          className="rounded border border-line bg-bg px-1 py-0.5 text-[11px]"
-        >
-          {EXPIRY_CHOICES.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
-        </select>
-        <button type="submit" disabled={creating} className={`${MINI} font-medium text-brand-2`}>{creating ? "…" : "Liberar"}</button>
-        <button type="button" onClick={() => setMode("idle")} className={`${MINI} text-muted`} aria-label="Cancelar">×</button>
+        <span className="flex items-center gap-1">
+          <select
+            name="expiry"
+            defaultValue="30"
+            aria-label="Validade do link"
+            className="rounded border border-line bg-bg px-1 py-0.5 text-[11px]"
+          >
+            {EXPIRY_CHOICES.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+          </select>
+          <label className="flex items-center gap-1 text-[11px] text-muted" title="Quem abrir o link precisa digitar a senha">
+            <input type="checkbox" name="withPassword" checked={withPassword} onChange={(e) => setWithPassword(e.target.checked)} />
+            Com senha
+          </label>
+          <button type="submit" disabled={creating} className={`${MINI} font-medium text-brand-2`}>{creating ? "…" : "Liberar"}</button>
+          <button type="button" onClick={() => setMode("idle")} className={`${MINI} text-muted`} aria-label="Cancelar">×</button>
+        </span>
+        {withPassword && (
+          <input
+            name="password"
+            type="text"
+            required
+            minLength={6}
+            maxLength={100}
+            autoComplete="new-password"
+            placeholder="Senha (mín. 6), anote para enviar"
+            aria-label="Senha do link"
+            className="w-56 rounded border border-line bg-bg px-1.5 py-0.5 text-[11px]"
+          />
+        )}
       </form>
     );
   } else {

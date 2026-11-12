@@ -8,7 +8,8 @@ import { AccessError } from "@/lib/auth";
 import {
   countAdmins, DuplicateSlugError, grantAccess, listClients, listOrgPeople, revokeClientRole, revokeOrgRole,
 } from "@/lib/data/organizations";
-import { createSpaceLink, revokeSpaceLinks, SpaceLinksUnavailableError } from "@/lib/data/space-links";
+import { createSpaceLink, LinkPasswordUnavailableError, revokeSpaceLinks, SpaceLinksUnavailableError } from "@/lib/data/space-links";
+import { hashPassword, MAX_PASSWORD, MIN_PASSWORD } from "@/lib/link-password";
 import { EXPIRY_CHOICES, expiryDate, type ExpiryChoice } from "@/lib/space-link";
 import { createClientWithFolder, renameClientWithFolder } from "@/lib/services/client-folders";
 import { clientNameSchema } from "@/lib/client-name";
@@ -190,19 +191,30 @@ function linkFailure(err: unknown): FormState {
   if (err instanceof SpaceLinksUnavailableError) {
     return { ok: false, message: "Acesso por link indisponível: aplique a migração 014 no banco." };
   }
+  if (err instanceof LinkPasswordUnavailableError) {
+    return { ok: false, message: "Link com senha indisponível: aplique a migração 019 no banco." };
+  }
   return failure(err);
 }
 
-/** Anyone with the link sees the space's published dashboards (read-only). A new link revokes the previous one. */
+/** Optional password of a space link (only its hash is stored). */
+const passwordSchema = z
+  .string()
+  .min(MIN_PASSWORD, `A senha precisa ter pelo menos ${MIN_PASSWORD} caracteres.`)
+  .max(MAX_PASSWORD, "Senha longa demais.")
+  .nullable();
+
+/** Anyone with the link (and its password, when set) sees the space's published dashboards, read-only. A new link revokes the previous one. */
 export async function createSpaceLinkAction(_prev: FormState, formData: FormData): Promise<FormState> {
   try {
     const { ctx, clientId } = await spaceOf(formData);
     const expiry = expirySchema.parse(formData.get("expiry") ?? "30");
+    const password = passwordSchema.parse(formData.get("withPassword") === "on" ? formData.get("password") : null);
     // 192 bits of entropy, URL-safe (same as the dashboards' guest links).
     const token = randomBytes(24).toString("base64url");
-    await createSpaceLink(ctx.org.id, clientId, ctx.user.id, token, expiryDate(expiry));
+    await createSpaceLink(ctx.org.id, clientId, ctx.user.id, token, expiryDate(expiry), password ? hashPassword(password) : null);
     revalidatePath(`/${ctx.org.slug}/admin`);
-    return { ok: true, message: "Link liberado." };
+    return { ok: true, message: password ? "Link liberado com senha." : "Link liberado." };
   } catch (err) {
     return linkFailure(err);
   }

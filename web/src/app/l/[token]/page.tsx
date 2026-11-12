@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { isValidPass, passCookieName } from "@/lib/link-password";
+import { PasswordGate } from "./PasswordGate";
 import { Suspense } from "react";
 import { DashboardArrival } from "@/components/workspace/DashboardArrival";
 import { DashboardBody, DashboardFallback } from "@/components/workspace/DashboardBody";
@@ -38,6 +41,10 @@ export default async function PublicSpacePage({ params, searchParams }: Props) {
   if (!/^[A-Za-z0-9_-]{20,64}$/.test(token)) notFound();
   const link = await resolveSpaceLink(token);
   if (!link) notFound();
+  // A link with a password opens only with the pass left by a right password (cookie of this link).
+  if (link.passwordHash && !isValidPass((await cookies()).get(passCookieName(link.linkId))?.value, link.linkId, link.passwordHash)) {
+    return <PasswordGate token={token} spaceName={link.clientName ?? link.orgName} />;
+  }
 
   const query = await searchParams;
   const requested = typeof query[DASHBOARD_PARAM] === "string" ? query[DASHBOARD_PARAM] : undefined;
