@@ -53,6 +53,8 @@ export async function fetchNfcePage(address: string): Promise<string> {
       console.error("[controle] nfce redirect left the SEFAZ", url.hostname);
       throw new UserFacingError(UNREACHABLE);
     }
+    // Printed QR Codes carry a raw "|" (p=chave|2|1|1|hash); some portals (MT's Tomcat) answer 400 to it.
+    url.search = url.search.replace(/\|/g, "%7C");
     let res: Response;
     try {
       res = await fetch(url, {
