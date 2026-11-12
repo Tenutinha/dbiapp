@@ -12,7 +12,7 @@ import { templateSchema } from "../../src/lib/templates/schema";
 
 type Json = Record<string, unknown>;
 interface Field { id: string; label: string; sql: string }
-interface Measure { id: string; label: string; sql: string; format: "currency" | "number" | "integer" | "percent" | "text" }
+interface Measure { id: string; label: string; sql: string; format: "currency" | "currency_exact" | "number" | "integer" | "percent" | "text" }
 interface Section { id: string; title: string; description: string; visuals: Json[] }
 
 const F = "registros";
@@ -583,12 +583,12 @@ function efdContrib(): Json {
   const totalsA: Measure[] = [
     { id: "a_notas", label: "Notas (A100)", sql: countWhen(notaValida), format: "integer" },
     { id: "a_itens", label: "Itens (A170)", sql: countWhen(isA170), format: "integer" },
-    { id: "a_vl_doc", label: "VL_DOC", sql: nota("VL_DOC"), format: "currency" },
+    { id: "a_vl_doc", label: "VL_DOC", sql: nota("VL_DOC"), format: "currency_exact" },
     ...["VL_ITEM", "VL_DESC", "VL_BC_PIS", "VL_PIS", "VL_BC_COFINS", "VL_COFINS"].map((name): Measure => (
-      { id: `a_${name.toLowerCase()}`, label: name, sql: itemServico(name), format: "currency" }
+      { id: `a_${name.toLowerCase()}`, label: name, sql: itemServico(name), format: "currency_exact" }
     )),
     ...["VL_PIS_RET", "VL_COFINS_RET", "VL_ISS"].map((name): Measure => (
-      { id: `a_${name.toLowerCase()}`, label: name, sql: nota(name), format: "currency" }
+      { id: `a_${name.toLowerCase()}`, label: name, sql: nota(name), format: "currency_exact" }
     )),
   ];
   measures.push(...totalsA);
