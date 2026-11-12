@@ -67,6 +67,8 @@ function rawSections(
     skipFilters?: (reg: string) => string[] | undefined;
     /** Visuals that open a block's section, before the listings of its records (e.g. its totals by month). */
     lead?: Readonly<Record<string, Json[]>>;
+    /** Blocks whose section keeps only those visuals: the listings of the raw records are left out. */
+    leadOnly?: ReadonlySet<string>;
   },
 ): Section[] {
   const blocks = BLOCKS[kind.templateId];
@@ -117,7 +119,9 @@ function rawSections(
       };
     });
     if (visuals.length === 0) continue;
+    if (opts.leadOnly?.has(block)) visuals.length = 0;
     visuals.unshift(...(opts.lead?.[block] ?? []));
+    if (visuals.length === 0) continue;
     const description = tableOfBlock[block] ? `Todos os períodos enviados, lidos da tabela ${tableOfBlock[block]}.` : "";
     sections.push({ id: `bloco_${block.toLowerCase()}`, title: `Bloco ${block} · ${name}`, description, visuals });
   }
@@ -251,10 +255,12 @@ interface Parts {
   skipFilters?: (reg: string) => string[] | undefined;
   /** Visuals that open the original-data section of a block (block code → visuals). */
   lead?: Readonly<Record<string, Json[]>>;
+  /** Blocks whose original-data section keeps only its `lead` visuals, without the raw record listings. */
+  leadOnly?: ReadonlySet<string>;
 }
 
 function build(kind: SpedKind, p: Parts): Json {
-  const raw = rawSections(kind, { skipFilters: p.skipFilters, lead: p.lead });
+  const raw = rawSections(kind, { skipFilters: p.skipFilters, lead: p.lead, leadOnly: p.leadOnly });
   const sections = [...p.panels, ...raw];
   return {
     id: kind.templateId,
@@ -701,6 +707,8 @@ function efdContrib(): Json {
     description: "Escrituração de PIS e COFINS completa: receitas, débitos, créditos e apuração em painéis, e todos os registros do arquivo com todos os campos para consulta.",
     fields, measures, filters: ["ano", "mes", "estabelecimento"], panels, panelGroup: "Painéis",
     lead: { A: [totalsByCompetencia] },
+    // The raw lines of bloco A (A001 … A990) say little on their own: its section is its totals.
+    leadOnly: new Set(["A"]),
   });
 }
 
