@@ -11,6 +11,8 @@ import {
   updateDefinition,
   type TemplateStatus,
 } from "@/lib/data/catalog";
+import { storage } from "@/lib/storage";
+import { splitParts } from "@/lib/storage-parts";
 import type { Template } from "@/lib/templates/schema";
 import { breakingChanges, checkUpdate, MAX_TEMPLATE_BYTES, parseTemplateJson } from "@/lib/templates/catalog-rules";
 import { catalogReady, getCatalogEntry } from "@/lib/templates/registry";
@@ -148,10 +150,16 @@ export async function removeTemplateAction(rawId: string): Promise<CatalogAction
   try {
     await requirePlatformAdmin();
     const id = templateId.parse(rawId);
-    if (!(await deleteUnusedTemplate(id))) {
+    const files = await deleteUnusedTemplate(id);
+    if (files === null) {
       return { ok: false, message: "Este dashboard está em uso ou é embutido — arquive em vez de excluir." };
     }
-    console.info(`[catalog] template deleted: ${id}`);
+    // The archived dashboards' data went with them; their files are cleaned up after (never blocks).
+    const keys = files.flatMap(splitParts);
+    if (keys.length > 0) {
+      await storage.remove(keys).catch((err: unknown) => console.error(`[catalog] files of ${id} not deleted`, err));
+    }
+    console.info(`[catalog] template deleted: ${id} (${keys.length} archived data file(s) removed)`);
     revalidateCatalog();
     return { ok: true, message: "Dashboard excluído." };
   } catch (err) {

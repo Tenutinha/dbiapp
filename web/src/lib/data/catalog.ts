@@ -16,9 +16,19 @@ export interface CatalogRow {
   version: number;
   status: TemplateStatus;
   builtIn: boolean;
-  /** Dashboards activated from this template, across all organizations. */
+  /** Dashboards in use (not archived) made from this template, across all organizations. */
   usage: number;
+  /** Where it is used: every dashboard made from it, archived ones included (they go with a deletion). */
+  uses: TemplateUse[];
   updatedAt: Date;
+}
+
+export interface TemplateUse {
+  org: string;
+  /** Null for the organization's own space. */
+  client: string | null;
+  dashboard: string;
+  archived: boolean;
 }
 
 export interface StoredTemplate {
@@ -42,7 +52,15 @@ export async function listCatalog(onlyStatus?: TemplateStatus): Promise<CatalogR
   return sql<CatalogRow[]>`
     SELECT t.id, t.name, t.area, t.origin, t.description, t.version, t.status,
            t.built_in AS "builtIn", t.updated_at AS "updatedAt",
-           (SELECT COUNT(*)::int FROM dashboard_instances i WHERE i.template_id = t.id) AS usage
+           (SELECT COUNT(*)::int FROM dashboard_instances i WHERE i.template_id = t.id AND i.archived_at IS NULL) AS usage,
+           COALESCE((
+             SELECT jsonb_agg(jsonb_build_object('org', o.name, 'client', c.name, 'dashboard', i.name, 'archived', i.archived_at IS NOT NULL)
+                              ORDER BY i.archived_at IS NOT NULL, o.name, c.name)
+             FROM dashboard_instances i
+             JOIN organizations o ON o.id = i.organization_id
+             LEFT JOIN org_clients c ON c.id = i.client_id
+             WHERE i.template_id = t.id
+           ), '[]'::jsonb) AS uses
     FROM dashboard_templates t
     ${onlyStatus ? sql`WHERE t.status = ${onlyStatus}` : sql``}
     ORDER BY t.area, t.name`;
@@ -89,14 +107,27 @@ export async function setStatus(id: string, status: TemplateStatus): Promise<voi
   await sql`UPDATE dashboard_templates SET status = ${status}, updated_at = now() WHERE id = ${id}`;
 }
 
-/** Deletes a template nobody uses. Returns false when it is in use or built in. */
-export async function deleteUnusedTemplate(id: string): Promise<boolean> {
-  const rows = await sql`
-    DELETE FROM dashboard_templates t
-    WHERE t.id = ${id} AND NOT t.built_in
-      AND NOT EXISTS (SELECT 1 FROM dashboard_instances i WHERE i.template_id = t.id)
-    RETURNING t.id`;
-  return rows.length > 0;
+/**
+ * Deletes a template no dashboard in use depends on: the archived dashboards made from it go too (their
+ * versions and links cascade). Returns the storage paths of their data files, to delete after, or null
+ * when it is still in use or built in.
+ */
+export async function deleteUnusedTemplate(id: string): Promise<string[] | null> {
+  return sql.begin(async (tx): Promise<string[] | null> => {
+    const [template] = await tx<{ builtIn: boolean; active: number }[]>`
+      SELECT t.built_in AS "builtIn",
+             (SELECT COUNT(*)::int FROM dashboard_instances i WHERE i.template_id = t.id AND i.archived_at IS NULL) AS active
+      FROM dashboard_templates t WHERE t.id = ${id} FOR UPDATE`;
+    if (!template || template.builtIn || template.active > 0) return null;
+    const files = await tx<{ storagePath: string }[]>`
+      SELECT f.storage_path AS "storagePath" FROM dataset_files f
+      JOIN dataset_versions v ON v.id = f.version_id
+      JOIN dashboard_instances i ON i.id = v.instance_id
+      WHERE i.template_id = ${id}`;
+    await tx`DELETE FROM dashboard_instances WHERE template_id = ${id} AND archived_at IS NOT NULL`;
+    await tx`DELETE FROM dashboard_templates WHERE id = ${id}`;
+    return files.map((f) => f.storagePath);
+  });
 }
 
 /**

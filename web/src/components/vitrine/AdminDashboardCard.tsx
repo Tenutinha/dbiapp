@@ -7,6 +7,7 @@ import { loadTemplateForEditAction, type TemplateForEdit } from "@/app/plataform
 import { DashboardForm } from "@/components/admin/dashboard-form/DashboardForm";
 import { CenteredModal } from "@/components/CenteredModal";
 import type { CatalogRow } from "@/lib/data/catalog";
+import { archivedCount, inUseLabel } from "@/lib/catalog-uses";
 import { ORIGIN_LABEL, STATUS_CLASS, STATUS_LABEL } from "@/lib/templates/labels";
 import { DeletePanel } from "./DashboardManagePanels";
 import { StatusMenu } from "./StatusMenu";
@@ -78,7 +79,8 @@ export function AdminDashboardCard({ row, openOnLoad = false }: AdminDashboardCa
             <span className={`text-lg font-bold tracking-tight group-hover:text-brand-2 in-data-[view=list]:w-52 in-data-[view=list]:max-w-[35%] in-data-[view=list]:shrink-0 in-data-[view=list]:truncate in-data-[view=list]:text-base`}>{row.name}</span>
             <span className={`text-sm text-muted in-data-[view=list]:line-clamp-2 in-data-[view=list]:min-w-0 in-data-[view=list]:flex-1`}>{row.description}</span>
             <span className={`mt-auto pr-24 pt-2 text-xs text-muted in-data-[view=list]:hidden`}>
-              v{row.version} · em uso em {row.usage} {row.usage === 1 ? "dashboard" : "dashboards"}
+              v{row.version} · {row.usage > 0 ? `em uso: ${inUseLabel(row.uses)}` : "sem uso"}
+              {archivedCount(row.uses) > 0 && ` · ${archivedCount(row.uses)} arquivado${archivedCount(row.uses) === 1 ? "" : "s"}`}
               {row.builtIn && " · embutido"}
             </span>
           </button>
@@ -149,7 +151,7 @@ function TabContent({ row, load, tab, onDone }: Omit<ManageBodyProps, "onTab">) 
   if (!result.ok) return <div className="card p-8 text-center text-sm text-danger">{result.message}</div>;
 
   if (tab === "delete") {
-    return <DeletePanel id={row.id} name={row.name} usage={result.usage} builtIn={result.builtIn} onDeleted={onDone} />;
+    return <DeletePanel id={row.id} name={row.name} usage={result.usage} uses={row.uses} builtIn={result.builtIn} onDeleted={onDone} />;
   }
   return (
     <DashboardForm
