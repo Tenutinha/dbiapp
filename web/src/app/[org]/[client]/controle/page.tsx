@@ -93,7 +93,7 @@ export default async function ControlePage({ params, searchParams }: Props) {
         <StatusFilter base={base} periodQuery={periodQuery(period, today.slice(0, 7))} status={status} pending={totals.pending} />
 
         <section aria-label="Resumo do período" className="grid grid-cols-3 gap-2">
-          <Kpi label="Vendas" cents={totals.salesCents} detail={count(totals.sales, "venda", "vendas")} />
+          <Kpi label="Receitas" cents={totals.salesCents} detail={count(totals.sales, "receita", "receitas")} />
           <Kpi label="Despesas" cents={totals.purchasesCents} detail={count(totals.purchases, "despesa", "despesas")} />
           <Kpi label="Saldo" cents={balance} detail={oneMonth ? "no mês" : "no período"} tone={balance < 0 ? "danger" : "ok"} />
         </section>
