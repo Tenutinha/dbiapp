@@ -7,7 +7,7 @@ import { Sheet } from "./Sheet";
 
 type Kind = "despesa" | "venda";
 
-const TITLE: Record<Kind, string> = { despesa: "Nova despesa", venda: "Nova venda" };
+const TITLE: Record<Kind, string> = { despesa: "Nova despesa", venda: "Nova receita" };
 
 interface ControleActionsProps {
   api: string;
@@ -16,7 +16,7 @@ interface ControleActionsProps {
   readerEnabled: boolean;
 }
 
-/** The two floating buttons of the "controle" home — Despesa and Vendas — and the sheet each one opens. */
+/** The two floating buttons of the "controle" home — Despesa and Receitas — and the sheet each one opens. */
 export function ControleActions({ api, today, readerEnabled }: ControleActionsProps) {
   const [sheet, setSheet] = useState<Kind | null>(null);
   const close = (): void => setSheet(null);
@@ -30,7 +30,7 @@ export function ControleActions({ api, today, readerEnabled }: ControleActionsPr
             <span aria-hidden className="mr-1 text-danger">−</span>Despesa
           </button>
           <button type="button" onClick={() => setSheet("venda")} className="flex-1 rounded-full bg-brand py-3 text-base font-semibold text-on-brand">
-            <span aria-hidden className="mr-1">+</span>Vendas
+            <span aria-hidden className="mr-1">+</span>Receitas
           </button>
         </div>
       </div>

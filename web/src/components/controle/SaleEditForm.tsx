@@ -27,8 +27,8 @@ export function SaleEditForm({ api, sale, onSaved, onCancel }: SaleEditFormProps
   async function save(e: React.FormEvent): Promise<void> {
     e.preventDefault();
     const totalCents = parseMoney(total);
-    if (totalCents === null || totalCents <= 0) return setError("Informe o valor da venda.");
-    if (!isValidDay(day)) return setError("Informe a data da venda.");
+    if (totalCents === null || totalCents <= 0) return setError("Informe o valor da receita.");
+    if (!isValidDay(day)) return setError("Informe a data da receita.");
     const input: SaleInput = { soldOn: day, totalCents, paymentMethod: payment, customerName: customer.trim() || null, status };
     setSaving(true);
     setError(null);

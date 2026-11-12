@@ -131,7 +131,7 @@ function EditButton({ what, onEdit }: { what: string; onEdit: () => void }) {
 /** What the confirmation and the buttons name: "a despesa de R$ 57,48 em Atacadão". */
 function describe(entry: Entry): string {
   const amount = formatMoney(entry.totalCents);
-  if (entry.kind === "venda") return `a venda de ${amount}${entry.sale.customerName ? ` para ${entry.sale.customerName}` : ""}`;
+  if (entry.kind === "venda") return `a receita de ${amount}${entry.sale.customerName ? ` para ${entry.sale.customerName}` : ""}`;
   return `a despesa de ${amount}${entry.purchase.supplier ? ` em ${entry.purchase.supplier}` : ""}`;
 }
 
@@ -141,7 +141,7 @@ function describe(entry: Entry): string {
  */
 function KindIcon({ kind, pending }: { kind: Entry["kind"]; pending: boolean }) {
   const sale = kind === "venda";
-  const name = `${sale ? "Venda" : "Despesa"}${pending ? ` (${STATUS_LABEL[kind].pendente.toLowerCase()})` : ""}`;
+  const name = `${sale ? "Receita" : "Despesa"}${pending ? ` (${STATUS_LABEL[kind].pendente.toLowerCase()})` : ""}`;
   return (
     <span
       role="img"
@@ -159,7 +159,7 @@ function KindIcon({ kind, pending }: { kind: Entry["kind"]; pending: boolean }) 
 }
 
 const purchaseTitle = (p: Purchase): string => p.supplier ?? "Despesa";
-const saleTitle = (s: Sale): string => s.customerName ?? s.product ?? "Venda";
+const saleTitle = (s: Sale): string => s.customerName ?? s.product ?? "Receita";
 
 function purchaseDetail(p: Purchase): string {
   return [
@@ -265,7 +265,7 @@ export function EntryList({ api, today, entries, canRecord }: EntryListProps) {
             <div className="flex flex-col gap-3 border-t border-line p-4">
               {!sale && <PurchaseBody api={api} purchase={entry.purchase} />}
               <span className="text-xs text-muted">
-                {sale ? "Venda" : entry.purchase.hasReceipt ? "Despesa" : "Despesa lançada à mão"} de {dayLabel(entry.day)}
+                {sale ? "Receita" : entry.purchase.hasReceipt ? "Despesa" : "Despesa lançada à mão"} de {dayLabel(entry.day)}
                 {author ? ` · lançado por ${author.name}` : ""}
                 {` · ${STATUS_LABEL[entry.kind][status].toLowerCase()}`}
               </span>
@@ -275,7 +275,7 @@ export function EntryList({ api, today, entries, canRecord }: EntryListProps) {
         );
       })}
       </div>
-      <Sheet title={editing ? (editing.kind === "venda" ? "Editar venda" : "Editar despesa") : null} onClose={stopEditing}>
+      <Sheet title={editing ? (editing.kind === "venda" ? "Editar receita" : "Editar despesa") : null} onClose={stopEditing}>
         {editing?.kind === "venda" && <SaleEditForm api={api} sale={editing.sale} onSaved={edited} onCancel={stopEditing} />}
         {editing?.kind === "despesa" && (
           <PurchaseForm
