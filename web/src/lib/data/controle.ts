@@ -1,12 +1,15 @@
 /**
- * Purchases and sales of the "controle" module (migration 015). Every statement is scoped by the
+ * Purchases and sales of the "controle" module (migrations 015–017). Every statement is scoped by the
  * client it belongs to, so an id from another client never matches. Amounts are bigint cents and
  * quantities numeric in the database; they are read as plain numbers (far below 2^53).
+ *
+ * Reads take the screen's status filter: null counts every entry, otherwise only "pendente" or "efetivado".
  */
 import "server-only";
 import { sql } from "../db";
 import type { Purchase, PurchaseInput, Sale, SaleInput } from "../controle/schema";
 import type { SeriesPoint } from "../controle/series";
+import type { EntryStatus, StatusFilter } from "../controle/status";
 import { avatarUrl } from "./users";
 
 export interface Space {
@@ -29,21 +32,24 @@ export interface PeriodTotals {
   purchases: number;
   salesCents: number;
   sales: number;
+  /** Entries of the period still pending (among those the filter lets through). */
+  pending: number;
 }
 
 /** Totals of the given days (a month, several months or the last days). */
-export async function periodTotals(clientId: string, days: readonly string[]): Promise<PeriodTotals> {
+export async function periodTotals(clientId: string, days: readonly string[], status: StatusFilter = null): Promise<PeriodTotals> {
   const list = dayList(days);
   const [row] = await sql<PeriodTotals[]>`
+    WITH p AS (SELECT total_cents, status FROM controle_purchases
+               WHERE client_id = ${clientId} AND purchased_on = ANY(${list}::date[]) AND (${status}::text IS NULL OR status = ${status})),
+         s AS (SELECT total_cents, status FROM controle_sales
+               WHERE client_id = ${clientId} AND sold_on = ANY(${list}::date[]) AND (${status}::text IS NULL OR status = ${status}))
     SELECT
-      (SELECT COALESCE(SUM(total_cents), 0)::float8 FROM controle_purchases
-        WHERE client_id = ${clientId} AND purchased_on = ANY(${list}::date[])) AS "purchasesCents",
-      (SELECT COUNT(*)::int FROM controle_purchases
-        WHERE client_id = ${clientId} AND purchased_on = ANY(${list}::date[])) AS purchases,
-      (SELECT COALESCE(SUM(total_cents), 0)::float8 FROM controle_sales
-        WHERE client_id = ${clientId} AND sold_on = ANY(${list}::date[])) AS "salesCents",
-      (SELECT COUNT(*)::int FROM controle_sales
-        WHERE client_id = ${clientId} AND sold_on = ANY(${list}::date[])) AS sales`;
+      (SELECT COALESCE(SUM(total_cents), 0)::float8 FROM p) AS "purchasesCents",
+      (SELECT COUNT(*)::int FROM p) AS purchases,
+      (SELECT COALESCE(SUM(total_cents), 0)::float8 FROM s) AS "salesCents",
+      (SELECT COUNT(*)::int FROM s) AS sales,
+      ((SELECT COUNT(*) FROM p WHERE status = 'pendente') + (SELECT COUNT(*) FROM s WHERE status = 'pendente'))::int AS pending`;
   return row;
 }
 
@@ -56,11 +62,11 @@ function withAuthor<T extends { author: unknown }>({ authorName, authorAvatarKey
   return { ...row, author: authorName === null ? null : { name: authorName, avatarUrl: avatarUrl(authorAvatarKey) } } as unknown as T;
 }
 
-export async function listPurchases(clientId: string, days: readonly string[]): Promise<Purchase[]> {
+export async function listPurchases(clientId: string, days: readonly string[], status: StatusFilter = null): Promise<Purchase[]> {
   const list = dayList(days);
   const rows = await sql<Authored<Purchase>[]>`
     SELECT p.id, u.name AS "authorName", to_jsonb(u) ->> 'avatar_key' AS "authorAvatarKey", to_char(p.purchased_on, 'YYYY-MM-DD') AS "purchasedOn", p.supplier,
-           p.total_cents::float8 AS "totalCents", p.payment_method AS "paymentMethod", p.notes,
+           p.total_cents::float8 AS "totalCents", p.payment_method AS "paymentMethod", p.notes, p.status,
            (p.receipt_path IS NOT NULL) AS "hasReceipt", (p.source = 'ai') AS "fromReceipt",
            to_char(p.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US') AS "createdAt",
            COALESCE((
@@ -69,7 +75,7 @@ export async function listPurchases(clientId: string, days: readonly string[]): 
                'unitPriceCents', i.unit_price_cents::float8, 'totalCents', i.total_cents::float8) ORDER BY i.position)
              FROM controle_purchase_items i WHERE i.purchase_id = p.id), '[]'::jsonb) AS items
     FROM controle_purchases p LEFT JOIN users u ON u.id = p.created_by
-    WHERE p.client_id = ${clientId} AND p.purchased_on = ANY(${list}::date[])
+    WHERE p.client_id = ${clientId} AND p.purchased_on = ANY(${list}::date[]) AND (${status}::text IS NULL OR p.status = ${status})
     ORDER BY p.purchased_on DESC, p.created_at DESC`;
   return rows.map((row) => withAuthor<Purchase>(row));
 }
@@ -79,9 +85,9 @@ export async function insertPurchase(space: Space, userId: string, input: Purcha
   return sql.begin(async (tx) => {
     const [row] = await tx<{ id: string }[]>`
       INSERT INTO controle_purchases
-        (organization_id, client_id, purchased_on, supplier, total_cents, payment_method, notes, receipt_path, receipt_mime, source, created_by)
+        (organization_id, client_id, purchased_on, supplier, total_cents, payment_method, notes, status, receipt_path, receipt_mime, source, created_by)
       VALUES (${space.orgId}, ${space.clientId}, ${input.purchasedOn}::date, ${input.supplier}, ${input.totalCents},
-              ${input.paymentMethod}, ${input.notes}, ${input.receipt?.path ?? null}, ${input.receipt?.mime ?? null},
+              ${input.paymentMethod}, ${input.notes}, ${input.status}, ${input.receipt?.path ?? null}, ${input.receipt?.mime ?? null},
               ${input.fromReceipt ? "ai" : "manual"}, ${userId})
       RETURNING id`;
     const lines = input.items.map((item, position) => ({
@@ -123,7 +129,7 @@ export async function updatePurchase(clientId: string, purchaseId: string, input
     const rows = await tx`
       UPDATE controle_purchases
       SET purchased_on = ${input.purchasedOn}::date, supplier = ${input.supplier}, total_cents = ${input.totalCents},
-          payment_method = ${input.paymentMethod}, notes = ${input.notes}
+          payment_method = ${input.paymentMethod}, notes = ${input.notes}, status = ${input.status}
       WHERE id = ${purchaseId} AND client_id = ${clientId}
       RETURNING id`;
     if (rows.length === 0) return false;
@@ -151,15 +157,15 @@ export async function deletePurchase(clientId: string, purchaseId: string): Prom
 
 // ---------- sales ----------
 
-export async function listSales(clientId: string, days: readonly string[]): Promise<Sale[]> {
+export async function listSales(clientId: string, days: readonly string[], status: StatusFilter = null): Promise<Sale[]> {
   const list = dayList(days);
   const rows = await sql<Authored<Sale>[]>`
     SELECT s.id, u.name AS "authorName", to_jsonb(u) ->> 'avatar_key' AS "authorAvatarKey",
            to_char(s.sold_on, 'YYYY-MM-DD') AS "soldOn", s.total_cents::float8 AS "totalCents",
-           s.payment_method AS "paymentMethod", s.customer_name AS "customerName", s.product,
+           s.payment_method AS "paymentMethod", s.customer_name AS "customerName", s.product, s.status,
            to_char(s.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US') AS "createdAt"
     FROM controle_sales s LEFT JOIN users u ON u.id = s.created_by
-    WHERE s.client_id = ${clientId} AND s.sold_on = ANY(${list}::date[])
+    WHERE s.client_id = ${clientId} AND s.sold_on = ANY(${list}::date[]) AND (${status}::text IS NULL OR s.status = ${status})
     ORDER BY s.sold_on DESC, s.created_at DESC`;
   return rows.map((row) => withAuthor<Sale>(row));
 }
@@ -167,9 +173,9 @@ export async function listSales(clientId: string, days: readonly string[]): Prom
 export async function insertSale(space: Space, userId: string, input: SaleInput): Promise<string> {
   const [row] = await sql<{ id: string }[]>`
     INSERT INTO controle_sales
-      (organization_id, client_id, sold_on, total_cents, payment_method, customer_name, created_by)
+      (organization_id, client_id, sold_on, total_cents, payment_method, customer_name, status, created_by)
     VALUES (${space.orgId}, ${space.clientId}, ${input.soldOn}::date, ${input.totalCents},
-            ${input.paymentMethod}, ${input.customerName}, ${userId})
+            ${input.paymentMethod}, ${input.customerName}, ${input.status}, ${userId})
     RETURNING id`;
   return row.id;
 }
@@ -179,7 +185,7 @@ export async function updateSale(clientId: string, saleId: string, input: SaleIn
   const updated = await sql`
     UPDATE controle_sales
     SET sold_on = ${input.soldOn}::date, total_cents = ${input.totalCents},
-        payment_method = ${input.paymentMethod}, customer_name = ${input.customerName}
+        payment_method = ${input.paymentMethod}, customer_name = ${input.customerName}, status = ${input.status}
     WHERE id = ${saleId} AND client_id = ${clientId}`;
   return updated.count > 0;
 }
@@ -189,15 +195,27 @@ export async function deleteSale(clientId: string, saleId: string): Promise<bool
   return deleted.count > 0;
 }
 
+// ---------- status ----------
+
+/** Marks one entry of this client as pending or confirmed. False when it is gone. */
+export async function setEntryStatus(clientId: string, kind: "venda" | "despesa", id: string, status: EntryStatus): Promise<boolean> {
+  const updated = kind === "venda"
+    ? await sql`UPDATE controle_sales SET status = ${status} WHERE id = ${id} AND client_id = ${clientId}`
+    : await sql`UPDATE controle_purchases SET status = ${status} WHERE id = ${id} AND client_id = ${clientId}`;
+  return updated.count > 0;
+}
+
 // ---------- evolution ----------
 
 /** Sales and purchases of each of the given days, in that order (days with nothing come as zero). */
-export async function dailySeries(clientId: string, days: readonly string[]): Promise<SeriesPoint[]> {
+export async function dailySeries(clientId: string, days: readonly string[], status: StatusFilter = null): Promise<SeriesPoint[]> {
   const list = dayList(days);
   return sql<SeriesPoint[]>`
     SELECT to_char(d, 'YYYY-MM-DD') AS period,
-      COALESCE((SELECT SUM(total_cents) FROM controle_sales WHERE client_id = ${clientId} AND sold_on = d), 0)::float8 AS "salesCents",
-      COALESCE((SELECT SUM(total_cents) FROM controle_purchases WHERE client_id = ${clientId} AND purchased_on = d), 0)::float8 AS "purchasesCents"
+      COALESCE((SELECT SUM(total_cents) FROM controle_sales
+        WHERE client_id = ${clientId} AND sold_on = d AND (${status}::text IS NULL OR status = ${status})), 0)::float8 AS "salesCents",
+      COALESCE((SELECT SUM(total_cents) FROM controle_purchases
+        WHERE client_id = ${clientId} AND purchased_on = d AND (${status}::text IS NULL OR status = ${status})), 0)::float8 AS "purchasesCents"
     FROM unnest(${list}::date[]) AS d
     ORDER BY d`;
 }
@@ -206,12 +224,14 @@ export async function dailySeries(clientId: string, days: readonly string[]): Pr
  * Sales and purchases of each month the given days touch, counting only those days (the last
  * 15 days that cross into October show the October part only), oldest first.
  */
-export async function monthlySeries(clientId: string, days: readonly string[]): Promise<SeriesPoint[]> {
+export async function monthlySeries(clientId: string, days: readonly string[], status: StatusFilter = null): Promise<SeriesPoint[]> {
   const list = dayList(days);
   return sql<SeriesPoint[]>`
     SELECT to_char(date_trunc('month', d), 'YYYY-MM') AS period,
-      COALESCE(SUM((SELECT SUM(total_cents) FROM controle_sales WHERE client_id = ${clientId} AND sold_on = d)), 0)::float8 AS "salesCents",
-      COALESCE(SUM((SELECT SUM(total_cents) FROM controle_purchases WHERE client_id = ${clientId} AND purchased_on = d)), 0)::float8 AS "purchasesCents"
+      COALESCE(SUM((SELECT SUM(total_cents) FROM controle_sales
+        WHERE client_id = ${clientId} AND sold_on = d AND (${status}::text IS NULL OR status = ${status}))), 0)::float8 AS "salesCents",
+      COALESCE(SUM((SELECT SUM(total_cents) FROM controle_purchases
+        WHERE client_id = ${clientId} AND purchased_on = d AND (${status}::text IS NULL OR status = ${status}))), 0)::float8 AS "purchasesCents"
     FROM unnest(${list}::date[]) AS d
     GROUP BY 1
     ORDER BY 1`;

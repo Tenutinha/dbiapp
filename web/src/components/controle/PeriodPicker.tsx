@@ -7,12 +7,15 @@ import { shiftMonth } from "@/lib/controle/schema";
 import {
   LAST_DAYS, MAX_MONTHS, monthChoices, periodLabel, periodQuery, singleMonth, type Period,
 } from "@/lib/controle/period";
+import { joinQuery, statusQuery, type StatusFilter } from "@/lib/controle/status";
 
 interface PeriodPickerProps {
   /** The screen's own address (/<org>/<cliente>/controle). */
   base: string;
   period: Period;
   today: string;
+  /** The status filter of the screen, kept when the period changes. */
+  status: StatusFilter;
 }
 
 const MONTH_NAMES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
@@ -22,14 +25,14 @@ const ARROW = "grid size-10 place-items-center rounded-lg text-xl text-muted hov
  * The period of the screen: the ‹ › arrows walk one month at a time; the label opens a box with
  * the last 7/15/30/45 days and the months ("competências"), several at once.
  */
-export function PeriodPicker({ base, period, today }: PeriodPickerProps) {
+export function PeriodPicker({ base, period, today, status }: PeriodPickerProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [chosen, setChosen] = useState<string[]>(period.kind === "months" ? period.months : []);
   const box = useRef<HTMLDivElement>(null);
   const currentMonth = today.slice(0, 7);
   const href = (p: Period): string => {
-    const q = periodQuery(p, currentMonth);
+    const q = joinQuery(periodQuery(p, currentMonth), statusQuery(status));
     return q ? `${base}?${q}` : base;
   };
   const single = singleMonth(period);

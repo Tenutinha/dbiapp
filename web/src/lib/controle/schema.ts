@@ -4,6 +4,7 @@
  */
 import { z } from "zod";
 import { MAX_CENTS } from "./money";
+import { STATUSES, type EntryStatus } from "./status";
 
 export const PAYMENT_METHODS = ["pix", "dinheiro", "debito", "credito", "boleto", "outro"] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
@@ -101,6 +102,8 @@ export const purchaseInput = z.object({
   receipt: receiptRef.nullish().transform((v) => v ?? null),
   /** Whether the entry started from the receipt reader. */
   fromReceipt: z.boolean().default(false),
+  /** "pendente" until someone confirms the money went out; entries sent without it are taken as done. */
+  status: z.enum(STATUSES).default("efetivado"),
   items: z.array(purchaseItemInput).max(MAX_ITEMS),
 });
 
@@ -110,6 +113,8 @@ export const saleInput = z.object({
   totalCents: cents.min(1),
   paymentMethod: payment,
   customerName: optionalText(120),
+  /** "pendente" until someone confirms the money came in. */
+  status: z.enum(STATUSES).default("efetivado"),
 });
 
 export type PurchaseItemInput = z.output<typeof purchaseItemInput>;
@@ -126,6 +131,8 @@ export interface PurchaseDraft {
   paymentMethod: PaymentMethod | null;
   notes: string | null;
   items: PurchaseItemInput[];
+  /** Set when the form edits a saved purchase; a new one starts as "efetivado". */
+  status?: EntryStatus;
 }
 
 // ---------- what the screens list ----------
@@ -152,6 +159,7 @@ export interface Purchase {
   notes: string | null;
   hasReceipt: boolean;
   fromReceipt: boolean;
+  status: EntryStatus;
   /** When it was recorded (UTC, sortable text) — orders entries of the same day. */
   createdAt: string;
   items: PurchaseItem[];
@@ -164,6 +172,7 @@ export interface Sale {
   totalCents: number;
   paymentMethod: PaymentMethod | null;
   customerName: string | null;
+  status: EntryStatus;
   /** Only on sales recorded before the amount-only form. */
   product: string | null;
   createdAt: string;
