@@ -10,11 +10,12 @@ describe("formatValue", () => {
     expect(plain(formatValue(2_870_000, "currency", true))).toBe("R$ 2,87 mi");
   });
 
-  it("keeps the cents of an exact currency, also when a short form is asked", () => {
-    expect(plain(formatValue(65769.15, "currency_exact"))).toBe("R$ 65.769,15");
-    expect(plain(formatValue(1085.2, "currency_exact"))).toBe("R$ 1.085,20");
-    expect(plain(formatValue(0, "currency_exact"))).toBe("R$ 0,00");
-    expect(plain(formatValue(250_780_080.08, "currency_exact", true))).toBe("R$ 250.780.080,08");
+  it("keeps the cents of an exact currency without the symbol, also when a short form is asked", () => {
+    expect(formatValue(65769.15, "currency_exact")).toBe("65.769,15");
+    expect(formatValue(1085.2, "currency_exact")).toBe("1.085,20");
+    expect(formatValue(0, "currency_exact")).toBe("0,00");
+    expect(formatValue(-12.5, "currency_exact")).toBe("-12,50");
+    expect(formatValue(250_780_080.08, "currency_exact", true)).toBe("250.780.080,08");
   });
 
   it("shows a dash for a missing value and leaves text as it is", () => {

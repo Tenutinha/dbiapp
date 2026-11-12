@@ -79,7 +79,7 @@ const relationshipSchema = z.object({
 });
 
 /** "text" is for measures that return a label (e.g. the winning candidate), shown as-is. */
-/** "currency_exact" keeps the cents (R$ 65.769,15), for values people check against a document. */
+/** "currency_exact" keeps the cents and leaves the symbol out (65.769,15), for values checked against a document. */
 const formatSchema = z.enum(["currency", "currency_exact", "number", "integer", "percent", "text"]);
 
 export const TEMPLATE_ORIGINS = ["powerbi", "qlikview", "web"] as const;
