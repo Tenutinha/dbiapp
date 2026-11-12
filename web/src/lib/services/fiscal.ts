@@ -6,31 +6,31 @@
  *                orgs/<org>/clientes/<cliente>/fiscal/<molde>/<cnpj>/<aaaa-mm>/ (or orgs/<org>/fiscal/… for
  *                the organization's own dashboards); a newer copy of the same document
  *                (the month's SPED, an NF-e key) replaces the old one;
- *   3. rebuild — every stored file is read again into the template's tables, which enter the draft
- *                through the regular ingest (same validation as a table upload). Publishing stays manual.
+ *   3. rebuild — SPED: each stored file is read once into its own parts and the draft's tables are put
+ *                together from them, so only new or changed files are read (services/fiscal-parts.ts);
+ *                NF-e: every stored file is read again. Both go through the regular ingest (same validation
+ *                as a table upload). Publishing stays manual.
  */
 import "server-only";
 import { randomUUID } from "node:crypto";
-import { once } from "node:events";
-import { createWriteStream, type WriteStream } from "node:fs";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { InstanceAccess } from "../access";
-import { csvLine, toCsv } from "../fiscal/csv";
+import { toCsv } from "../fiscal/csv";
 import {
-  checkExtension, fiscalImporterFor, KeyedTables, mergeTables, SPED_DIMENSION_KEYS, SPED_HEAD_BYTES,
+  checkExtension, fiscalImporterFor, mergeTables, SPED_HEAD_BYTES,
   type FiscalIdentity, type FiscalImporter, type FiscalTables,
 } from "../fiscal/importers";
+import type { RawFile } from "../fiscal/parts-plan";
 import { FiscalFileError, type Row } from "../fiscal/sped";
-import { factColumns } from "../fiscal/sped-kinds";
-import { appendSpedFile, writeChunk } from "../fiscal/sped-stream";
 import type { TableReport } from "../ingest/ingest";
-import { extraFacts, mainFact, type Template, type TemplateTable } from "../templates/schema";
+import type { TemplateTable } from "../templates/schema";
 import { storage } from "../storage";
 import { relativeToOrg } from "../storage-browse";
 import { isSameFiscalDocument } from "../storage-analysis";
 import { fiscalFolder, fiscalNamedKey, fiscalPeriodFolder, isIssuedFiscalUploadKey, spaceFolder } from "../storage-keys";
 import { checkSize, ingestIntoDraft, requireTemplate, UserFacingError, type UploadPlan } from "./datasets";
+import { rebuildSpedFromParts } from "./fiscal-parts";
 
 /** Files listed per period folder (one month of NF-e can hold thousands of documents). */
 const MAX_FILES_PER_FOLDER = 20_000;
@@ -131,7 +131,10 @@ export interface FiscalPeriod {
 }
 
 /** Every stored file, walking company → period folders. */
-async function walk(access: InstanceAccess): Promise<{ period: Omit<FiscalPeriod, "files" | "sizeBytes">; keys: { key: string; name: string; sizeBytes: number }[] }[]> {
+async function walk(access: InstanceAccess): Promise<{
+  period: Omit<FiscalPeriod, "files" | "sizeBytes">;
+  keys: { key: string; name: string; sizeBytes: number; updatedAt: string | null }[];
+}[]> {
   const base = relativeToOrg(access.org.slug, folderOf(access)).replace(/\/$/, "");
   // Companies, then their periods, then each period's files: each level in parallel (one listing at a
   // time took ~0.2 s per folder, seconds for a year of periods).
@@ -148,7 +151,10 @@ async function walk(access: InstanceAccess): Promise<{ period: Omit<FiscalPeriod
   );
   return listed
     .filter((l) => l.files.length > 0)
-    .map(({ period, files }) => ({ period, keys: files.map((f) => ({ key: f.key, name: f.name, sizeBytes: f.sizeBytes })) }));
+    .map(({ period, files }) => ({
+      period,
+      keys: files.map((f) => ({ key: f.key, name: f.name, sizeBytes: f.sizeBytes, updatedAt: f.updatedAt ? new Date(f.updatedAt).toISOString() : null })),
+    }));
 }
 
 export async function listFiscalPeriods(access: InstanceAccess): Promise<FiscalPeriod[]> {
@@ -222,6 +228,9 @@ export async function fileFiscal(
 export interface RebuildResult {
   ok: boolean;
   files: number;
+  /** SPED: files read now (new or changed) and files whose tables were reused as they were. */
+  read?: number;
+  reused?: number;
   /** Loose files of the space's folder that were filed before reading. */
   adopted: number;
   /** Files that could not be read (name → reason); the others still enter the draft. */
@@ -243,27 +252,20 @@ function placeholderRow(table: TemplateTable): Row {
   return row;
 }
 
-interface Gathered {
-  files: number;
-  skipped: RebuildResult["skipped"];
-  /** Tables kept in memory (dimensions; and the facts of document importers). */
-  tables: FiscalTables;
-  /** Fact CSV already on disk (SPED), by table name. */
-  written: Record<string, string>;
-}
-
 export interface RebuildOptions {
   /**
-   * "blocks": only the block facts (e.g. bloco A of every period) and the dimensions are rebuilt; the main
-   * fact stays as published. For when the whole file of every period is too much to hold.
+   * "blocks": only the block facts (e.g. bloco A of every period) and the dimensions are put together; the
+   * main fact stays as published.
    */
   only?: "blocks";
+  /** SPED: reads every file again, also the ones already read. */
+  rereadAll?: boolean;
 }
 
-/** Reads every stored file: SPED facts go straight to a CSV on disk, the rest is gathered in memory. */
-async function gather(
-  access: InstanceAccess, importer: FiscalImporter, template: Template, dir: string, options: RebuildOptions,
-): Promise<Gathered> {
+/** NF-e and other documents: every stored file is parsed whole and the tables are gathered in memory. */
+async function gatherDocuments(
+  access: InstanceAccess, importer: Extract<FiscalImporter, { mode: "documents" }>,
+): Promise<{ files: number; skipped: RebuildResult["skipped"]; tables: FiscalTables }> {
   const stored = (await walk(access)).flatMap((f) => f.keys);
   const total = stored.reduce((s, f) => s + f.sizeBytes, 0);
   if (process.env.VERCEL && total > MAX_HOSTED_REBUILD_BYTES) {
@@ -272,66 +274,25 @@ async function gather(
     );
   }
   const skipped: RebuildResult["skipped"] = [];
-  const written: Record<string, string> = {};
+  const parts: FiscalTables[] = [];
   let files = 0;
-  const skip = (key: string, err: unknown): void => {
-    if (!(err instanceof FiscalFileError)) console.error("[fiscal] could not read", key, err);
-    skipped.push({ path: relativeToOrg(access.org.slug, key), error: err instanceof FiscalFileError ? err.message : "não foi possível ler o arquivo" });
-  };
-
-  if (importer.mode === "documents") {
-    const parts: FiscalTables[] = [];
-    for (const f of stored) {
-      try {
-        parts.push(importer.parse(await storage.read(f.key)));
-        files += 1;
-      } catch (err) {
-        skip(f.key, err);
-      }
+  for (const f of stored) {
+    try {
+      parts.push(importer.parse(await storage.read(f.key)));
+      files += 1;
+    } catch (err) {
+      if (!(err instanceof FiscalFileError)) console.error("[fiscal] could not read", f.key, err);
+      skipped.push({ path: relativeToOrg(access.org.slug, f.key), error: err instanceof FiscalFileError ? err.message : "não foi possível ler o arquivo" });
     }
-    return { files, skipped, tables: mergeTables(importer, parts), written };
   }
+  return { files, skipped, tables: mergeTables(importer, parts) };
+}
 
-  const fact = mainFact(template);
-  // Block facts the template has (a kind may declare one the template does not use).
-  const blockTables = extraFacts(template).map((t) => t.name).filter((name) => name in importer.kind.blockFacts);
-  if (options.only === "blocks" && blockTables.length === 0) {
-    throw new UserFacingError("Este dashboard não tem tabelas por bloco.");
-  }
-  const csvOf = (table: string): string => path.join(dir, `${table}.csv`);
-  const open = (table: string): WriteStream => createWriteStream(csvOf(table), { encoding: "utf8" });
-  const factOut = options.only === "blocks" ? null : open(fact.name);
-  const blockOuts = Object.fromEntries(blockTables.map((table) => [table, open(table)]));
-  const outs = [...(factOut ? [factOut] : []), ...Object.values(blockOuts)];
-  const blockLines: Record<string, number> = Object.fromEntries(blockTables.map((table) => [table, 0]));
-  // A hundred monthly files repeat the same participants and items: they are merged as the files are read.
-  const dimensions = new KeyedTables(SPED_DIMENSION_KEYS);
-  try {
-    for (const out of outs) await writeChunk(out, csvLine(factColumns(importer.kind)));
-    for (const f of stored) {
-      try {
-        const local = await storage.localPath(f.key);
-        try {
-          const read = await appendSpedFile(importer.kind, local, { fact: factOut, blocks: blockOuts });
-          dimensions.add(read.dimensions);
-          for (const table of blockTables) blockLines[table] += read.blockLines[table] ?? 0;
-          files += 1;
-        } finally {
-          // The cached copy of a remote object is only needed while it is read.
-          if (storage.remote()) await rm(local, { force: true }).catch(() => undefined);
-        }
-      } catch (err) {
-        skip(f.key, err);
-      }
-    }
-  } finally {
-    for (const out of outs) out.end();
-    await Promise.all(outs.map((out) => once(out, "close")));
-  }
-  if (factOut) written[fact.name] = csvOf(fact.name);
-  // A block the files do not bring (a company without services) leaves its fact out: the ingest refuses empty tables.
-  for (const table of blockTables) if (blockLines[table] > 0) written[table] = csvOf(table);
-  return { files, skipped, tables: dimensions.tables(), written };
+/** The stored raw SPED files, as the parts plan sees them. */
+async function rawFiles(access: InstanceAccess): Promise<RawFile[]> {
+  return (await walk(access)).flatMap(({ period, keys }) => keys
+    .filter((k) => k.name.toLowerCase().endsWith(".txt"))
+    .map((k) => ({ ...k, cnpj: period.cnpj, periodo: period.periodo })));
 }
 
 /** Files what was uploaded loose, reads every stored file into the template's tables and puts them in the draft. */
@@ -339,26 +300,25 @@ export async function rebuildFiscal(access: InstanceAccess, options: RebuildOpti
   const importer = requireImporter(access);
   const template = await requireTemplate(access.templateId);
   const adopted = await adoptLooseFiles(access);
+  if (importer.mode === "sped") {
+    // One file at a time, each read once: only new or changed files are read (see services/fiscal-parts.ts).
+    const result = await rebuildSpedFromParts(access, importer, template, await rawFiles(access), options);
+    return { ...result, adopted };
+  }
   const dir = path.join(storage.workRoot, "_fiscal", randomUUID());
   await mkdir(dir, { recursive: true });
   const tables: TableReport[] = [];
   try {
-    const gathered = await gather(access, importer, template, dir, options);
+    const gathered = await gatherDocuments(access, importer);
     if (gathered.files === 0) {
       throw new UserFacingError(gathered.skipped.length ? "Nenhum arquivo pôde ser lido." : "Nenhum arquivo enviado ainda.");
     }
     for (const table of template.tables) {
-      let file = gathered.written[table.name];
-      // A fact that was not written this time (the main one in a blocks-only rebuild, a block the files
-      // do not bring) keeps what is published.
-      if (!file && table.kind === "fact" && importer.mode === "sped") continue;
-      if (!file) {
-        file = path.join(dir, `${table.name}.csv`);
-        let rows = gathered.tables[table.name] ?? [];
-        // The ingest refuses empty files; a dimension nobody references (e.g. NFC-e without recipients) gets one placeholder row.
-        if (rows.length === 0 && table.kind === "dimension") rows = [placeholderRow(table)];
-        await writeFile(file, toCsv(table.columns.map((c) => c.name), rows), "utf8");
-      }
+      const file = path.join(dir, `${table.name}.csv`);
+      let rows = gathered.tables[table.name] ?? [];
+      // The ingest refuses empty files; a dimension nobody references (e.g. NFC-e without recipients) gets one placeholder row.
+      if (rows.length === 0 && table.kind === "dimension") rows = [placeholderRow(table)];
+      await writeFile(file, toCsv(table.columns.map((c) => c.name), rows), "utf8");
       tables.push(await ingestIntoDraft(access, table, file, `${table.name}.csv`));
     }
     return { ok: tables.every((t) => t.ok), files: gathered.files, adopted, skipped: gathered.skipped, tables };

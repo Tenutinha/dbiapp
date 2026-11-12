@@ -50,7 +50,18 @@ export interface SpedKind {
    * Light enough to hold every period, when the whole file of every period would be too much.
    */
   blockFacts: Readonly<Record<string, BlockFact>>;
+  /**
+   * Periods the main fact (the whole file) holds: every one, or only each company's latest — when a whole
+   * file is too heavy to keep for every period and the block facts carry the history.
+   */
+  mainFactPeriods: "all" | "latest";
 }
+
+/**
+ * Version of how a file is read into tables. Raise it when the reading changes (a new column, a fixed
+ * field): files read before are then read again on the next "Montar tabelas" (see fiscal/parts-plan.ts).
+ */
+export const SPED_READER_VERSION = 1;
 
 /** What an extra fact keeps of the file. */
 export interface BlockFact {
@@ -135,6 +146,7 @@ export const SPED_KINDS: readonly SpedKind[] = [
     identify: identifyIcms,
     dimensions: ["estabelecimentos", "participantes", "itens"],
     blockFacts: {},
+    mainFactPeriods: "all",
   },
   {
     templateId: "efd-contribuicoes",
@@ -177,6 +189,7 @@ export const SPED_KINDS: readonly SpedKind[] = [
         collapse: { record: "C170", keys: C170_KEYS, sums: C170_SUMS, byEstablishment: true, byItem: false },
       },
     },
+    mainFactPeriods: "latest",
   },
   {
     templateId: "ecd",
@@ -196,6 +209,7 @@ export const SPED_KINDS: readonly SpedKind[] = [
     identify: identifyEcd,
     dimensions: ["empresas", "plano_contas"],
     blockFacts: {},
+    mainFactPeriods: "all",
   },
 ];
 
