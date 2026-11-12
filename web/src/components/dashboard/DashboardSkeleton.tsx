@@ -1,8 +1,11 @@
+import { CardProgress } from "./CardProgress";
+
 const BLOCK = "animate-pulse rounded-lg bg-text/10";
 
 function CardSkeleton({ className, height }: { className: string; height: string }) {
   return (
-    <div className={`card p-5 ${className}`}>
+    <div className={`card relative p-5 ${className}`}>
+      <CardProgress />
       <div className={`${BLOCK} h-3 w-32`} />
       <div className={`${BLOCK} mt-4 ${height}`} />
     </div>
