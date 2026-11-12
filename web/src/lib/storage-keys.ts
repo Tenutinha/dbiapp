@@ -57,6 +57,14 @@ export function dashboardFolder(orgSlug: string, clientSlug: string | null, inst
   return `${spaceFolder(orgSlug, clientSlug)}${DASHBOARDS_DIR}/${dashboardFolderName(templateId, instanceId)}/`;
 }
 
+/**
+ * "<espaço>/dashboards/<molde>-<id>/partes/" — the parts read from each raw fiscal file of the dashboard,
+ * one folder per file (<cnpj>/<aaaa-mm>/<id>/), reused while the file does not change (see fiscal/parts-plan.ts).
+ */
+export function fiscalPartsFolder(orgSlug: string, clientSlug: string | null, instanceId: string, templateId: string): string {
+  return `${dashboardFolder(orgSlug, clientSlug, instanceId, templateId)}partes/`;
+}
+
 /** Where a table of a version of a dashboard is written: <espaço>/dashboards/<molde>-<id>/v<n>/<tabela>.<rand>.parquet. */
 export function datasetKey(
   orgSlug: string, clientSlug: string | null, instanceId: string, templateId: string, version: number, table: string,

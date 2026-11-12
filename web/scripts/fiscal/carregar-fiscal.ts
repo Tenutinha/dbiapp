@@ -4,15 +4,16 @@
  * ECD com milhões de lançamentos).
  *
  *   1. atualiza o molde no catálogo com web/fiscal-templates/<molde>.json (só se ainda for rascunho);
- *   2. organiza os arquivos soltos na pasta do espaço, lê todos e põe as tabelas no rascunho;
+ *   2. organiza os arquivos soltos na pasta do espaço e põe as tabelas no rascunho — nos SPED, só os arquivos
+ *      novos ou trocados são lidos; os outros vêm das partes já lidas (services/fiscal-parts.ts);
  *   3. publica.
  *
  * Uso (em web/, com o .env do ambiente de destino):
  *   node --env-file=<.env> --conditions=react-server --import tsx scripts/fiscal/carregar-fiscal.ts \
- *     --molde <id> --org <slug> [--cliente <slug>] [--so-molde] [--so-blocos]
+ *     --molde <id> --org <slug> [--cliente <slug>] [--so-molde] [--so-blocos] [--reler-tudo]
  *
- * Com --so-blocos, só as tabelas por bloco (ex.: bloco_a_servicos, o bloco A de todos os períodos) e as dimensões
- * são refeitas; a fato principal fica como está publicada.
+ * Com --so-blocos, a fato principal fica como está publicada; só as tabelas por bloco (ex.: bloco_a_servicos)
+ * e as dimensões entram no rascunho. Com --reler-tudo, todos os arquivos são lidos de novo.
  */
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -123,8 +124,12 @@ async function main(): Promise<void> {
   } as unknown as InstanceAccess; // só os campos que rebuildFiscal/publishDraft usam
 
   const started = Date.now();
-  const result = await rebuildFiscal(access, process.argv.includes("--so-blocos") ? { only: "blocks" } : {});
-  console.log(`arquivos lidos: ${result.files} (${result.adopted} organizados da pasta do espaço) em ${((Date.now() - started) / 1000).toFixed(0)} s`);
+  const result = await rebuildFiscal(access, {
+    ...(process.argv.includes("--so-blocos") ? { only: "blocks" as const } : {}),
+    rereadAll: process.argv.includes("--reler-tudo"),
+  });
+  const how = result.read !== undefined ? `: ${result.read} lidos agora, ${result.reused ?? 0} já lidos antes` : "";
+  console.log(`arquivos no dashboard: ${result.files}${how} (${result.adopted} organizados da pasta do espaço) em ${((Date.now() - started) / 1000).toFixed(0)} s`);
   for (const s of result.skipped) console.log(`  pulado ${s.path}: ${s.error}`);
   for (const table of result.tables) {
     console.log(`  ${table.table}: ${table.ok ? `${table.rowCount.toLocaleString("pt-BR")} linhas, ${(table.sizeBytes / 1024 ** 2).toFixed(1)} MB` : `ERRO ${table.errors.join(" | ")}`}`);

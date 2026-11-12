@@ -34,6 +34,9 @@ interface Envelope<T> {
 interface RebuildView {
   ok: boolean;
   files: number;
+  /** SPED: read now (new or changed) and reused from an earlier read. */
+  read?: number;
+  reused?: number;
   adopted: number;
   skipped: { path: string; error: string }[];
   tables: { table: string; ok: boolean; rowCount: number; errors: string[] }[];
@@ -82,7 +85,7 @@ export function FiscalImporter({ instanceId, title, extensions, initialPeriods, 
           Envie os arquivos {extensions.join(" ou ")} como saem do sistema pelo explorador de{" "}
           <FilesLink orgSlug={files.orgSlug} folder={files.folder} className="font-semibold text-brand-2 hover:underline">📁 Arquivos</FilesLink>, na pasta
           do espaço. Ao montar, cada um é reconhecido e organizado por empresa e período (o mesmo período ou a mesma nota
-          substitui o anterior). Depois, publique.
+          substitui o anterior). Nos SPED, só os arquivos novos ou trocados são lidos de novo. Depois, publique.
         </p>
       </div>
 
@@ -98,7 +101,10 @@ export function FiscalImporter({ instanceId, title, extensions, initialPeriods, 
       {rebuild && (
         <div className="flex flex-col gap-1 text-sm">
           <p className={rebuild.ok ? "text-ok" : "text-danger"}>
-            {rebuild.ok ? "✓" : "✕"} {rebuild.files.toLocaleString("pt-BR")} arquivo(s) lido(s)
+            {rebuild.ok ? "✓" : "✕"} {rebuild.files.toLocaleString("pt-BR")} arquivo(s) no dashboard
+            {rebuild.read !== undefined
+              ? `: ${rebuild.read.toLocaleString("pt-BR")} lido(s) agora, ${(rebuild.reused ?? 0).toLocaleString("pt-BR")} já lido(s) antes`
+              : ""}
             {rebuild.adopted > 0 ? ` (${rebuild.adopted} vindo(s) da pasta do espaço, agora organizado(s))` : ""}.{" "}
             {rebuild.ok ? "As tabelas estão no rascunho: confira e publique acima." : rebuildError}
           </p>
