@@ -35,7 +35,8 @@ export async function loadAnalysisAction(ticket: string, analysisId: string, sea
     if (!loaded) return { ok: false };
     // An analysis whose visuals all hid themselves (no rows) is not shown; one without visuals keeps its title.
     const empty = loaded.results.length > 0 && visibleResults(loaded.results).length === 0;
-    return { ok: true, body: empty ? null : <VisualGrid template={loaded.template} results={loaded.results} /> };
+    const layout = loaded.template.analyses.find((a) => a.id === analysisId)?.layout;
+    return { ok: true, body: empty ? null : <VisualGrid template={loaded.template} results={loaded.results} layout={layout} /> };
   } catch (err) {
     console.error(`[dashboard] analysis ${grant.instanceId}/${analysisId} failed`, err);
     return { ok: false };
