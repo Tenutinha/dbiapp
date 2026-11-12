@@ -40,11 +40,21 @@ function summaryNumbers(t: Template): Map<string, number> {
 }
 
 /**
- * The template as readers get it: hidden analyses (off the air) and their visuals left out, so they are
- * neither listed, shown nor computed.
+ * Analyses readers do not get: the ones marked hidden (off the air) and, when the template has a summary,
+ * the ones left out of it. A template without any summary shows all its analyses.
+ */
+export function offTheAir(t: Template): Set<string> {
+  const listed = new Set(t.summary.flatMap((g) => g.analyses));
+  return new Set(t.analyses.filter((a) => a.hidden || (listed.size > 0 && !listed.has(a.id))).map((a) => a.id));
+}
+
+/**
+ * The template as readers get it: analyses off the air (see offTheAir) and their visuals left out, so they
+ * are neither listed, shown nor computed.
  */
 export function withoutHidden(t: Template): Template {
-  const hidden = t.analyses.filter((a) => a.hidden);
+  const off = offTheAir(t);
+  const hidden = t.analyses.filter((a) => off.has(a.id));
   if (hidden.length === 0) return t;
   const ids = new Set(hidden.map((a) => a.id));
   const visuals = new Set(hidden.flatMap((a) => a.visuals));

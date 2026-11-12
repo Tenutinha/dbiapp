@@ -1,7 +1,7 @@
 import { formatValue } from "@/lib/format";
 import type { DashboardData, VisualResult } from "@/lib/query/run";
 import type { Template } from "@/lib/templates/schema";
-import { buildSections } from "@/lib/templates/sections";
+import { buildSections, offTheAir } from "@/lib/templates/sections";
 import { Chart, type ChartMeasure } from "./Chart";
 import { FilterBar } from "./FilterBar";
 import { LazySection } from "./LazySection";
@@ -148,12 +148,15 @@ export function VisualGrid({ template, results: all }: VisualGridProps) {
 export function DashboardView({ template, data, totalRows, later }: DashboardViewProps) {
   const { loose, sections } = buildSections(template, data.visuals);
   const pending = new Set(later?.pending ?? []);
+  // Only previews get here with analyses off the air: readers never receive them (withoutHidden).
+  const off = offTheAir(template);
   const header = (s: (typeof sections)[number]): React.ReactNode => (
     <header className="mb-5 border-t border-line pt-6">
       {s.number !== null && <p className="font-mono text-xs tabular-nums text-muted">{String(s.number).padStart(2, "0")}</p>}
-      {/* Only previews get here with a hidden analysis: readers never receive it (withoutHidden). */}
-      {s.analysis.hidden && (
-        <p className="w-fit rounded bg-accent/15 px-2 py-0.5 text-xs font-medium text-accent">Oculta: fora do ar para quem vê o dashboard</p>
+      {off.has(s.analysis.id) && (
+        <p className="w-fit rounded bg-accent/15 px-2 py-0.5 text-xs font-medium text-accent">
+          {s.analysis.hidden ? "Oculta" : "Fora do sumário"}: fora do ar para quem vê o dashboard
+        </p>
       )}
       <h2 id={`${s.anchor}-titulo`} className="mt-1 font-serif text-3xl leading-tight tracking-[-0.01em] sm:text-4xl">
         {s.analysis.title}

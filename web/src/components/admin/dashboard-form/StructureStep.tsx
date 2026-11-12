@@ -180,7 +180,9 @@ export function StructureStep({ template: t, onChange }: StepProps) {
             {groups.map((g) => [
               <tr key={`g-${g.index ?? "fora"}`} className="border-t border-line bg-bg/40">
                 <td colSpan={4} className="px-3 py-1.5 text-xs font-semibold text-muted">
-                  {g.title ?? "Fora do sumário (não aparecem na barra lateral)"}
+                  {g.title ?? (t.summary.length > 0
+                    ? "Fora do sumário: fora do ar, não aparecem no dashboard (inclua no sumário em “Organizar”)"
+                    : "Sem sumário: todas as análises aparecem no dashboard")}
                 </td>
               </tr>,
               ...g.rows.map(row),

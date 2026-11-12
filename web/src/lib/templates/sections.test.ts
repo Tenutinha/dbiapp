@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { loadTemplate } from "../test-helpers";
 import { templateSchema } from "./schema";
-import { analysisAnchor, buildOutline, buildSections, buildSummary, openingVisuals, withoutHidden } from "./sections";
+import { analysisAnchor, buildOutline, buildSections, buildSummary, offTheAir, openingVisuals, withoutHidden } from "./sections";
 
 const base = templateSchema.parse(loadTemplate("vendas-executivo"));
 const t = templateSchema.parse({
@@ -91,13 +91,24 @@ describe("hidden analyses (off the air)", () => {
 
   it("leave the page and the computed visuals for readers", () => {
     const reader = withoutHidden(off);
-    expect(reader.analyses.map((a) => a.id)).toEqual(["canais", "extra"]);
+    expect(reader.analyses.map((a) => a.id)).toEqual(["canais"]);
     expect(reader.visuals.some((v) => v.id === "k_margem" || v.id === "k_receita")).toBe(false);
     expect(reader.summary).toEqual([{ title: "Detalhes", analyses: ["canais"] }]);
-    expect(buildSections(reader, []).sections.map((s) => s.analysis.id)).toEqual(["canais", "extra"]);
+    expect(buildSections(reader, []).sections.map((s) => s.analysis.id)).toEqual(["canais"]);
   });
 
-  it("change nothing when no analysis is hidden", () => {
-    expect(withoutHidden(t)).toBe(t);
+  it("include the analyses left out of the summary, with their charts", () => {
+    const withChart = { ...t, analyses: t.analyses.map((a) => (a.id === "extra" ? { ...a, visuals: ["k_margem"] } : a.id === "visao" ? { ...a, visuals: ["k_receita"] } : a)) };
+    expect([...offTheAir(withChart)]).toEqual(["extra"]);
+    const reader = withoutHidden(withChart);
+    expect(reader.analyses.map((a) => a.id)).toEqual(["canais", "visao"]);
+    expect(reader.visuals.some((v) => v.id === "k_margem")).toBe(false);
+  });
+
+  it("change nothing when every analysis is in the summary, or there is no summary at all", () => {
+    const allListed = { ...t, analyses: t.analyses.filter((a) => a.id !== "extra") };
+    expect(withoutHidden(allListed)).toBe(allListed);
+    const noSummary = { ...t, summary: [] };
+    expect(withoutHidden(noSummary)).toBe(noSummary);
   });
 });
