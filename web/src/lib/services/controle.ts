@@ -7,14 +7,16 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { getClientContext, requireAction, type ClientContext } from "../access";
 import { AccessError } from "../auth";
-import { readReceipt } from "../controle/extract";
+import { readNfcePage, readReceipt } from "../controle/extract";
 import {
   isReceiptPath, maxReceiptBytes, receiptExt, receiptMime, receiptPath, type ReceiptMime,
 } from "../controle/receipts";
-import { todayInBrazil, type PurchaseDraft, type PurchaseInput, type SaleInput } from "../controle/schema";
+import { describeKey, formatCnpj, isValidKey, parseNfceQr } from "../controle/nfce";
+import { fetchNfcePage } from "../controle/nfce-page";
+import { purchaseInput, todayInBrazil, type PurchaseDraft, type PurchaseInput, type SaleInput } from "../controle/schema";
 import type { EntryStatus } from "../controle/status";
 import {
-  deletePurchase, deleteSale, findReceipt, insertPurchase, insertSale, orgModules, receiptInUse, setEntryStatus, updatePurchase, updateSale, type Space,
+  deletePurchase, deleteSale, findReceipt, insertPurchase, insertSale, orgModules, nfceInUse, receiptInUse, setEntryStatus, updatePurchase, updateSale, type Space,
 } from "../data/controle";
 import { storage } from "../storage";
 import { clientFolder } from "../storage-keys";
@@ -113,21 +115,65 @@ export async function openReceipt(access: ControleAccess, purchaseId: string): P
 
 // ---------- entries ----------
 
+const NOTE_ALREADY_IN = "Esta nota já foi lançada.";
+const RECEIPT_ALREADY_IN = "Este comprovante já foi lançado.";
+
 export async function savePurchase(access: ControleAccess, input: PurchaseInput): Promise<{ id: string }> {
+  const clientId = access.space.clientId;
+  if (input.nfceKey) {
+    if (!isValidKey(input.nfceKey)) throw new UserFacingError("Chave da nota inválida.");
+    if (await nfceInUse(clientId, input.nfceKey)) throw new UserFacingError(NOTE_ALREADY_IN);
+  }
+  let receipt: PurchaseInput["receipt"] = null;
   if (input.receipt) {
     const mime = receiptMime(input.receipt.path);
     if (!mime) throw new UserFacingError("Comprovante inválido.");
-    if (await receiptInUse(access.space.clientId, input.receipt.path)) throw new UserFacingError("Este comprovante já foi lançado.");
+    if (await receiptInUse(clientId, input.receipt.path)) throw new UserFacingError(RECEIPT_ALREADY_IN);
     await receiptBytes(access, input.receipt.path); // the file must really be in this client's folder
-    try {
-      return { id: await insertPurchase(access.space, access.ctx.user.id, { ...input, receipt: { path: input.receipt.path, mime } }) };
-    } catch (err) {
-      // Two saves of the same receipt at once: the unique index lets only one through.
-      if ((err as { code?: string }).code === "23505") throw new UserFacingError("Este comprovante já foi lançado.");
-      throw err;
-    }
+    receipt = { path: input.receipt.path, mime };
   }
-  return { id: await insertPurchase(access.space, access.ctx.user.id, { ...input, fromReceipt: false }) };
+  // "Read by AI" only when there is something it read: a receipt or an NFC-e page.
+  const fromReceipt = input.fromReceipt && (receipt !== null || input.nfceKey !== null);
+  try {
+    return { id: await insertPurchase(access.space, access.ctx.user.id, { ...input, receipt, fromReceipt }) };
+  } catch (err) {
+    // Two saves of the same receipt or note at once: the unique indexes let only one through.
+    const { code, constraint_name } = err as { code?: string; constraint_name?: string };
+    if (code === "23505") throw new UserFacingError(constraint_name?.includes("nfce") ? NOTE_ALREADY_IN : RECEIPT_ALREADY_IN);
+    throw err;
+  }
+}
+
+export type NfceImport =
+  /** The note was read and saved as a paid expense. */
+  | { saved: true; id: string; draft: PurchaseDraft; key: string }
+  /** Read, but something is missing (or the SEFAZ did not show the note): the person checks it first. */
+  | { saved: false; draft: PurchaseDraft; key: string; notice: string };
+
+/**
+ * An expense from the QR Code of an NFC-e: the note's public page on the SEFAZ is read and, when
+ * it brings date and total, saved right away as paid (with the photo, when there is one).
+ */
+export async function importNfce(access: ControleAccess, qr: string, receipt: PurchaseInput["receipt"]): Promise<NfceImport> {
+  const nfce = parseNfceQr(qr);
+  if (!nfce) throw new UserFacingError("Este QR Code não é de uma NFC-e.");
+  if (await nfceInUse(access.space.clientId, nfce.key)) throw new UserFacingError(NOTE_ALREADY_IN);
+
+  const read = await readNfcePage(await fetchNfcePage(nfce.url));
+  const info = describeKey(nfce.key);
+  const draft: PurchaseDraft = { ...read, supplier: read.supplier ?? `CNPJ ${formatCnpj(info.cnpj)}`, status: "efetivado" };
+  if (!read.readable) {
+    return { saved: false, draft, key: nfce.key, notice: `O site da SEFAZ não mostrou a nota${read.notes ? ` (${read.notes})` : ""}.` };
+  }
+  const input = purchaseInput.safeParse({
+    purchasedOn: draft.purchasedOn, supplier: draft.supplier, totalCents: draft.totalCents, paymentMethod: draft.paymentMethod,
+    notes: draft.notes, receipt, fromReceipt: true, status: "efetivado", nfceKey: nfce.key, items: draft.items,
+  });
+  if (!input.success || draft.totalCents === null || draft.purchasedOn === null) {
+    return { saved: false, draft, key: nfce.key, notice: "Li a nota na SEFAZ, mas faltou algum dado. Confira antes de salvar." };
+  }
+  const { id } = await savePurchase(access, input.data);
+  return { saved: true, id, draft, key: nfce.key };
 }
 
 /** Corrects a saved purchase. Its receipt (and whether it came from the reader) is not touched. */

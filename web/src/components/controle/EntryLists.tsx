@@ -165,7 +165,7 @@ function purchaseDetail(p: Purchase): string {
   return [
     p.items.length === 1 ? "1 item" : p.items.length > 1 ? `${p.items.length} itens` : null,
     p.paymentMethod ? PAYMENT_LABEL[p.paymentMethod] : null,
-    p.hasReceipt ? "com comprovante" : null,
+    p.nfceKey ? "NFC-e" : p.hasReceipt ? "com comprovante" : null,
   ].filter(Boolean).join(" · ") || "Despesa";
 }
 
