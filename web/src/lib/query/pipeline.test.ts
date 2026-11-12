@@ -129,6 +129,12 @@ describe("ingest + dashboard pipeline", () => {
     expect(kpi(sul, "k_receita").receita).toBe(40_000);
     expect(all.filters.find((f) => f.fieldId === "regiao")?.values).toEqual(["(sem cadastro)", "Norte", "Sul"]);
 
+    // A part of the page: only the visuals asked for, and no filter options when they are not wanted.
+    const part = await runDashboard(root, t, files, { regiao: ["Sul"] }, [], [], { only: new Set(["k_margem", "k_receita"]), filterOptions: false });
+    expect(part.visuals.map((v) => v.visual.id).sort()).toEqual(["k_margem", "k_receita"]);
+    expect(kpi(part, "k_receita").receita).toBe(40_000);
+    expect(part.filters).toEqual([]);
+
     // orphan facts (id_loja 5 has no dimension row) are listed and filterable
     const orphans = await runDashboard(root, t, files, { regiao: ["(sem cadastro)"] });
     expect(kpi(orphans, "k_receita").receita).toBe(20_000);

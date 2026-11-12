@@ -4,6 +4,7 @@ import type { Template } from "@/lib/templates/schema";
 import { buildSections } from "@/lib/templates/sections";
 import { Chart, type ChartMeasure } from "./Chart";
 import { FilterBar } from "./FilterBar";
+import { LazySection } from "./LazySection";
 import { MapChart, type MapMeasure } from "./MapChart";
 import { CrossTable } from "./CrossTable";
 import { ScrollTable, type ScrollColumn, type SortValue } from "./ScrollTable";
@@ -19,6 +20,14 @@ interface DashboardViewProps {
   template: Template;
   data: DashboardData;
   totalRows: number;
+  /** Analyses not computed with the page: each one is asked for when the reader gets near it. */
+  later?: {
+    /** Ids of those analyses. */
+    pending: readonly string[];
+    ticket: string;
+    /** The page's filters and picked items, as a query string. */
+    search: string;
+  };
 }
 
 function VisualBody({ template, result }: { template: Template; result: VisualResult }) {
@@ -118,7 +127,7 @@ export function visibleResults(results: readonly VisualResult[]): VisualResult[]
   return results.filter((r) => !(r.visual.hideEmpty && r.rows.length === 0 && !r.error));
 }
 
-function VisualGrid({ template, results: all }: VisualGridProps) {
+export function VisualGrid({ template, results: all }: VisualGridProps) {
   const results = visibleResults(all);
   if (results.length === 0) return null;
   return (
@@ -136,30 +145,47 @@ function VisualGrid({ template, results: all }: VisualGridProps) {
   );
 }
 
-export function DashboardView({ template, data, totalRows }: DashboardViewProps) {
+export function DashboardView({ template, data, totalRows, later }: DashboardViewProps) {
   const { loose, sections } = buildSections(template, data.visuals);
+  const pending = new Set(later?.pending ?? []);
+  const header = (s: (typeof sections)[number]): React.ReactNode => (
+    <header className="mb-5 border-t border-line pt-6">
+      {s.number !== null && <p className="font-mono text-xs tabular-nums text-muted">{String(s.number).padStart(2, "0")}</p>}
+      {/* Only previews get here with a hidden analysis: readers never receive it (withoutHidden). */}
+      {s.analysis.hidden && (
+        <p className="w-fit rounded bg-accent/15 px-2 py-0.5 text-xs font-medium text-accent">Oculta: fora do ar para quem vê o dashboard</p>
+      )}
+      <h2 id={`${s.anchor}-titulo`} className="mt-1 font-serif text-3xl leading-tight tracking-[-0.01em] sm:text-4xl">
+        {s.analysis.title}
+      </h2>
+      {s.analysis.description && <p className="mt-3 max-w-3xl leading-relaxed text-text/75">{s.analysis.description}</p>}
+    </header>
+  );
   return (
     <>
       <FilterBar filters={data.filters} cross={data.cross} />
       <VisualGrid template={template} results={loose} />
-      {sections.filter((s) => s.results.length === 0 || visibleResults(s.results).length > 0).map((s) => (
-        <section key={s.analysis.id} id={s.anchor} aria-labelledby={`${s.anchor}-titulo`} className="mt-14 scroll-mt-24 first:mt-0">
-          <header className="mb-5 border-t border-line pt-6">
-            {s.number !== null && <p className="font-mono text-xs tabular-nums text-muted">{String(s.number).padStart(2, "0")}</p>}
-            {/* Only previews get here with a hidden analysis: readers never receive it (withoutHidden). */}
-            {s.analysis.hidden && (
-              <p className="w-fit rounded bg-accent/15 px-2 py-0.5 text-xs font-medium text-accent">Oculta: fora do ar para quem vê o dashboard</p>
-            )}
-            <h2 id={`${s.anchor}-titulo`} className="mt-1 font-serif text-3xl leading-tight tracking-[-0.01em] sm:text-4xl">
-              {s.analysis.title}
-            </h2>
-            {s.analysis.description && <p className="mt-3 max-w-3xl leading-relaxed text-text/75">{s.analysis.description}</p>}
-          </header>
-          <VisualGrid template={template} results={s.results} />
-        </section>
-      ))}
+      {sections.map((s) => {
+        if (later && pending.has(s.analysis.id)) {
+          // Keyed by the filters too: a new selection starts the analysis over, as it does the computed ones.
+          return (
+            <LazySection
+              key={`${s.analysis.id}?${later.search}`}
+              ticket={later.ticket} analysisId={s.analysis.id} search={later.search} anchor={s.anchor} header={header(s)}
+            />
+          );
+        }
+        if (s.results.length > 0 && visibleResults(s.results).length === 0) return null;
+        return (
+          <section key={s.analysis.id} id={s.anchor} aria-labelledby={`${s.anchor}-titulo`} className="mt-14 scroll-mt-24 first:mt-0">
+            {header(s)}
+            <VisualGrid template={template} results={s.results} />
+          </section>
+        );
+      })}
       <p className="mt-6 text-right font-mono text-xs text-muted">
         {totalRows.toLocaleString("pt-BR")} linhas na fato · {data.visuals.length} visuais calculados em {data.elapsedMs} ms
+        {pending.size > 0 && " · as demais análises carregam ao chegar nelas"}
       </p>
     </>
   );

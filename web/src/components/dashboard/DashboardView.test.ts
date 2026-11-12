@@ -13,6 +13,9 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
 }));
 
+// The server action behind an analysis left for later reaches the database; here it never runs.
+vi.mock("./section-actions", () => ({ loadAnalysisAction: async () => ({ ok: false }) }));
+
 const base = templateSchema.parse(loadTemplate("vendas-executivo"));
 /** Only KPIs and a text block: they render without charts. */
 const kpis = base.visuals.filter((v) => v.type === "kpi");
@@ -49,6 +52,20 @@ describe("DashboardView with analyses", () => {
     expect(html.indexOf("Receita")).toBeLessThan(section); // k_receita is outside every analysis
     expect(html.indexOf("Como ler")).toBeGreaterThan(section);
     expect(html.indexOf("Segundo.")).toBeGreaterThan(section);
+  });
+
+  it("shows an analysis left for later with its title and a skeleton, without its visuals", () => {
+    const later = { pending: ["visao_geral"], ticket: "t", search: "f.ano=2025" };
+    const opening = { ...data, visuals: data.visuals.filter((v) => v.visual.id !== "k_margem" && v.visual.id !== "nota") };
+    const html = renderToStaticMarkup(createElement(DashboardView, { template, data: opening, totalRows: 10, later }));
+    const section = html.indexOf(`id="${analysisAnchor("visao_geral")}"`);
+    expect(section).toBeGreaterThan(-1);
+    expect(html).toContain("Os números do período.");
+    expect(html).toContain("Carregando a análise");
+    expect(html).not.toContain("Como ler");
+    expect(html).toContain("as demais análises carregam ao chegar nelas");
+    // What was computed with the page is there as always.
+    expect(html.indexOf("Receita")).toBeLessThan(section);
   });
 
   it("keeps the flat layout for dashboards without analyses", () => {

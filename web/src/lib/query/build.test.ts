@@ -85,7 +85,9 @@ describe("buildFilterOptionsQuery", () => {
     const q = buildFilterOptionsQuery(t, files, "regiao", { regiao: ["Sul"], canal: ["E-commerce"] });
     expect(q.params).toEqual(["E-commerce"]);
     expect(q.sql).not.toContain("dim_loja.regiao) AS VARCHAR), '(sem cadastro)') IN");
-    expect(q.sql).toContain("SELECT DISTINCT COALESCE(");
+    // The label is worked out once per value of the column it reads, then the labels are made distinct.
+    expect(q.sql.startsWith("SELECT DISTINCT value FROM (\nSELECT COALESCE(")).toBe(true);
+    expect(q.sql).toContain("GROUP BY dim_loja.regiao");
   });
 });
 
@@ -169,8 +171,8 @@ describe("more than one fact", () => {
       relationships: [...multi.relationships, { from: { table: "fato_metas", column: "id_loja" }, to: { table: "dim_loja", column: "id_loja" } }],
     });
     const q = buildFilterOptionsQuery(reaching, all, "regiao", {});
-    expect(q.sql.match(/SELECT DISTINCT/g)).toHaveLength(2);
-    expect(q.sql).toContain("UNION");
+    expect(q.sql.match(/GROUP BY dim_loja\.regiao/g)).toHaveLength(2);
+    expect(q.sql).toContain("UNION ALL");
     expect(q.sql).toContain("FROM read_parquet('/data/metas.parquet') AS fato_metas");
   });
 

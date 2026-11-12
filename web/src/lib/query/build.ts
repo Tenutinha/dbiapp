@@ -64,6 +64,17 @@ function reachOf(t: Template, alias: string): Template["relationships"] {
   });
 }
 
+/** The columns an expression reads, as "table.column" (tables of the template only), each one once. */
+function columnsOf(t: Template, sql: string): string[] {
+  const found = new Set<string>();
+  for (const tb of t.tables) {
+    for (const m of sql.matchAll(new RegExp(`\\b${tb.name}\\.([a-z_][a-z0-9_]*)\\b`, "g"))) {
+      if (tb.columns.some((c) => c.name === m[1])) found.add(`${tb.name}.${m[1]}`);
+    }
+  }
+  return [...found];
+}
+
 /** Whether an expression only mentions tables a fact reaches: the fact itself (by its alias) and its dimensions. */
 function inScope(t: Template, alias: string, sql: string): boolean {
   const reach = new Set([alias, ...reachOf(t, alias).map((r) => r.to.table)]);
@@ -286,15 +297,17 @@ export function buildFilterOptionsQuery(
   // table do), so a template with a dozen block facts scans once instead of a dozen times.
   const groups = new Map<string, FactSource[]>();
   for (const source of sources) groups.set(source.alias, [...(groups.get(source.alias) ?? []), source]);
+  // The field is worked out once per combination of the columns it reads, not once per row: a label built
+  // by a long CASE over a column of a few dozen values costs a few dozen evaluations, whatever the table's size.
+  const columns = columnsOf(t, field.sql);
   const parts = [...groups.values()].map((group) => {
     const [source] = group;
     const together = { ...files, [source.table]: joinParts(group.flatMap((s) => splitParts(files[s.table] ?? ""))) };
     const from = buildFrom(t, together, factFilter, params, undefined, source);
     const where = buildWhere(t, filters, fieldId, params, { selection: cross }, source.alias);
-    return [`SELECT DISTINCT ${fieldValue(field)} AS value`, from, where.sql].filter(Boolean).join("\n");
+    const grouped = columns.length > 0 ? `GROUP BY ${columns.join(", ")}` : "";
+    return [`SELECT ${grouped ? "" : "DISTINCT "}${fieldValue(field)} AS value`, from, where.sql, grouped].filter(Boolean).join("\n");
   });
-  const sql = parts.length === 1
-    ? `${parts[0]}\nORDER BY value NULLS LAST LIMIT 500`
-    : `SELECT value FROM (\n${parts.join("\nUNION\n")}\n) AS options\nORDER BY value NULLS LAST LIMIT 500`;
+  const sql = `SELECT DISTINCT value FROM (\n${parts.join("\nUNION ALL\n")}\n) AS options\nORDER BY value NULLS LAST LIMIT 500`;
   return { sql, params };
 }

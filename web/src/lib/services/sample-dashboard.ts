@@ -17,5 +17,5 @@ export async function loadSampleDashboard(
   const sample = await ensureSampleFiles(storage.workRoot, template);
   const selection = parseSelection(template, searchParams);
   const data = await runDashboard(storage.workRoot, template, { ...sample.files }, selection, [], parseCross(template, searchParams));
-  return { template, data, totalRows: sample.factRows };
+  return { template, data, totalRows: sample.factRows, pending: [] };
 }

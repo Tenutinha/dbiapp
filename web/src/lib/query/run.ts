@@ -67,6 +67,8 @@ export async function runDashboard(
   factFilter: FactFilter = [],
   /** Items picked in the visuals (cross-filtering). */
   cross: CrossSelection = [],
+  /** A part of the page: only these visuals, and the filter options only when asked. Default: everything. */
+  part: { only?: ReadonlySet<string>; filterOptions?: boolean } = {},
 ): Promise<DashboardData> {
   const started = performance.now();
   const resolved = await withConnection(storageRoot, (conn) => resolveSingleFilters(conn, template, files, selection, factFilter));
@@ -101,9 +103,10 @@ export async function runDashboard(
       single: fieldId in template.filterDefaults,
     };
   };
+  const wanted = part.only ? template.visuals.filter((v) => part.only?.has(v.id)) : template.visuals;
   const [visuals, filters] = await Promise.all([
-    inParallel(storageRoot, template.visuals, runVisual),
-    inParallel(storageRoot, template.filters, runFilter),
+    inParallel(storageRoot, wanted, runVisual),
+    inParallel(storageRoot, part.filterOptions === false ? [] : template.filters, runFilter),
   ]);
 
   const picks: CrossPicks[] = cross.map((entry) => ({

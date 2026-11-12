@@ -69,6 +69,20 @@ export function buildSummary(t: Template): SummaryGroupView[] {
     .filter((g) => g.items.length > 0);
 }
 
+/**
+ * What a dashboard opens with when the rest waits: the visuals outside every analysis and those of the
+ * first analysis are computed with the page (`only`); the other analyses are left `pending`, each one
+ * asked for when the reader gets near it.
+ */
+export function openingVisuals(t: Template): { only: Set<string>; pending: string[] } {
+  const placed = new Set(t.analyses.flatMap((a) => a.visuals));
+  const [first, ...rest] = t.analyses;
+  return {
+    only: new Set([...t.visuals.filter((v) => !placed.has(v.id)).map((v) => v.id), ...(first?.visuals ?? [])]),
+    pending: rest.map((a) => a.id),
+  };
+}
+
 /** The summary as one flat list, in reading order: the analyses shown under a dashboard in the sidebar. */
 export function buildOutline(t: Template): SummaryItem[] {
   return buildSummary(t).flatMap((g) => g.items);
