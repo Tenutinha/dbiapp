@@ -110,7 +110,8 @@ describe("organize", () => {
     expect(res.done).toHaveLength(1);
     const filed = await readdir(path.join(orgDir, "clientes/martinello/fiscal/efd-contribuicoes/11222333000181/2025-01"));
     expect(filed).toHaveLength(1);
-    expect(filed[0]).toMatch(/^efd-contribuicoes\.[0-9a-f]{8}\.txt$/);
+    // Filed with its own name, not renamed.
+    expect(filed[0]).toBe("PISCOFINS.txt");
     const again = await svc.organizePreview(ctx, "clientes/martinello");
     expect(again.inPlace).toBe(1);
     expect(again.moves.map((m) => m.path)).not.toContain("clientes/martinello/lote/PISCOFINS.txt");

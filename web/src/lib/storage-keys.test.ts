@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { isSameFiscalDocument } from "./storage-analysis";
 import {
-  brandingKey, clientFolder, dashboardFolder, datasetKey, fiscalDocumentId, fiscalFileKey, fiscalFolder, isDatasetKey, isIssuedFiscalUploadKey, isIssuedUploadKey,
+  brandingKey, clientFolder, dashboardFolder, datasetKey, fiscalFolder, fiscalNamedKey, fiscalPeriodFolder, isDatasetKey, isIssuedFiscalUploadKey, isIssuedUploadKey,
   isOrgLogoKey, isUserAvatarKey, isValidKey, orgFolder, spaceFolder, StorageKeyError, storableFileName, uploadKey, userAvatarKey,
 } from "./storage-keys";
 
@@ -30,12 +31,7 @@ describe("client and space folders", () => {
     const folder = fiscalFolder("acme", "loja-norte", "nfe");
     expect(folder).toBe("orgs/acme/clientes/loja-norte/fiscal/nfe/");
     expect(fiscalFolder("acme", null, "ecd")).toBe("orgs/acme/fiscal/ecd/");
-    const key = fiscalFileKey(folder, "11222333000181", "2025-02", "1".repeat(44), "xml");
-    expect(key).toMatch(/^orgs\/acme\/clientes\/loja-norte\/fiscal\/nfe\/11222333000181\/2025-02\/1{44}\.[0-9a-f]{8}\.xml$/);
-    expect(isValidKey(key)).toBe(true);
-    expect(fiscalDocumentId(key.split("/").pop()!)).toBe("1".repeat(44));
-    expect(() => fiscalFileKey(folder, "123", "2025-02", "x", "txt")).toThrow(StorageKeyError);
-    expect(() => fiscalFileKey(folder, "11222333000181", "2025-13", "x", "txt")).toThrow(StorageKeyError);
+    expect(fiscalPeriodFolder(folder, "11222333000181", "2025-02")).toBe("orgs/acme/clientes/loja-norte/fiscal/nfe/11222333000181/2025-02/");
   });
 
   it("accepts only fiscal raw uploads it issued", () => {
@@ -164,5 +160,36 @@ describe("user avatars", () => {
   it("never belong to someone else, and refuse a non-uuid user id", () => {
     expect(isUserAvatarKey(`users/${OTHER}/avatar/${INSTANCE}.png`, INSTANCE)).toBe(false);
     expect(() => userAvatarKey("../x", OTHER, "png")).toThrow(StorageKeyError);
+  });
+});
+
+describe("fiscal files keep their own name", () => {
+  const folder = "orgs/davos/clientes/martinello/fiscal/efd-contribuicoes/";
+  const period = fiscalPeriodFolder(folder, "32951535000134", "2019-01");
+
+  it("files the original name in the standard period folder", () => {
+    const name = "PISCOFINS_20190101_20190131_32951535000134_Original_20190306115124_25E8943EB18A9E1F3.txt";
+    expect(fiscalNamedKey(period, name, new Set())).toBe(`${period}${name}`);
+    expect(isValidKey(fiscalNamedKey(period, name, new Set()))).toBe(true);
+  });
+
+  it("cleans only what a key cannot hold, and never overwrites another document", () => {
+    expect(fiscalNamedKey(period, "Nota fiscal março.xml", new Set())).toBe(`${period}Nota-fiscal-marco.xml`);
+    expect(fiscalNamedKey(period, "nota.xml", new Set(["nota.xml", "nota-2.xml"]))).toBe(`${period}nota-3.xml`);
+  });
+
+  it("recognizes the same document: any older SPED of the period, a NF-e by its key, former names", () => {
+    expect(isSameFiscalDocument("PISCOFINS_retificadora.txt", "efd-contribuicoes", "txt")).toBe(true);
+    expect(isSameFiscalDocument("planilha.xml", "efd-contribuicoes", "txt")).toBe(false);
+    const chave = "3".repeat(44);
+    expect(isSameFiscalDocument(`${chave}-nfe.xml`, chave, "xml")).toBe(true);
+    expect(isSameFiscalDocument(`${"4".repeat(44)}-nfe.xml`, chave, "xml")).toBe(false);
+    expect(isSameFiscalDocument(`${chave}.1a2b3c4d.xml`, chave, "xml")).toBe(true);
+    expect(isSameFiscalDocument("efd-contribuicoes.1a2b3c4d.txt", "efd-contribuicoes", "txt")).toBe(true);
+  });
+
+  it("rejects an invalid company or period", () => {
+    expect(() => fiscalPeriodFolder(folder, "123", "2019-01")).toThrow(StorageKeyError);
+    expect(() => fiscalPeriodFolder(folder, "32951535000134", "2019-13")).toThrow(StorageKeyError);
   });
 });

@@ -28,7 +28,8 @@ import type { TableReport } from "../ingest/ingest";
 import { extraFacts, mainFact, type Template, type TemplateTable } from "../templates/schema";
 import { storage } from "../storage";
 import { relativeToOrg } from "../storage-browse";
-import { fiscalDocumentId, fiscalFileKey, fiscalFolder, isIssuedFiscalUploadKey, spaceFolder } from "../storage-keys";
+import { isSameFiscalDocument } from "../storage-analysis";
+import { fiscalFolder, fiscalNamedKey, fiscalPeriodFolder, isIssuedFiscalUploadKey, spaceFolder } from "../storage-keys";
 import { checkSize, ingestIntoDraft, requireTemplate, UserFacingError, type UploadPlan } from "./datasets";
 
 /** Files listed per period folder (one month of NF-e can hold thousands of documents). */
@@ -93,15 +94,11 @@ async function store(access: InstanceAccess, bytes: Uint8Array, fileName: string
   } catch (err) {
     asUserError(err);
   }
-  const folder = folderOf(access);
-  const key = fiscalFileKey(folder, id.cnpj, id.periodo, id.documentId, ext);
-  const periodFolder = relativeToOrg(access.org.slug, `${folder}${id.cnpj}/${id.periodo}`);
-  const existing = await storage.listOrgFolder(access.org.slug, periodFolder, MAX_FILES_PER_FOLDER);
-  const older = existing.files.filter((f) => fiscalDocumentId(f.name) === id.documentId).map((f) => f.key);
+  const { to: key, older } = await placeFiscal(access.org.slug, folderOf(access), fileName, id, null);
 
   await storage.putBytes(key, bytes, ext === "xml" ? XML_MIME : TXT_MIME);
-  // Only after the new copy is safe.
-  await storage.remove(older);
+  // Only after the new copy is safe (one with the same name was just overwritten by it).
+  await storage.remove(older.filter((k) => k !== key));
   return { cnpj: id.cnpj, periodo: id.periodo, label: id.label, path: relativeToOrg(access.org.slug, key), replaced: older.length > 0 };
 }
 
@@ -192,22 +189,34 @@ export async function adoptLooseFiles(access: InstanceAccess): Promise<number> {
   return adopted;
 }
 
+/** Where a fiscal file goes in its period folder, keeping its own name, and the older copies it replaces. */
+async function placeFiscal(
+  orgSlug: string, folder: string, fileName: string, id: FiscalIdentity, self: string | null,
+): Promise<{ to: string; older: string[] }> {
+  const ext = fileName.toLowerCase().endsWith(".xml") ? "xml" : "txt";
+  const period = fiscalPeriodFolder(folder, id.cnpj, id.periodo);
+  const existing = (await storage.listOrgFolder(orgSlug, relativeToOrg(orgSlug, period), MAX_FILES_PER_FOLDER)).files
+    .filter((f) => f.key !== self);
+  const older = existing.filter((f) => isSameFiscalDocument(f.name, id.documentId, ext));
+  // Names of the documents that stay: the new file never takes one of them.
+  const taken = new Set(existing.filter((f) => !older.includes(f)).map((f) => f.name));
+  return { to: fiscalNamedKey(period, fileName, taken), older: older.map((f) => f.key) };
+}
+
 /**
- * Files one raw fiscal file in its standard place: <folder><cnpj>/<período>/<documento>.<rand>.<ext>
+ * Files one raw fiscal file in its standard place, <folder><cnpj>/<período>/, with its own name
  * (`folder` = fiscalFolder of its space and template), replacing an older copy of the same document.
  * Shared by the importer ("Montar tabelas") and the file explorer ("Organizar pasta").
  */
 export async function fileFiscal(
   orgSlug: string, folder: string, key: string, fileName: string, id: FiscalIdentity,
 ): Promise<{ key: string; replaced: number; replacedKeys: string[] }> {
-  const ext = fileName.toLowerCase().endsWith(".xml") ? "xml" : "txt";
-  const periodFolder = relativeToOrg(orgSlug, `${folder}${id.cnpj}/${id.periodo}`);
-  const existing = await storage.listOrgFolder(orgSlug, periodFolder, MAX_FILES_PER_FOLDER);
-  const older = existing.files.filter((f) => fiscalDocumentId(f.name) === id.documentId && f.key !== key).map((f) => f.key);
-  const to = fiscalFileKey(folder, id.cnpj, id.periodo, id.documentId, ext);
-  await storage.move(key, to);
-  await storage.remove(older);
-  return { key: to, replaced: older.length, replacedKeys: older };
+  const { to, older } = await placeFiscal(orgSlug, folder, fileName, id, key);
+  if (to !== key) await storage.move(key, to);
+  // Only after the new copy is in place (an older copy with the same name was just overwritten by it).
+  const gone = older.filter((k) => k !== to);
+  await storage.remove(gone);
+  return { key: to, replaced: older.length, replacedKeys: gone };
 }
 
 export interface RebuildResult {

@@ -13,7 +13,7 @@ import {
 } from "../storage-analysis";
 import { relativeToOrg, type BrowseEntryFile } from "../storage-browse";
 import { clientSlugOf, CLIENTS_DIR, isReadOnlyPath, isSystemPath, joinPath, parentOf } from "../storage-explorer";
-import { fiscalDocumentId, fiscalFolder } from "../storage-keys";
+import { fiscalFolder } from "../storage-keys";
 import { getCatalogEntry } from "../templates/registry";
 import { inputTable } from "../templates/schema";
 import { UserFacingError } from "./datasets";
@@ -238,9 +238,9 @@ async function walkFiles(ctx: OrgContext, folder: string): Promise<{ files: { pa
 }
 
 /** Documents already filed in a destination folder, with their dates (errors fail the preview: never guess). */
-async function filedIn(ctx: OrgContext, folder: string): Promise<{ documentId: string; updatedAt: string | null }[]> {
+async function filedIn(ctx: OrgContext, folder: string): Promise<{ name: string; updatedAt: string | null }[]> {
   const list = await folderListing(ctx, folder);
-  return visible(list.files).map((f) => ({ documentId: fiscalDocumentId(f.name), updatedAt: current(f).updatedAt }));
+  return visible(list.files).map((f) => ({ name: f.name, updatedAt: current(f).updatedAt }));
 }
 
 interface Planned {

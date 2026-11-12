@@ -209,6 +209,24 @@ export interface CopyDecision {
   note?: string;
 }
 
+/** Former name of a filed fiscal file: <documento>.<8 hex>.<txt|xml>. */
+const FORMER_NAME = /^(.+)\.[0-9a-f]{8}\.(txt|xml)$/;
+
+/** A NF-e access key (44 digits): unlike a SPED, many documents share one period folder. */
+const isAccessKey = (documentId: string): boolean => /^\d{44}$/.test(documentId);
+
+/**
+ * Whether a file already in the standard period folder holds the same document as a new one, so the
+ * new one replaces it. A SPED is one per period of its model: any other file of the same type is an
+ * older copy (re-sent, corrected), whatever its name. A NF-e is found by its access key in the name.
+ * Files still named the former way (<documento>.<rand>.<ext>) are recognized by that name.
+ */
+export function isSameFiscalDocument(existingName: string, documentId: string, ext: "txt" | "xml"): boolean {
+  if (FORMER_NAME.exec(existingName)?.[1] === documentId) return true;
+  if (isAccessKey(documentId)) return existingName.includes(documentId);
+  return existingName.toLowerCase().endsWith(`.${ext}`);
+}
+
 const newer = (a: string | null, b: string | null): boolean => (a ?? "") > (b ?? "");
 const baseName = (path: string): string => path.slice(path.lastIndexOf("/") + 1);
 
@@ -219,7 +237,7 @@ const baseName = (path: string): string => path.slice(path.lastIndexOf("/") + 1)
  */
 export function resolveCopies(
   moves: readonly CopyCandidate[],
-  filed: ReadonlyMap<string, readonly { documentId: string; updatedAt: string | null }[]>,
+  filed: ReadonlyMap<string, readonly { name: string; updatedAt: string | null }[]>,
 ): CopyDecision[] {
   const groupKey = (m: { to: string; documentId: string }): string => `${m.to}\u0000${m.documentId}`;
   const newestLoose = new Map<string, CopyCandidate>();
@@ -228,7 +246,8 @@ export function resolveCopies(
     if (!best || newer(m.updatedAt, best.updatedAt)) newestLoose.set(groupKey(m), m);
   }
   return moves.map((m) => {
-    const existing = (filed.get(m.to) ?? []).filter((f) => f.documentId === m.documentId);
+    const ext = m.path.toLowerCase().endsWith(".xml") ? "xml" : "txt";
+    const existing = (filed.get(m.to) ?? []).filter((f) => isSameFiscalDocument(f.name, m.documentId, ext));
     const replaces = existing.length > 0;
     const best = newestLoose.get(groupKey(m))!;
     if (best !== m) return { suggested: false, replaces, note: `Há uma cópia mais nova deste documento: ${baseName(best.path)}.` };

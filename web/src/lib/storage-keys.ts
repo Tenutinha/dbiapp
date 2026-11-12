@@ -10,7 +10,7 @@
  *   orgs/<slug>/uploads/<dashboard>/<uuid>.<csv|parquet>          raw file, deleted after ingest
  *   orgs/<slug>/branding/<uuid>.<ext>                             logos
  *   orgs/<slug>/clientes/<cliente>/…                              files of one client (folder follows its address)
- *   <espaço>/fiscal/<molde>/<cnpj>/<aaaa-mm>/<documento>.<rand>.<txt|xml>
+ *   <espaço>/fiscal/<molde>/<cnpj>/<aaaa-mm>/<nome original>.<txt|xml>
  *                                                                 raw fiscal files (SPED, NF-e), kept; <espaço> is
  *                                                                 the client's folder or the organization's
  *
@@ -101,7 +101,6 @@ export function isIssuedFiscalUploadKey(key: string, orgSlug: string, instanceId
 }
 
 const TEMPLATE_ID = /^[a-z0-9-]{1,60}$/;
-const DOCUMENT_ID = /^[a-z0-9-]{1,60}$/;
 const TAX_ID = /^\d{11,14}$/;
 const PERIOD = /^\d{4}-(0[1-9]|1[0-2])$/;
 
@@ -145,17 +144,24 @@ export function storableFileName(original: string): string | null {
   return `${base}.${ext}`;
 }
 
-/** A raw fiscal file inside its company (CNPJ/CPF) and period folders, with a fresh suffix (keys are immutable). */
-export function fiscalFileKey(folder: string, taxId: string, period: string, documentId: string, ext: "txt" | "xml"): string {
-  if (!TAX_ID.test(taxId) || !PERIOD.test(period) || !DOCUMENT_ID.test(documentId)) {
-    throw new StorageKeyError("invalid fiscal file");
-  }
-  return `${folder}${taxId}/${period}/${documentId}.${rand8()}.${ext}`;
+/** "<folder><cnpj>/<período>/" — the standard folder of one company and period. */
+export function fiscalPeriodFolder(folder: string, taxId: string, period: string): string {
+  if (!TAX_ID.test(taxId) || !PERIOD.test(period)) throw new StorageKeyError("invalid fiscal folder");
+  return `${folder}${taxId}/${period}/`;
 }
 
-/** The document a stored fiscal file holds (its name up to the random suffix). */
-export function fiscalDocumentId(fileName: string): string {
-  return fileName.replace(/\.[0-9a-f]{8}\.(txt|xml)$/, "");
+/**
+ * The file's own name (cleaned only where a storage key needs it) inside the period folder; when another
+ * document already uses that name, "nome-2.ext", "nome-3.ext"…
+ */
+export function fiscalNamedKey(periodFolder: string, fileName: string, taken: ReadonlySet<string>): string {
+  const clean = storableFileName(fileName) ?? "arquivo.txt";
+  const dot = clean.lastIndexOf(".");
+  const base = clean.slice(0, dot);
+  const ext = clean.slice(dot);
+  let name = clean;
+  for (let n = 2; taken.has(name); n += 1) name = `${base}-${n}${ext}`;
+  return `${periodFolder}${name}`;
 }
 
 const UUID_ONLY = new RegExp(`^${UUID}$`);

@@ -118,7 +118,8 @@ describe("resolveCopies", () => {
   });
 
   it("replaces a filed copy only when the loose one is newer", () => {
-    const filed = new Map([["f/1", [{ documentId: "x", updatedAt: at("03") }]]]);
+    // The SPED already filed keeps its own name: any .txt in the period folder is the same document.
+    const filed = new Map([["f/1", [{ name: "PISCOFINS_original.txt", updatedAt: at("03") }]]]);
     expect(resolveCopies([{ path: "novo.txt", to: "f/1", documentId: "x", updatedAt: at("09") }], filed)[0]).toEqual({ suggested: true, replaces: true });
     expect(resolveCopies([{ path: "velho.txt", to: "f/1", documentId: "x", updatedAt: at("01") }], filed)[0]).toMatchObject({
       suggested: false,
