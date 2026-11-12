@@ -168,6 +168,14 @@ export const SPED_KINDS: readonly SpedKind[] = [
         only: ["C170"],
         collapse: { record: "C170", keys: C170_KEYS, sums: C170_SUMS, byEstablishment: false, byItem: true },
       },
+      // What the general panels read, for every period: the documents of every block (A, C, D, F) and the
+      // apuração (M), with the goods items (C170) summed up as in bloco_c_resumo. The main fact holds the
+      // whole file, too heavy to keep for every period.
+      paineis_todos_periodos: {
+        blocks: ["A", "C", "D", "F", "M"],
+        skip: ["C100", "C110", "C111", "C120"],
+        collapse: { record: "C170", keys: C170_KEYS, sums: C170_SUMS, byEstablishment: true, byItem: false },
+      },
     },
   },
   {
