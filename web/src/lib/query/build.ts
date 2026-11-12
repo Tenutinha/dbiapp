@@ -7,6 +7,7 @@
  */
 import { mainFact, type Field, type Measure, type Template, type Visual } from "../templates/schema";
 import { readParquet } from "../duck/engine";
+import { joinParts, splitParts } from "../storage-parts";
 import type { CrossSelection } from "./cross";
 import { factFilterSql, type FactFilter } from "./fact-filter";
 
@@ -281,8 +282,14 @@ export function buildFilterOptionsQuery(
   // The values of every fact that has the field: the main one always, an extra one once it has data.
   const [main, ...extras] = factSources(t);
   const sources = [main, ...extras.filter((s) => files[s.table] && inScope(t, s.alias, field.sql))];
-  const parts = sources.map((source) => {
-    const from = buildFrom(t, files, factFilter, params, undefined, source);
+  // Facts read under the same name have the same columns: their files go in one read (as the parts of a
+  // table do), so a template with a dozen block facts scans once instead of a dozen times.
+  const groups = new Map<string, FactSource[]>();
+  for (const source of sources) groups.set(source.alias, [...(groups.get(source.alias) ?? []), source]);
+  const parts = [...groups.values()].map((group) => {
+    const [source] = group;
+    const together = { ...files, [source.table]: joinParts(group.flatMap((s) => splitParts(files[s.table] ?? ""))) };
+    const from = buildFrom(t, together, factFilter, params, undefined, source);
     const where = buildWhere(t, filters, fieldId, params, { selection: cross }, source.alias);
     return [`SELECT DISTINCT ${fieldValue(field)} AS value`, from, where.sql].filter(Boolean).join("\n");
   });

@@ -154,13 +154,24 @@ describe("more than one fact", () => {
 
   it("offers in a filter the values of every fact that has the field", () => {
     const q = buildFilterOptionsQuery(multi, all, "regiao", { canal: ["Loja"] });
+    // Facts read under the same name go in one read, as the parts of one table.
+    expect(q.sql.match(/SELECT DISTINCT/g)).toHaveLength(1);
+    expect(q.sql).toContain("FROM read_parquet(['/data/fato_vendas.parquet', '/data/antigas.parquet']) AS fato_vendas");
+    expect(q.sql).not.toContain("UNION");
+    expect(q.sql).not.toContain("/data/metas.parquet");
+    expect(q.params).toEqual(["Loja"]);
+  });
+
+  it("joins the values of facts of different shapes that reach the field", () => {
+    // The targets fact reaches the stores too: its regions are offered along with the sales'.
+    const reaching = templateSchema.parse({
+      ...multi,
+      relationships: [...multi.relationships, { from: { table: "fato_metas", column: "id_loja" }, to: { table: "dim_loja", column: "id_loja" } }],
+    });
+    const q = buildFilterOptionsQuery(reaching, all, "regiao", {});
     expect(q.sql.match(/SELECT DISTINCT/g)).toHaveLength(2);
     expect(q.sql).toContain("UNION");
-    expect(q.sql).toContain("/data/antigas.parquet");
-    expect(q.sql).not.toContain("/data/metas.parquet");
-    expect(q.sql).toContain("$1");
-    expect(q.sql).toContain("$2");
-    expect(q.params).toEqual(["Loja", "Loja"]);
+    expect(q.sql).toContain("FROM read_parquet('/data/metas.parquet') AS fato_metas");
   });
 
   it("tells a fact without a file apart from a broken query, and keeps the main fact's options", () => {
