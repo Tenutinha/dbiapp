@@ -4,7 +4,8 @@ import { useState } from "react";
 import { moneyInput, parseMoney } from "@/lib/controle/money";
 import { isValidDay, type PaymentMethod, type Sale, type SaleInput } from "@/lib/controle/schema";
 import { call, ControleError } from "./api";
-import { ErrorNote, Field, INPUT, PaymentPicker } from "./fields";
+import type { EntryStatus } from "@/lib/controle/status";
+import { ErrorNote, Field, INPUT, PaymentPicker, StatusPicker } from "./fields";
 
 interface SaleEditFormProps {
   api: string;
@@ -19,6 +20,7 @@ export function SaleEditForm({ api, sale, onSaved, onCancel }: SaleEditFormProps
   const [day, setDay] = useState(sale.soldOn);
   const [payment, setPayment] = useState<PaymentMethod | null>(sale.paymentMethod);
   const [customer, setCustomer] = useState(sale.customerName ?? "");
+  const [status, setStatus] = useState<EntryStatus>(sale.status);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -27,7 +29,7 @@ export function SaleEditForm({ api, sale, onSaved, onCancel }: SaleEditFormProps
     const totalCents = parseMoney(total);
     if (totalCents === null || totalCents <= 0) return setError("Informe o valor da venda.");
     if (!isValidDay(day)) return setError("Informe a data da venda.");
-    const input: SaleInput = { soldOn: day, totalCents, paymentMethod: payment, customerName: customer.trim() || null };
+    const input: SaleInput = { soldOn: day, totalCents, paymentMethod: payment, customerName: customer.trim() || null, status };
     setSaving(true);
     setError(null);
     try {
@@ -53,6 +55,7 @@ export function SaleEditForm({ api, sale, onSaved, onCancel }: SaleEditFormProps
         </Field>
       </div>
       <PaymentPicker value={payment} onChange={setPayment} />
+      <StatusPicker kind="venda" value={status} onChange={setStatus} />
       <ErrorNote message={error} />
       <div className="flex gap-2">
         <button type="button" onClick={onCancel} disabled={saving} className="btn btn-ghost flex-1 justify-center">Cancelar</button>

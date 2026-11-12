@@ -2,15 +2,17 @@ import type { Metadata } from "next";
 import { Forbidden } from "@/components/AppShell";
 import { ControleActions } from "@/components/controle/ControleActions";
 import { PeriodPicker } from "@/components/controle/PeriodPicker";
+import { StatusFilter } from "@/components/controle/StatusFilter";
 import { EntryList } from "@/components/controle/EntryLists";
 import { EvolutionCharts } from "@/components/controle/EvolutionCharts";
 import { Workspace } from "@/components/workspace/Workspace";
 import { mergeEntries } from "@/lib/controle/entries";
 import { receiptReaderEnabled } from "@/lib/controle/extract";
 import { formatMoney } from "@/lib/controle/money";
-import { parsePeriod, periodDays } from "@/lib/controle/period";
+import { parsePeriod, periodDays, periodQuery } from "@/lib/controle/period";
 import { todayInBrazil } from "@/lib/controle/schema";
 import { cumulative, lastDrawnDay } from "@/lib/controle/series";
+import { parseStatus } from "@/lib/controle/status";
 import { dailySeries, listPurchases, listSales, monthlySeries, periodTotals } from "@/lib/data/controle";
 import { guard } from "@/lib/guard";
 import { getControle } from "@/lib/services/controle";
@@ -60,6 +62,7 @@ export default async function ControlePage({ params, searchParams }: Props) {
   const today = todayInBrazil();
   const period = parsePeriod({ mes: query.mes, dias: query.dias });
   const days = periodDays(period, today);
+  const status = parseStatus(query.status);
   const oneMonth = period.kind === "months" && period.months.length === 1;
   const { ctx, space: entries, canRecord } = access;
   const base = `/${ctx.org.slug}/${ctx.client.slug}/controle`;
@@ -67,11 +70,11 @@ export default async function ControlePage({ params, searchParams }: Props) {
 
   const [space, totals, daily, months, purchases, sales] = await Promise.all([
     loadSpace(ctx.org, ctx.client, ctx.membership),
-    periodTotals(entries.clientId, days),
-    dailySeries(entries.clientId, days),
-    monthlySeries(entries.clientId, days),
-    listPurchases(entries.clientId, days),
-    listSales(entries.clientId, days),
+    periodTotals(entries.clientId, days, status),
+    dailySeries(entries.clientId, days, status),
+    monthlySeries(entries.clientId, days, status),
+    listPurchases(entries.clientId, days, status),
+    listSales(entries.clientId, days, status),
   ]);
   const balance = totals.salesCents - totals.purchasesCents;
 
@@ -84,8 +87,10 @@ export default async function ControlePage({ params, searchParams }: Props) {
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-2">Controle</p>
             <h1 className="text-2xl font-extrabold tracking-tight">{ctx.client.name}</h1>
           </div>
-          <PeriodPicker base={base} period={period} today={today} />
+          <PeriodPicker base={base} period={period} today={today} status={status} />
         </header>
+
+        <StatusFilter base={base} periodQuery={periodQuery(period, today.slice(0, 7))} status={status} pending={totals.pending} />
 
         <section aria-label="Resumo do período" className="grid grid-cols-3 gap-2">
           <Kpi label="Vendas" cents={totals.salesCents} detail={count(totals.sales, "venda", "vendas")} />

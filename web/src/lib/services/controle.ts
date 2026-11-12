@@ -12,8 +12,9 @@ import {
   isReceiptPath, maxReceiptBytes, receiptExt, receiptMime, receiptPath, type ReceiptMime,
 } from "../controle/receipts";
 import { todayInBrazil, type PurchaseDraft, type PurchaseInput, type SaleInput } from "../controle/schema";
+import type { EntryStatus } from "../controle/status";
 import {
-  deletePurchase, deleteSale, findReceipt, insertPurchase, insertSale, orgModules, receiptInUse, updatePurchase, updateSale, type Space,
+  deletePurchase, deleteSale, findReceipt, insertPurchase, insertSale, orgModules, receiptInUse, setEntryStatus, updatePurchase, updateSale, type Space,
 } from "../data/controle";
 import { storage } from "../storage";
 import { clientFolder } from "../storage-keys";
@@ -153,6 +154,13 @@ export async function saveSale(access: ControleAccess, input: SaleInput): Promis
 
 export async function editSale(access: ControleAccess, saleId: string, input: SaleInput): Promise<void> {
   if (!(await updateSale(access.space.clientId, saleId, input))) throw new UserFacingError("Esta venda não existe mais.");
+}
+
+/** Confirms that an entry happened (or puts it back as pending). */
+export async function changeStatus(access: ControleAccess, kind: "venda" | "despesa", id: string, status: EntryStatus): Promise<void> {
+  if (!(await setEntryStatus(access.space.clientId, kind, id, status))) {
+    throw new UserFacingError(kind === "venda" ? "Esta venda não existe mais." : "Esta despesa não existe mais.");
+  }
 }
 
 export async function removeSale(access: ControleAccess, saleId: string): Promise<void> {

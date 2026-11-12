@@ -138,7 +138,7 @@ describe("o que chega da tela", () => {
 
   it("venda: valor, pagamento e data; o nome do cliente é opcional", () => {
     const sale = { soldOn: "2026-11-11", totalCents: 17500, paymentMethod: "pix" };
-    expect(saleInput.parse(sale)).toEqual({ soldOn: "2026-11-11", totalCents: 17500, paymentMethod: "pix", customerName: null });
+    expect(saleInput.parse(sale)).toEqual({ soldOn: "2026-11-11", totalCents: 17500, paymentMethod: "pix", customerName: null, status: "efetivado" });
     expect(saleInput.parse({ ...sale, customerName: "  Dona Lúcia " }).customerName).toBe("Dona Lúcia");
     expect(saleInput.parse({ ...sale, customerName: "  " }).customerName).toBeNull();
     expect(saleInput.safeParse({ ...sale, totalCents: 0 }).success).toBe(false);
@@ -182,10 +182,10 @@ describe("evolução", () => {
 
 describe("lista única de lançamentos", () => {
   const purchase = (id: string, purchasedOn: string, createdAt: string) => ({
-    id, purchasedOn, createdAt, author: null, supplier: null, totalCents: 100, paymentMethod: null, notes: null, hasReceipt: false, fromReceipt: false, items: [],
+    id, purchasedOn, createdAt, author: null, status: "efetivado" as const, supplier: null, totalCents: 100, paymentMethod: null, notes: null, hasReceipt: false, fromReceipt: false, items: [],
   });
   const sale = (id: string, soldOn: string, createdAt: string) => ({
-    id, soldOn, createdAt, author: null, totalCents: 200, paymentMethod: null, customerName: null, product: null,
+    id, soldOn, createdAt, author: null, status: "efetivado" as const, totalCents: 200, paymentMethod: null, customerName: null, product: null,
   });
 
   it("mistura despesas e vendas, do dia mais recente para o mais antigo", () => {

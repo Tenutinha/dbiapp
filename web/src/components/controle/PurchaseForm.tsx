@@ -4,7 +4,8 @@ import { useState } from "react";
 import { formatMoney, lineTotal, moneyInput, parseMoney, parseQuantity, sumCents } from "@/lib/controle/money";
 import { isValidDay, MAX_ITEMS, type PaymentMethod, type PurchaseDraft, type PurchaseInput } from "@/lib/controle/schema";
 import { call, ControleError, type SentReceipt } from "./api";
-import { ErrorNote, Field, INPUT, PaymentPicker } from "./fields";
+import type { EntryStatus } from "@/lib/controle/status";
+import { ErrorNote, Field, INPUT, PaymentPicker, StatusPicker } from "./fields";
 
 interface Line {
   key: number;
@@ -52,7 +53,7 @@ function withTotal(line: Line): Line {
 }
 
 /** The purchase as the API takes it, or the first thing the person has to fix. */
-function build(fields: { day: string; supplier: string; total: string; payment: PaymentMethod | null; notes: string }, lines: Line[]): PurchaseInput | string {
+function build(fields: { day: string; supplier: string; total: string; payment: PaymentMethod | null; notes: string; status: EntryStatus }, lines: Line[]): PurchaseInput | string {
   if (!isValidDay(fields.day)) return "Informe a data da despesa.";
   const totalCents = parseMoney(fields.total);
   if (totalCents === null) return "Informe o valor total da despesa.";
@@ -74,6 +75,7 @@ function build(fields: { day: string; supplier: string; total: string; payment: 
     notes: fields.notes.trim() || null,
     receipt: null,
     fromReceipt: false,
+    status: fields.status,
     items,
   };
 }
@@ -85,6 +87,7 @@ export function PurchaseForm({ api, today, draft, receipt, fromReceipt, editId, 
   const [total, setTotal] = useState(moneyInput(draft.totalCents));
   const [payment, setPayment] = useState<PaymentMethod | null>(draft.paymentMethod);
   const [notes, setNotes] = useState(draft.notes ?? "");
+  const [status, setStatus] = useState<EntryStatus>(draft.status ?? "efetivado");
   const [lines, setLines] = useState<Line[]>(() => toLines(draft));
   const [nextKey, setNextKey] = useState(draft.items.length);
   const [error, setError] = useState<string | null>(null);
@@ -104,7 +107,7 @@ export function PurchaseForm({ api, today, draft, receipt, fromReceipt, editId, 
 
   async function save(e: React.FormEvent): Promise<void> {
     e.preventDefault();
-    const built = build({ day, supplier, total, payment, notes }, lines);
+    const built = build({ day, supplier, total, payment, notes, status }, lines);
     if (typeof built === "string") {
       setError(built);
       return;
@@ -136,6 +139,7 @@ export function PurchaseForm({ api, today, draft, receipt, fromReceipt, editId, 
       </div>
 
       <PaymentPicker value={payment} onChange={setPayment} />
+      <StatusPicker kind="despesa" value={status} onChange={setStatus} />
 
       <section className="flex flex-col gap-2">
         <div className="flex items-baseline justify-between">

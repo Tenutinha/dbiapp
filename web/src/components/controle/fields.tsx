@@ -1,4 +1,5 @@
 import { PAYMENT_LABEL, PAYMENT_METHODS, type PaymentMethod } from "@/lib/controle/schema";
+import { STATUS_LABEL, STATUSES, type EntryStatus } from "@/lib/controle/status";
 
 /** 16 px text on purpose: iOS zooms the page when a focused field has smaller text. */
 export const INPUT = "w-full rounded-lg border border-line bg-bg px-3 py-2.5 text-base outline-none focus:border-brand";
@@ -40,6 +41,36 @@ export function PaymentPicker({ value, onChange }: PaymentPickerProps) {
             }`}
           >
             {PAYMENT_LABEL[method]}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+interface StatusPickerProps {
+  kind: "venda" | "despesa";
+  value: EntryStatus;
+  onChange: (value: EntryStatus) => void;
+}
+
+/** "Paga / A pagar" (despesa) or "Recebida / A receber" (venda). */
+export function StatusPicker({ kind, value, onChange }: StatusPickerProps) {
+  return (
+    <div className="flex flex-col gap-1 text-xs text-muted">
+      Situação
+      <div className="grid grid-cols-2 gap-2" role="group" aria-label="Situação">
+        {[...STATUSES].reverse().map((status) => (
+          <button
+            key={status}
+            type="button"
+            aria-pressed={value === status}
+            onClick={() => onChange(status)}
+            className={`rounded-lg border px-3 py-2 text-sm ${
+              value === status ? "border-brand bg-brand/15 font-semibold text-text" : "border-line text-muted"
+            }`}
+          >
+            {STATUS_LABEL[kind][status]}
           </button>
         ))}
       </div>
