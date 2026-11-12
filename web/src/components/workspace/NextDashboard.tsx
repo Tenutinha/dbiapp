@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { PUSH_START, pushOnWheel, pushProgress, type PushState } from "@/lib/layout/overscroll";
 import { rememberLandAtEnd } from "./jump";
 import { useSwitchSignal } from "./switching";
-import { openDashboardAction } from "./view-actions";
+import { selectDashboardAction } from "./view-actions";
 
 interface NextDashboardProps {
   id: string;
@@ -49,10 +49,10 @@ export function NextDashboard({ id, name, number, href, direction = "next" }: Ne
       startTransition(() => router.push(href));
       return;
     }
-    const data = new FormData();
-    data.set("id", id);
     startTransition(async () => {
-      await openDashboardAction(data);
+      const target = await selectDashboardAction(id);
+      // After the await, the navigation must join the transition again to keep it pending.
+      if (target !== null) startTransition(() => router.push(target));
     });
   };
   const openRef = useRef(open);

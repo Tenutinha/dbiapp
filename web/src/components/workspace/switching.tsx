@@ -1,9 +1,10 @@
 "use client";
 
 import { useLinkStatus } from "next/link";
+import { useRouter } from "next/navigation";
 import { startTransition, useEffect, useState, useTransition } from "react";
 import { DashboardSkeleton } from "@/components/dashboard/DashboardSkeleton";
-import { openDashboardAction } from "./view-actions";
+import { selectDashboardAction } from "./view-actions";
 
 /**
  * "Another dashboard is on its way": raised the moment the reader asks for it (a click in the summary,
@@ -57,6 +58,7 @@ const openListeners = new Set<() => void>();
  * stays), the same action left the screen empty for a moment between the two.
  */
 export function DashboardOpener() {
+  const router = useRouter();
   const [pending, startOpening] = useTransition();
   const [current, setCurrent] = useState<OpenRequest | null>(null);
   useSwitchSignal(pending && current !== null && current.announce, current?.name ?? "");
@@ -67,17 +69,17 @@ export function DashboardOpener() {
       if (!request) return;
       openRequest = null;
       setCurrent(request);
-      const data = new FormData();
-      data.set("id", request.id);
       startOpening(async () => {
-        await openDashboardAction(data);
+        const target = await selectDashboardAction(request.id);
+        // After the await, the navigation must join the transition again to keep it pending.
+        if (target !== null) startOpening(() => router.push(target));
       });
     };
     openListeners.add(run);
     return () => {
       openListeners.delete(run);
     };
-  }, []);
+  }, [router]);
 
   return null;
 }
