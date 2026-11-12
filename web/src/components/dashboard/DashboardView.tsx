@@ -124,6 +124,8 @@ function VisualBody({ template, result }: { template: Template; result: VisualRe
 interface VisualGridProps {
   template: Template;
   results: VisualResult[];
+  /** "row": side by side in a strip that scrolls sideways (the analysis' layout). */
+  layout?: "grid" | "row";
 }
 
 /** Visuals marked `hideEmpty` leave the page when they have no rows (and did not fail). */
@@ -131,9 +133,26 @@ export function visibleResults(results: readonly VisualResult[]): VisualResult[]
   return results.filter((r) => !(r.visual.hideEmpty && r.rows.length === 0 && !r.error));
 }
 
-export function VisualGrid({ template, results: all }: VisualGridProps) {
+export function VisualGrid({ template, results: all, layout }: VisualGridProps) {
   const results = visibleResults(all);
   if (results.length === 0) return null;
+  if (layout === "row" && results.length > 1) {
+    // Each card a little narrower than the page, so the next one peeks in and says the strip goes on.
+    return (
+      <div
+        role="region"
+        aria-label="Quadros lado a lado: role para o lado para ver os próximos"
+        tabIndex={0}
+        className="-mx-1 flex snap-x snap-mandatory gap-4 overflow-x-auto px-1 pb-3 focus-visible:outline focus-visible:outline-1 focus-visible:outline-brand"
+      >
+        {results.map((result) => (
+          <VisualCard key={result.visual.id} title={result.visual.title} className="w-[calc(100%-3rem)] shrink-0 snap-start">
+            <VisualBody template={template} result={result} />
+          </VisualCard>
+        ))}
+      </div>
+    );
+  }
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-12">
       {results.map((result) => (
@@ -186,7 +205,7 @@ export function DashboardView({ template, data, totalRows, later }: DashboardVie
         return (
           <section key={s.analysis.id} id={s.anchor} aria-labelledby={`${s.anchor}-titulo`} className="mt-14 scroll-mt-24 first:mt-0">
             {header(s)}
-            <VisualGrid template={template} results={s.results} />
+            <VisualGrid template={template} results={s.results} layout={s.analysis.layout} />
           </section>
         );
       })}
