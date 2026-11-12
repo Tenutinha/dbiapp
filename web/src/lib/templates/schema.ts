@@ -149,6 +149,11 @@ const visualSchema = z.discriminatedUnion("type", [
      * averages and rates, and when the table shows only its first lines.
      */
     total: z.boolean().optional(),
+    /**
+     * Measures shown as the first columns, before the fields: a value that names the line but cannot be
+     * grouped on (e.g. a document's key, written only on its header record while its items are added up).
+     */
+    leading: z.array(ident).optional(),
   }),
   z.object({
     ...base,
@@ -330,6 +335,7 @@ export const templateSchema = z
       if (v.type === "table") {
         v.fields.forEach((f) => needField(f, where));
         if (v.orderBy && !v.measures.includes(v.orderBy)) issue(`${where}: orderBy must be one of its measures`);
+        for (const m of v.leading ?? []) if (!v.measures.includes(m)) issue(`${where}: leading "${m}" must be one of its measures`);
       }
       if (v.type === "map") {
         needField(v.field, where);
