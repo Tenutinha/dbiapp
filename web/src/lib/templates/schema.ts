@@ -195,6 +195,11 @@ const analysisSchema = z.object({
   description: z.string().max(2000).default(""),
   /** Visual ids shown in this section, in order. */
   visuals: z.array(ident).default([]),
+  /**
+   * Off the air (e.g. while it is being built): left out of the summary and of the page for whoever
+   * reads the dashboard; still shown, marked, in the catalog preview.
+   */
+  hidden: z.boolean().default(false),
 });
 
 /** One group of the summary shown in the sidebar (e.g. "O resultado" → its analyses). */

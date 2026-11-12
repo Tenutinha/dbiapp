@@ -146,6 +146,10 @@ export function DashboardView({ template, data, totalRows }: DashboardViewProps)
         <section key={s.analysis.id} id={s.anchor} aria-labelledby={`${s.anchor}-titulo`} className="mt-14 scroll-mt-24 first:mt-0">
           <header className="mb-5 border-t border-line pt-6">
             {s.number !== null && <p className="font-mono text-xs tabular-nums text-muted">{String(s.number).padStart(2, "0")}</p>}
+            {/* Only previews get here with a hidden analysis: readers never receive it (withoutHidden). */}
+            {s.analysis.hidden && (
+              <p className="w-fit rounded bg-accent/15 px-2 py-0.5 text-xs font-medium text-accent">Oculta: fora do ar para quem vê o dashboard</p>
+            )}
             <h2 id={`${s.anchor}-titulo`} className="mt-1 font-serif text-3xl leading-tight tracking-[-0.01em] sm:text-4xl">
               {s.analysis.title}
             </h2>

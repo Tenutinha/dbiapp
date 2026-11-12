@@ -35,12 +35,30 @@ export interface SummaryGroupView {
 
 /** Analysis id → its number in the summary (reading order across groups). */
 function summaryNumbers(t: Template): Map<string, number> {
-  return new Map(t.summary.flatMap((g) => g.analyses).map((id, i) => [id, i + 1]));
+  const hidden = new Set(t.analyses.filter((a) => a.hidden).map((a) => a.id));
+  return new Map(t.summary.flatMap((g) => g.analyses).filter((id) => !hidden.has(id)).map((id, i) => [id, i + 1]));
+}
+
+/**
+ * The template as readers get it: hidden analyses (off the air) and their visuals left out, so they are
+ * neither listed, shown nor computed.
+ */
+export function withoutHidden(t: Template): Template {
+  const hidden = t.analyses.filter((a) => a.hidden);
+  if (hidden.length === 0) return t;
+  const ids = new Set(hidden.map((a) => a.id));
+  const visuals = new Set(hidden.flatMap((a) => a.visuals));
+  return {
+    ...t,
+    analyses: t.analyses.filter((a) => !ids.has(a.id)),
+    visuals: t.visuals.filter((v) => !visuals.has(v.id)),
+    summary: t.summary.map((g) => ({ ...g, analyses: g.analyses.filter((id) => !ids.has(id)) })).filter((g) => g.analyses.length > 0),
+  };
 }
 
 export function buildSummary(t: Template): SummaryGroupView[] {
   const numbers = summaryNumbers(t);
-  const titleOf = new Map(t.analyses.map((a) => [a.id, a.title]));
+  const titleOf = new Map(t.analyses.filter((a) => !a.hidden).map((a) => [a.id, a.title]));
   return t.summary
     .map((g) => ({
       title: g.title,

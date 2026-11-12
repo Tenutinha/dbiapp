@@ -6,6 +6,7 @@ import { parseFactFilter } from "../query/fact-filter";
 import { parseSelection, runDashboard, type DashboardData } from "../query/run";
 import { storage } from "../storage";
 import type { Template } from "../templates/schema";
+import { withoutHidden } from "../templates/sections";
 import { requireTemplate, resolveLocalFiles } from "./datasets";
 
 export interface LoadedDashboard {
@@ -29,7 +30,8 @@ export async function loadDashboard(
   activeVersionId: string,
   searchParams: Readonly<Record<string, string | string[] | undefined>>,
 ): Promise<LoadedDashboard> {
-  const template = await requireTemplate(templateId);
+  // Analyses taken off the air are neither shown nor computed for readers.
+  const template = withoutHidden(await requireTemplate(templateId));
   const [files, rawFilter] = await Promise.all([listFiles(activeVersionId), getDataFilterRaw(instanceId)]);
   const factFilter = parseFactFilter(rawFilter, factColumns(template));
   const byTable = Object.fromEntries(files.map((f) => [f.tableName, f.storagePath]));

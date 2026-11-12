@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { loadTemplate } from "../test-helpers";
 import { templateSchema } from "./schema";
-import { analysisAnchor, buildOutline, buildSections, buildSummary } from "./sections";
+import { analysisAnchor, buildOutline, buildSections, buildSummary, withoutHidden } from "./sections";
 
 const base = templateSchema.parse(loadTemplate("vendas-executivo"));
 const t = templateSchema.parse({
@@ -59,5 +59,25 @@ describe("buildOutline", () => {
 
   it("is empty for dashboards without a summary", () => {
     expect(buildOutline(base)).toEqual([]);
+  });
+});
+
+describe("hidden analyses (off the air)", () => {
+  const off = { ...t, analyses: t.analyses.map((a) => (a.id === "visao" ? { ...a, hidden: true } : a)) };
+
+  it("leave the summary, and the numbering skips them", () => {
+    expect(buildOutline(off).map((i) => [i.id, i.number])).toEqual([["canais", 1]]);
+  });
+
+  it("leave the page and the computed visuals for readers", () => {
+    const reader = withoutHidden(off);
+    expect(reader.analyses.map((a) => a.id)).toEqual(["canais", "extra"]);
+    expect(reader.visuals.some((v) => v.id === "k_margem" || v.id === "k_receita")).toBe(false);
+    expect(reader.summary).toEqual([{ title: "Detalhes", analyses: ["canais"] }]);
+    expect(buildSections(reader, []).sections.map((s) => s.analysis.id)).toEqual(["canais", "extra"]);
+  });
+
+  it("change nothing when no analysis is hidden", () => {
+    expect(withoutHidden(t)).toBe(t);
   });
 });

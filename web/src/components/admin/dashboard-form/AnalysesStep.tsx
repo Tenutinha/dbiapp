@@ -37,7 +37,7 @@ export function AnalysesStep({ template: t, onChange }: StepProps) {
   const addAnalysis = (): void =>
     onChange({
       ...t,
-      analyses: [...t.analyses, { id: uniqueId("analise", t.analyses.map((a) => a.id)), title: "", description: "", visuals: [] }],
+      analyses: [...t.analyses, { id: uniqueId("analise", t.analyses.map((a) => a.id)), title: "", description: "", visuals: [], hidden: false }],
     });
 
   return (
@@ -51,7 +51,7 @@ export function AnalysesStep({ template: t, onChange }: StepProps) {
           key={a.id}
           index={i}
           count={t.analyses.length}
-          title={`${i + 1}. ${a.title || "(análise sem título)"}`}
+          title={`${i + 1}. ${a.title || "(análise sem título)"}${a.hidden ? " · oculta" : ""}`}
           onMove={(to) => onChange({ ...t, analyses: moveAt(t.analyses, i, to) })}
           onRemove={() => onChange(removeAnalysis(t, a.id))}
           removeLabel={`Remover a análise ${a.title}`}
@@ -62,6 +62,15 @@ export function AnalysesStep({ template: t, onChange }: StepProps) {
           <Field label="O que a análise mostra">
             <TextArea value={a.description} rows={2} onChange={(description) => setAnalysis(i, { ...a, description })} />
           </Field>
+          <label className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-sm ${a.hidden ? "border-accent/50 bg-accent/10" : "border-line"}`}>
+            <input type="checkbox" checked={a.hidden} onChange={(e) => setAnalysis(i, { ...a, hidden: e.target.checked })} className="mt-0.5" />
+            <span>
+              <span className="font-medium">Ocultar do sumário (fora do ar)</span>
+              <span className="block text-xs text-muted">
+                Some do sumário e da página para quem vê o dashboard, até você desmarcar. A pré-visualização continua mostrando.
+              </span>
+            </span>
+          </label>
           <div className="flex flex-col gap-2 border-l-2 border-line pl-3">
             {a.visuals.map((id, vi) => {
               const v = t.visuals.find((x) => x.id === id);

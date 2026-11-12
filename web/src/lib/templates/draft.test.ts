@@ -51,7 +51,7 @@ describe("list helpers never mutate", () => {
 
 describe("removing items cleans references", () => {
   it("a removed visual leaves its analysis", () => {
-    const t = { ...base, analyses: [{ id: "a", title: "A", description: "", visuals: ["k_receita", "k_margem"] }] };
+    const t = { ...base, analyses: [{ id: "a", title: "A", description: "", visuals: ["k_receita", "k_margem"], hidden: false }] };
     const next = removeVisual(t, "k_receita");
     expect(next.visuals.some((v) => v.id === "k_receita")).toBe(false);
     expect(next.analyses[0].visuals).toEqual(["k_margem"]);
@@ -62,8 +62,8 @@ describe("removing items cleans references", () => {
     const t = {
       ...base,
       analyses: [
-        { id: "a", title: "A", description: "", visuals: [] },
-        { id: "b", title: "B", description: "", visuals: [] },
+        { id: "a", title: "A", description: "", visuals: [], hidden: false },
+        { id: "b", title: "B", description: "", visuals: [], hidden: false },
       ],
       summary: [
         { title: "G1", analyses: ["a"] },
