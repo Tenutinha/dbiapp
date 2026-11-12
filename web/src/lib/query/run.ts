@@ -38,6 +38,26 @@ export interface DashboardData {
   elapsedMs: number;
 }
 
+/** Queries of one page running at the same time, each on its own connection (DuckDB shares its threads among them). */
+const CONCURRENCY = 6;
+
+/** Runs `job` over every item, a few at a time, each worker with a connection of its own; results keep the items' order. */
+async function inParallel<T, R>(
+  storageRoot: string, items: readonly T[], job: (conn: Parameters<typeof queryRows>[0], item: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const worker = (): Promise<void> => withConnection(storageRoot, async (conn) => {
+    while (next < items.length) {
+      const i = next;
+      next += 1;
+      results[i] = await job(conn, items[i]);
+    }
+  });
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, items.length) }, worker));
+  return results;
+}
+
 export async function runDashboard(
   storageRoot: string,
   template: Template,
@@ -49,56 +69,50 @@ export async function runDashboard(
   cross: CrossSelection = [],
 ): Promise<DashboardData> {
   const started = performance.now();
-  return withConnection(storageRoot, async (conn) => {
-    selection = await resolveSingleFilters(conn, template, files, selection, factFilter);
-    const visuals: VisualResult[] = [];
-    for (const visual of template.visuals) {
-      if (visual.type === "text") {
-        visuals.push({ visual, rows: [] });
-        continue;
-      }
-      try {
-        const q = buildVisualQuery(template, files, visual, selection, factFilter, cross);
-        visuals.push({ visual, rows: await queryRows(conn, q.sql, q.params) });
-      } catch (err) {
-        if (err instanceof MissingFactError) {
-          // An extra fact that has no data yet: nothing to show, not a failure.
-          visuals.push({ visual, rows: [] });
-          continue;
-        }
-        console.error(`[dashboard] visual ${template.id}/${visual.id} failed`, err);
-        visuals.push({ visual, rows: [], error: "Não foi possível calcular este visual." });
-      }
+  const resolved = await withConnection(storageRoot, (conn) => resolveSingleFilters(conn, template, files, selection, factFilter));
+  // Visuals and filter options do not depend on each other: they run side by side, a few at a time.
+  const runVisual = async (conn: Parameters<typeof queryRows>[0], visual: Visual): Promise<VisualResult> => {
+    if (visual.type === "text") return { visual, rows: [] };
+    try {
+      const q = buildVisualQuery(template, files, visual, resolved, factFilter, cross);
+      return { visual, rows: await queryRows(conn, q.sql, q.params) };
+    } catch (err) {
+      // An extra fact that has no data yet: nothing to show, not a failure.
+      if (err instanceof MissingFactError) return { visual, rows: [] };
+      console.error(`[dashboard] visual ${template.id}/${visual.id} failed`, err);
+      return { visual, rows: [], error: "Não foi possível calcular este visual." };
     }
-
-    const filters: FilterOptions[] = [];
-    for (const fieldId of template.filters) {
-      const field = template.fields.find((f) => f.id === fieldId);
-      let values: string[] = [];
-      try {
-        const q = buildFilterOptionsQuery(template, files, fieldId, selection, factFilter, cross);
-        const rows = await queryRows(conn, q.sql, q.params);
-        values = rows.map((r) => r.value).filter((v): v is string => typeof v === "string");
-      } catch (err) {
-        console.error(`[dashboard] filter ${template.id}/${fieldId} failed`, err);
-      }
-      filters.push({
-        fieldId,
-        label: field?.label ?? fieldId,
-        values,
-        selected: [...(selection[fieldId] ?? [])],
-        single: fieldId in template.filterDefaults,
-      });
+  };
+  const runFilter = async (conn: Parameters<typeof queryRows>[0], fieldId: string): Promise<FilterOptions> => {
+    const field = template.fields.find((f) => f.id === fieldId);
+    let values: string[] = [];
+    try {
+      const q = buildFilterOptionsQuery(template, files, fieldId, resolved, factFilter, cross);
+      const rows = await queryRows(conn, q.sql, q.params);
+      values = rows.map((r) => r.value).filter((v): v is string => typeof v === "string");
+    } catch (err) {
+      console.error(`[dashboard] filter ${template.id}/${fieldId} failed`, err);
     }
+    return {
+      fieldId,
+      label: field?.label ?? fieldId,
+      values,
+      selected: [...(resolved[fieldId] ?? [])],
+      single: fieldId in template.filterDefaults,
+    };
+  };
+  const [visuals, filters] = await Promise.all([
+    inParallel(storageRoot, template.visuals, runVisual),
+    inParallel(storageRoot, template.filters, runFilter),
+  ]);
 
-    const picks: CrossPicks[] = cross.map((entry) => ({
-      ...entry,
-      values: [...entry.values],
-      label: template.fields.find((f) => f.id === entry.fieldId)?.label ?? entry.fieldId,
-      visualTitle: template.visuals.find((v) => v.id === entry.visualId)?.title ?? entry.visualId,
-    }));
-    return { visuals, filters, cross: picks, elapsedMs: Math.round(performance.now() - started) };
-  });
+  const picks: CrossPicks[] = cross.map((entry) => ({
+    ...entry,
+    values: [...entry.values],
+    label: template.fields.find((f) => f.id === entry.fieldId)?.label ?? entry.fieldId,
+    visualTitle: template.visuals.find((v) => v.id === entry.visualId)?.title ?? entry.visualId,
+  }));
+  return { visuals, filters, cross: picks, elapsedMs: Math.round(performance.now() - started) };
 }
 
 /** Preferred values of a single-choice filter, in order ("2026, 2024" → ["2026", "2024"]). */
