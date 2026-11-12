@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { loadAnalysisAction } from "./section-actions";
 
 interface LazySectionProps {
@@ -19,8 +19,17 @@ type State =
   /** `body` is null when the analysis has nothing to show under these filters. */
   | { status: "done"; body: React.ReactNode | null };
 
-/** How far from the screen an analysis starts loading: it is usually ready when the reader gets there. */
-const AHEAD = "700px 0px";
+/**
+ * An analysis starts loading a screen or so before the reader scrolls down to it, so it is usually ready
+ * on arrival. Only downwards: what is above the screen waits until it is really on screen. Otherwise a
+ * jump from the summary would load the analyses just above the target, and their growing would push the
+ * target away from where the reader landed. The strip at the top of the screen does not count either: a
+ * jump leaves the title a little below the top (scroll-mt), with the tail of the previous analysis above it.
+ */
+const AHEAD = "-140px 0px 700px 0px";
+
+/** A change this small in where the end of the analysis sits is not worth correcting (rounding, fonts). */
+const NOTICEABLE_PX = 2;
 
 const BLOCK = "animate-pulse rounded-lg bg-text/10";
 
@@ -48,6 +57,10 @@ function Waiting() {
  */
 export function LazySection({ ticket, analysisId, search, anchor, header }: LazySectionProps) {
   const ref = useRef<HTMLElement>(null);
+  /** Marks where the analysis ends, also when it leaves the page (nothing to show). */
+  const end = useRef<HTMLDivElement>(null);
+  /** Where the analysis started and ended on screen just before the visuals took the skeleton's place. */
+  const before = useRef<{ top: number; end: number } | null>(null);
   const [state, setState] = useState<State>({ status: "idle" });
 
   useEffect(() => {
@@ -69,7 +82,11 @@ export function LazySection({ ticket, analysisId, search, anchor, header }: Lazy
     let current = true;
     loadAnalysisAction(ticket, analysisId, search)
       .then((answer) => {
-        if (current) setState(answer.ok ? { status: "done", body: answer.body } : { status: "error" });
+        if (!current) return;
+        const top = ref.current?.getBoundingClientRect().top;
+        const bottom = end.current?.getBoundingClientRect().top;
+        before.current = top === undefined || bottom === undefined ? null : { top, end: bottom };
+        setState(answer.ok ? { status: "done", body: answer.body } : { status: "error" });
       })
       .catch(() => {
         if (current) setState({ status: "error" });
@@ -79,29 +96,49 @@ export function LazySection({ ticket, analysisId, search, anchor, header }: Lazy
     };
   }, [state.status, ticket, analysisId, search]);
 
+  // The visuals rarely have the skeleton's height. When the analysis starts above the screen, the reader
+  // came from below (scrolling up, or having jumped to the next one): what they see is its end and what
+  // follows, and that must not move — so the page is scrolled by how much the end shifted.
+  // After the frame, so a browser that already kept the place by itself is left alone.
+  useLayoutEffect(() => {
+    const was = before.current;
+    before.current = null;
+    if (state.status !== "done" || was === null || was.top >= 0) return;
+    const frame = requestAnimationFrame(() => {
+      const after = end.current?.getBoundingClientRect().top;
+      if (after !== undefined && Math.abs(after - was.end) > NOTICEABLE_PX) window.scrollBy({ top: after - was.end, behavior: "instant" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [state]);
+
   // Nothing to show under these filters: the analysis leaves the page, as it does when computed with it.
-  if (state.status === "done" && state.body === null) return null;
+  const gone = state.status === "done" && state.body === null;
 
   return (
-    <section
-      ref={ref}
-      id={anchor}
-      aria-labelledby={`${anchor}-titulo`}
-      aria-busy={state.status === "loading" || undefined}
-      className="mt-14 scroll-mt-24 first:mt-0"
-    >
-      {header}
-      {state.status === "done" && state.body}
-      {(state.status === "idle" || state.status === "loading") && <Waiting />}
-      {state.status === "error" && (
-        <div className="card flex flex-wrap items-center gap-3 p-5 text-sm">
-          <p className="text-muted">Não foi possível carregar esta análise.</p>
-          <button type="button" onClick={() => setState({ status: "loading" })} className="rounded-md border border-line px-3 py-1 hover:bg-text/5">
-            Tentar de novo
-          </button>
-          <span className="text-xs text-muted">Se continuar, recarregue a página.</span>
-        </div>
+    <>
+      {!gone && (
+        <section
+          ref={ref}
+          id={anchor}
+          aria-labelledby={`${anchor}-titulo`}
+          aria-busy={state.status === "loading" || undefined}
+          className="mt-14 scroll-mt-24 first:mt-0"
+        >
+          {header}
+          {state.status === "done" && state.body}
+          {(state.status === "idle" || state.status === "loading") && <Waiting />}
+          {state.status === "error" && (
+            <div className="card flex flex-wrap items-center gap-3 p-5 text-sm">
+              <p className="text-muted">Não foi possível carregar esta análise.</p>
+              <button type="button" onClick={() => setState({ status: "loading" })} className="rounded-md border border-line px-3 py-1 hover:bg-text/5">
+                Tentar de novo
+              </button>
+              <span className="text-xs text-muted">Se continuar, recarregue a página.</span>
+            </div>
+          )}
+        </section>
       )}
-    </section>
+      <div ref={end} aria-hidden />
+    </>
   );
 }
