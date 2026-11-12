@@ -10,7 +10,7 @@ import type { RunningPoint, SeriesPoint } from "@/lib/controle/series";
 
 echarts.use([BarChart, LineChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer]);
 
-const SALES = "Vendas";
+const SALES = "Receitas";
 const EXPENSES = "Despesas";
 const MONTHS = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
 
@@ -112,12 +112,12 @@ export function EvolutionCharts({ month, months, scope = "no mês" }: EvolutionC
       <section className="card p-4">
         <h2 className="text-sm font-semibold">Evolução {scope}</h2>
         <p className="text-xs text-muted">Acumulado, dia a dia</p>
-        <div ref={daily} className="mt-2 h-52 w-full" role="img" aria-label={`Gráfico de linhas: vendas e despesas acumuladas ${scope}, dia a dia`} />
+        <div ref={daily} className="mt-2 h-52 w-full" role="img" aria-label={`Gráfico de linhas: receitas e despesas acumuladas ${scope}, dia a dia`} />
       </section>
       <section className="card p-4">
         <h2 className="text-sm font-semibold">{months.length === 1 ? "Total do mês" : "Por mês"}</h2>
-        <p className="text-xs text-muted">{months.length === 1 ? "Vendas e despesas" : `Total de cada mês ${scope}`}</p>
-        <div ref={monthly} className="mt-2 h-52 w-full" role="img" aria-label={`Gráfico de barras: vendas e despesas de cada mês ${scope}`} />
+        <p className="text-xs text-muted">{months.length === 1 ? "Receitas e despesas" : `Total de cada mês ${scope}`}</p>
+        <div ref={monthly} className="mt-2 h-52 w-full" role="img" aria-label={`Gráfico de barras: receitas e despesas de cada mês ${scope}`} />
       </section>
     </div>
   );

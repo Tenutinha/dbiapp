@@ -153,16 +153,16 @@ export async function saveSale(access: ControleAccess, input: SaleInput): Promis
 }
 
 export async function editSale(access: ControleAccess, saleId: string, input: SaleInput): Promise<void> {
-  if (!(await updateSale(access.space.clientId, saleId, input))) throw new UserFacingError("Esta venda não existe mais.");
+  if (!(await updateSale(access.space.clientId, saleId, input))) throw new UserFacingError("Esta receita não existe mais.");
 }
 
 /** Confirms that an entry happened (or puts it back as pending). */
 export async function changeStatus(access: ControleAccess, kind: "venda" | "despesa", id: string, status: EntryStatus): Promise<void> {
   if (!(await setEntryStatus(access.space.clientId, kind, id, status))) {
-    throw new UserFacingError(kind === "venda" ? "Esta venda não existe mais." : "Esta despesa não existe mais.");
+    throw new UserFacingError(kind === "venda" ? "Esta receita não existe mais." : "Esta despesa não existe mais.");
   }
 }
 
 export async function removeSale(access: ControleAccess, saleId: string): Promise<void> {
-  if (!(await deleteSale(access.space.clientId, saleId))) throw new UserFacingError("Esta venda não existe mais.");
+  if (!(await deleteSale(access.space.clientId, saleId))) throw new UserFacingError("Esta receita não existe mais.");
 }

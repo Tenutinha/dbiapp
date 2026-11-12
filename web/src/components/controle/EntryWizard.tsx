@@ -40,14 +40,14 @@ interface Kind {
 const KINDS: Record<"venda" | "despesa", Kind> = {
   venda: {
     id: "venda",
-    askValue: "Qual o valor da venda?",
-    missingValue: "Digite o valor da venda.",
-    askDay: "Quando foi a venda?",
+    askValue: "Qual o valor da receita?",
+    missingValue: "Digite o valor da receita.",
+    askDay: "Quando foi a receita?",
     askStatus: "Já recebeu esse valor?",
     askName: "Quer colocar o nome do cliente?",
     namePlaceholder: "Nome do cliente",
-    saveNamed: "Salvar venda",
-    done: (amount) => `Venda de ${amount} lançada`,
+    saveNamed: "Salvar receita",
+    done: (amount) => `Receita de ${amount} lançada`,
     body: (a) => {
       const sale: SaleInput = { soldOn: a.day, totalCents: a.totalCents, paymentMethod: a.payment, customerName: a.name, status: a.status };
       return { action: "saleSave", sale };
