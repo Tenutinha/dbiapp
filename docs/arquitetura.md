@@ -158,6 +158,8 @@ cabeçalho) e diz se está **pronto para engatar** num dashboard do espaço ou s
   confirmação, pela mesma função do "Montar tabelas" (`fileFiscal`).
 - Código: `web/src/lib/storage-analysis.ts` (regras puras), `web/src/lib/services/file-analysis.ts`,
   `web/src/lib/data/file-analysis.ts`, `web/src/components/storage/` (StatusBadge, OrganizeDialog).
+- Como os arquivos fiscais viram as tabelas dos dashboards (tabelas por bloco, carga, regras e a proposta de
+  processamento incremental): [arquivos-fiscais.md](arquivos-fiscais.md).
 
 ## ✅ Decisão (2026-11-10): acesso por link a um espaço inteiro
 
