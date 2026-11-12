@@ -60,7 +60,7 @@ export async function DashboardBody({
     <>
       <DashboardLanding anchorsKey={anchorsKey} />
       {before}
-      <DashboardView template={dashboard.template} data={dashboard.data} totalRows={dashboard.totalRows} later={later} />
+      <DashboardView template={dashboard.template} data={dashboard.data} totalRows={dashboard.totalRows} later={later} notesInSummary />
       {after}
     </>
   );

@@ -60,10 +60,10 @@ describe("openingVisuals", () => {
 });
 
 describe("buildSummary", () => {
-  it("lists the summary groups with numbered links to each section", () => {
+  it("lists the summary groups with numbered links to each section, carrying its description when it has one", () => {
     expect(buildSummary(t)).toEqual([
       { title: "O resultado", items: [{ id: "visao", title: "Visão geral", number: 1, anchor: analysisAnchor("visao") }] },
-      { title: "Detalhes", items: [{ id: "canais", title: "Canais", number: 2, anchor: analysisAnchor("canais") }] },
+      { title: "Detalhes", items: [{ id: "canais", title: "Canais", number: 2, anchor: analysisAnchor("canais"), description: "Por onde vende." }] },
     ]);
   });
 

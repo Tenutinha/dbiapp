@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { SpaceView } from "@/lib/services/space";
 import { SignOutButton } from "../SignOutButton";
-import { SidebarNav, type Outlines } from "./SidebarNav";
+import { SidebarNav, type Notes, type Outlines } from "./SidebarNav";
 import { DbiLogo, SidebarShell } from "./SidebarShell";
 import { ThemeScope } from "./ThemeScope";
 
@@ -11,11 +11,13 @@ interface WorkspaceProps {
   userName: string;
   /** Analyses of each dashboard, nested under its name in the sidebar. */
   outlines?: Outlines;
+  /** What each dashboard is about: shown as a note when the mouse rests on it in the sidebar. */
+  notes?: Notes;
   children: React.ReactNode;
 }
 
 /** Two-pane layout: light table of contents on the left, the dashboard on the right. */
-export function Workspace({ space, currentId, userName, outlines = {}, children }: WorkspaceProps) {
+export function Workspace({ space, currentId, userName, outlines = {}, notes = {}, children }: WorkspaceProps) {
   const { org, client } = space;
   // The organization's own page is linked only when this person can open it (client users may not).
   const orgHref = space.spaces.some((s) => s.kind === "org") ? `/${org.slug}` : null;
@@ -51,7 +53,7 @@ export function Workspace({ space, currentId, userName, outlines = {}, children 
         footer={footer}
         content={<div className="mx-auto max-w-[1180px]">{children}</div>}
       >
-        <SidebarNav toc={space.toc} currentId={currentId} outlines={outlines} />
+        <SidebarNav toc={space.toc} currentId={currentId} outlines={outlines} notes={notes} />
       </SidebarShell>
     </ThemeScope>
   );
@@ -68,15 +70,15 @@ interface MainHeaderProps {
 /** Editorial header: kicker / meta line, large serif title, lead paragraph, a few quiet text links. */
 export function MainHeader({ kicker, meta, title, lead, links = [] }: MainHeaderProps) {
   return (
-    <header className="pb-10 pt-8 lg:pt-14">
+    <header className="pb-6 pt-6 lg:pt-8">
       <div className="flex flex-col gap-1 border-b border-line pb-4 text-sm sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
         <span className="truncate">{kicker}</span>
         {meta && <span className="text-muted sm:shrink-0">{meta}</span>}
       </div>
-      <h1 className="mt-8 font-serif text-[clamp(2.6rem,6.5vw,5.75rem)] font-normal leading-[1.02] tracking-[-0.02em]">{title}</h1>
-      {lead && <p className="mt-6 max-w-3xl text-lg leading-relaxed text-text/75 sm:text-xl">{lead}</p>}
+      <h1 className="mt-5 font-serif text-[clamp(2rem,3.6vw,3rem)] font-normal leading-[1.05] tracking-[-0.02em]">{title}</h1>
+      {lead && <p className="mt-4 max-w-3xl leading-relaxed text-text/75">{lead}</p>}
       {links.length > 0 && (
-        <nav className="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-sm" aria-label="Ações do dashboard">
+        <nav className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm" aria-label="Ações do dashboard">
           {links.map((l) => (
             <Link
               key={l.href}

@@ -26,6 +26,8 @@ export interface SummaryItem {
   title: string;
   number: number;
   anchor: string;
+  /** What the analysis shows, for the summary's hover note (absent when the analysis has none). */
+  description?: string;
 }
 
 export interface SummaryGroupView {
@@ -68,13 +70,16 @@ export function withoutHidden(t: Template): Template {
 
 export function buildSummary(t: Template): SummaryGroupView[] {
   const numbers = summaryNumbers(t);
-  const titleOf = new Map(t.analyses.filter((a) => !a.hidden).map((a) => [a.id, a.title]));
+  const shown = new Map(t.analyses.filter((a) => !a.hidden).map((a) => [a.id, a]));
   return t.summary
     .map((g) => ({
       title: g.title,
-      items: g.analyses
-        .filter((id) => titleOf.has(id))
-        .map((id) => ({ id, title: titleOf.get(id) ?? id, number: numbers.get(id) ?? 0, anchor: analysisAnchor(id) })),
+      items: g.analyses.flatMap((id): SummaryItem[] => {
+        const a = shown.get(id);
+        if (!a) return [];
+        const description = a.description.trim();
+        return [{ id, title: a.title, number: numbers.get(id) ?? 0, anchor: analysisAnchor(id), ...(description ? { description } : {}) }];
+      }),
     }))
     .filter((g) => g.items.length > 0);
 }

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import type { SummaryItem } from "@/lib/templates/sections";
+import { HoverNote } from "./HoverNote";
 import { rememberJump } from "./jump";
 import { LinkSwitchSignal, useOpenDashboard } from "./switching";
 import { openDashboardAction } from "./view-actions";
@@ -135,6 +136,7 @@ export function DashboardOutline({ dashboardId, dashboardName, current, items, h
     <ul ref={list} aria-label={`Análises de ${dashboardName}`} className="pb-2 pt-0.5">
       {items.map((item) => (
         <li key={item.id}>
+          <HoverNote note={item.description}>
           {current ? (
             <a href={`#${item.anchor}`} aria-current={item.anchor === active ? "location" : undefined} className={`${ROW} ${tone(item.anchor === active)} ${item.anchor === active ? MARK : ""}`}>
               <Label item={item} />
@@ -147,6 +149,7 @@ export function DashboardOutline({ dashboardId, dashboardName, current, items, h
           ) : (
             <JumpForm item={item} dashboardId={dashboardId} dashboardName={dashboardName} />
           )}
+          </HoverNote>
         </li>
       ))}
     </ul>

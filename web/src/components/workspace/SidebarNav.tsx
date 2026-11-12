@@ -3,15 +3,21 @@ import type { TocGroup } from "@/lib/layout/toc";
 import type { SummaryItem } from "@/lib/templates/sections";
 import { DashboardNavItem } from "./DashboardNavItem";
 import { DashboardOutline } from "./DashboardOutline";
+import { HoverNote } from "./HoverNote";
 import { LinkSwitchSignal } from "./switching";
 
 /** Analyses of each dashboard of the space, by dashboard id (absent = nothing to nest). */
 export type Outlines = Readonly<Record<string, SummaryItem[]>>;
 
+/** What each dashboard is about, by dashboard id (absent = no note). */
+export type Notes = Readonly<Record<string, string>>;
+
 interface SidebarNavProps {
   toc: TocGroup[];
   currentId: string | null;
   outlines: Outlines;
+  /** Dashboard descriptions, shown as a note on hover. */
+  notes?: Notes;
   /**
    * Public link (no account): each dashboard is a plain link to this address instead of the signed-in
    * "open" action, which remembers the choice per user.
@@ -40,7 +46,7 @@ function PublicNavItem({ href, name, number, active }: { href: string; name: str
  * nested under it. Choosing a dashboard or an analysis opens it on the address of the space (the URL
  * does not change), or on the public link's address when `hrefFor` is given.
  */
-export function SidebarNav({ toc, currentId, outlines, hrefFor }: SidebarNavProps) {
+export function SidebarNav({ toc, currentId, outlines, notes = {}, hrefFor }: SidebarNavProps) {
   // Viewing screen: nothing linked, nothing shown.
   if (toc.length === 0) return null;
 
@@ -52,11 +58,13 @@ export function SidebarNav({ toc, currentId, outlines, hrefFor }: SidebarNavProp
           <ul className="border-l border-paper-line">
             {group.items.map((item) => (
               <li key={item.id}>
-                {hrefFor ? (
-                  <PublicNavItem href={hrefFor(item.id)} name={item.name} number={item.number} active={item.id === currentId} />
-                ) : (
-                  <DashboardNavItem id={item.id} name={item.name} number={item.number} active={item.id === currentId} />
-                )}
+                <HoverNote note={notes[item.id]}>
+                  {hrefFor ? (
+                    <PublicNavItem href={hrefFor(item.id)} name={item.name} number={item.number} active={item.id === currentId} />
+                  ) : (
+                    <DashboardNavItem id={item.id} name={item.name} number={item.number} active={item.id === currentId} />
+                  )}
+                </HoverNote>
                 <DashboardOutline
                   dashboardId={item.id}
                   dashboardName={item.name}
