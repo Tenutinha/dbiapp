@@ -61,7 +61,14 @@ function registroNome(kind: SpedKind): string {
 }
 
 /** The original data: one section per block, one listing per record, one column per field. */
-function rawSections(kind: SpedKind, opts: { skipFilters?: (reg: string) => string[] | undefined }): Section[] {
+function rawSections(
+  kind: SpedKind,
+  opts: {
+    skipFilters?: (reg: string) => string[] | undefined;
+    /** Visuals that open a block's section, before the listings of its records (e.g. its totals by month). */
+    lead?: Readonly<Record<string, Json[]>>;
+  },
+): Section[] {
   const blocks = BLOCKS[kind.templateId];
   const rootBlocks = new Set(Object.keys(kind.roots).map((r) => r[0]));
   const multiEstab = kind.establishmentRecords.size > 0;
@@ -110,6 +117,7 @@ function rawSections(kind: SpedKind, opts: { skipFilters?: (reg: string) => stri
       };
     });
     if (visuals.length === 0) continue;
+    visuals.unshift(...(opts.lead?.[block] ?? []));
     const description = tableOfBlock[block] ? `Todos os períodos enviados, lidos da tabela ${tableOfBlock[block]}.` : "";
     sections.push({ id: `bloco_${block.toLowerCase()}`, title: `Bloco ${block} · ${name}`, description, visuals });
   }
@@ -241,10 +249,12 @@ interface Parts {
   panels: Section[];
   panelGroup: string;
   skipFilters?: (reg: string) => string[] | undefined;
+  /** Visuals that open the original-data section of a block (block code → visuals). */
+  lead?: Readonly<Record<string, Json[]>>;
 }
 
 function build(kind: SpedKind, p: Parts): Json {
-  const raw = rawSections(kind, { skipFilters: p.skipFilters });
+  const raw = rawSections(kind, { skipFilters: p.skipFilters, lead: p.lead });
   const sections = [...p.panels, ...raw];
   return {
     id: kind.templateId,
@@ -567,6 +577,26 @@ function efdContrib(): Json {
       ].map((v) => ({ ...v, fact: "bloco_c_resumo_itens" })),
     ],
   };
+  // Bloco A, original data: every value of the items (A170) and of the notes (A100) added up by competência.
+  // Labels are the layout's own field names, as in the listings below it.
+  fields.push({ id: "competencia", label: "Competência", sql: `strftime(${F}.periodo, '%Y-%m')` });
+  const totalsA: Measure[] = [
+    { id: "a_notas", label: "Notas (A100)", sql: countWhen(notaValida), format: "integer" },
+    { id: "a_itens", label: "Itens (A170)", sql: countWhen(isA170), format: "integer" },
+    { id: "a_vl_doc", label: "VL_DOC", sql: nota("VL_DOC"), format: "currency" },
+    ...["VL_ITEM", "VL_DESC", "VL_BC_PIS", "VL_PIS", "VL_BC_COFINS", "VL_COFINS"].map((name): Measure => (
+      { id: `a_${name.toLowerCase()}`, label: name, sql: itemServico(name), format: "currency" }
+    )),
+    ...["VL_PIS_RET", "VL_COFINS_RET", "VL_ISS"].map((name): Measure => (
+      { id: `a_${name.toLowerCase()}`, label: name, sql: nota(name), format: "currency" }
+    )),
+  ];
+  measures.push(...totalsA);
+  const totalsByCompetencia: Json = {
+    id: "t_a_competencia", type: "table", title: "Totais por competência: itens (A170) e notas (A100)",
+    fields: ["competencia"], measures: totalsA.map((m) => m.id), sort: "field", limit: 240, span: 12,
+    where: isReg("A100", "A170"), fact: "bloco_a_servicos",
+  };
   /** The bloco A section reads the fact that holds that block for every period. */
   const servico = (v: Json): Json => ({ ...v, fact: "bloco_a_servicos" });
   const servicos: Section = {
@@ -670,6 +700,7 @@ function efdContrib(): Json {
     name: "EFD Contribuições", area: "Fiscal",
     description: "Escrituração de PIS e COFINS completa: receitas, débitos, créditos e apuração em painéis, e todos os registros do arquivo com todos os campos para consulta.",
     fields, measures, filters: ["ano", "mes", "estabelecimento"], panels, panelGroup: "Painéis",
+    lead: { A: [totalsByCompetencia] },
   });
 }
 

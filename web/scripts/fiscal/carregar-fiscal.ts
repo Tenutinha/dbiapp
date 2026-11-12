@@ -21,12 +21,32 @@ import { findTemplate, updateDefinition } from "../../src/lib/data/catalog";
 import { sql } from "../../src/lib/db";
 import { publishDraft } from "../../src/lib/services/datasets";
 import { rebuildFiscal } from "../../src/lib/services/fiscal";
-import { extraFacts, templateSchema } from "../../src/lib/templates/schema";
+import { extraFacts, templateSchema, type Template } from "../../src/lib/templates/schema";
 
 const arg = (flag: string): string | undefined => {
   const i = process.argv.indexOf(flag);
   return i >= 0 ? process.argv[i + 1] : undefined;
 };
+
+/** The file's template with the summary and the hidden analyses the catalog has (when it has a readable one). */
+function keepStructure(fromFile: Template, stored: unknown): Template {
+  const current = templateSchema.safeParse(stored);
+  if (!current.success || current.data.summary.length === 0) return fromFile;
+  const known = new Set(fromFile.analyses.map((a) => a.id));
+  const hidden = new Set(current.data.analyses.filter((a) => a.hidden).map((a) => a.id));
+  const summary = current.data.summary
+    .map((g) => ({ ...g, analyses: g.analyses.filter((id) => known.has(id)) }))
+    .filter((g) => g.analyses.length > 0);
+  if (summary.length === 0) return fromFile;
+  if (JSON.stringify(summary) !== JSON.stringify(fromFile.summary)) {
+    console.log(`catálogo: sumário mantido como está na tela (${summary.flatMap((g) => g.analyses).join(", ")})`);
+  }
+  return templateSchema.parse({
+    ...fromFile,
+    summary,
+    analyses: fromFile.analyses.map((a) => (hidden.has(a.id) ? { ...a, hidden: true } : a)),
+  });
+}
 
 async function main(): Promise<void> {
   const templateId = arg("--molde");
@@ -34,9 +54,12 @@ async function main(): Promise<void> {
   const clientSlug = arg("--cliente");
   if (!templateId || !orgSlug) throw new Error("uso: --molde <id> --org <slug> [--cliente <slug>] [--so-molde]");
 
-  const t = templateSchema.parse(JSON.parse(await readFile(path.join(process.cwd(), "fiscal-templates", `${templateId}.json`), "utf8")));
-  const existing = await findTemplate(t.id);
-  if (!existing) throw new Error(`o molde "${t.id}" não está no catálogo`);
+  const fromFile = templateSchema.parse(JSON.parse(await readFile(path.join(process.cwd(), "fiscal-templates", `${templateId}.json`), "utf8")));
+  const existing = await findTemplate(fromFile.id);
+  if (!existing) throw new Error(`o molde "${fromFile.id}" não está no catálogo`);
+  // The structure people see (which analyses are in the summary, which are off the air) is edited on the
+  // screen and belongs to the catalog: the file brings tables, fields, measures and visuals, never that.
+  const t = keepStructure(fromFile, existing.definition);
   if (JSON.stringify(templateSchema.parse(existing.definition)) === JSON.stringify(t)) {
     console.log(`catálogo: "${t.id}" já está atualizado`);
   } else {

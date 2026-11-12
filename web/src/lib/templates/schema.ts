@@ -136,6 +136,8 @@ const visualSchema = z.discriminatedUnion("type", [
     limit: z.number().int().min(1).max(1000).default(20),
     /** Measure to sort by (default: the first one), always descending. */
     orderBy: ident.optional(),
+    /** "field": rows in the order of the first field, ascending (e.g. month by month) instead of by a measure. */
+    sort: z.enum(["measure_desc", "field"]).optional(),
   }),
   z.object({
     ...base,
