@@ -28,6 +28,18 @@ const arg = (flag: string): string | undefined => {
   return i >= 0 ? process.argv[i + 1] : undefined;
 };
 
+/**
+ * JSON of a value with the keys of every object in a fixed order. The database keeps a definition as jsonb,
+ * which returns keys in an order of its own: maps such as a table's `source.derive` come back reordered,
+ * and a plain comparison would take the same contract for a different one.
+ */
+function canonical(value: unknown): string {
+  return JSON.stringify(value, (_, v: unknown) =>
+    v !== null && typeof v === "object" && !Array.isArray(v)
+      ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+      : v);
+}
+
 /** The file's template with the summary and the hidden analyses the catalog has (when it has a readable one). */
 function keepStructure(fromFile: Template, stored: unknown): Template {
   const current = templateSchema.safeParse(stored);
@@ -60,7 +72,7 @@ async function main(): Promise<void> {
   // The structure people see (which analyses are in the summary, which are off the air) is edited on the
   // screen and belongs to the catalog: the file brings tables, fields, measures and visuals, never that.
   const t = keepStructure(fromFile, existing.definition);
-  if (JSON.stringify(templateSchema.parse(existing.definition)) === JSON.stringify(t)) {
+  if (canonical(templateSchema.parse(existing.definition)) === canonical(t)) {
     console.log(`catálogo: "${t.id}" já está atualizado`);
   } else {
     if (existing.builtIn) throw new Error(`o molde "${t.id}" é embutido; atualize pelo arquivo em web/templates`);
@@ -71,8 +83,8 @@ async function main(): Promise<void> {
     const current = templateSchema.parse(existing.definition);
     // New extra facts (e.g. bloco_a_servicos) do not touch what is published: a dashboard goes on without them until they are loaded.
     const added = new Set(extraFacts(t).map((tb) => tb.name).filter((name) => !current.tables.some((tb) => tb.name === name)));
-    const sameContract = JSON.stringify([current.tables, current.relationships])
-      === JSON.stringify([t.tables.filter((tb) => !added.has(tb.name)), t.relationships]);
+    const sameContract = canonical([current.tables, current.relationships])
+      === canonical([t.tables.filter((tb) => !added.has(tb.name)), t.relationships]);
     if (existing.status !== "draft" && n > 0 && !sameContract) {
       throw new Error(`o molde "${t.id}" está ${existing.status} e já tem dashboards com dados; atualize pela tela`);
     }

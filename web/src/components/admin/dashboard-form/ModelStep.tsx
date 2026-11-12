@@ -11,6 +11,7 @@ interface StepProps {
 
 const FORMAT_OPTIONS = [
   { value: "currency", label: "Moeda (R$)" },
+  { value: "currency_exact", label: "Moeda com centavos (R$)" },
   { value: "number", label: "Número com decimais" },
   { value: "integer", label: "Número inteiro" },
   { value: "percent", label: "Percentual" },

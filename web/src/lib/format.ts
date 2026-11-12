@@ -1,6 +1,7 @@
 import type { ValueFormat } from "./templates/schema";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+const currencyExact = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const currencyCompact = new Intl.NumberFormat("pt-BR", {
   style: "currency", currency: "BRL", notation: "compact", maximumFractionDigits: 2,
 });
@@ -16,6 +17,9 @@ export function formatValue(value: unknown, format: ValueFormat, compact = false
   switch (format) {
     case "currency":
       return compact && Math.abs(n) >= 10_000 ? currencyCompact.format(n) : currency.format(n);
+    // Always whole: it is the format for values that must match a document to the cent.
+    case "currency_exact":
+      return currencyExact.format(n);
     case "percent":
       return percent.format(n);
     case "integer":
