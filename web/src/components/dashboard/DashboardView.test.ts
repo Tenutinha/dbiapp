@@ -68,6 +68,23 @@ describe("DashboardView with analyses", () => {
     expect(html.indexOf("Receita")).toBeLessThan(section);
   });
 
+  it("shows a table's leading measures first and keeps them out of the totals line", () => {
+    const table = {
+      id: "t", type: "table" as const, title: "Por canal", span: 12, limit: 20, fields: ["canal"], measures: ["receita", "pedidos"],
+      leading: ["pedidos"], total: true,
+    };
+    const t2 = templateSchema.parse({ ...template, visuals: [...template.visuals, table], analyses: [], summary: [] });
+    const result = { visual: t2.visuals.at(-1)!, rows: [{ canal: "Loja", receita: 1000, pedidos: 20 }], total: { receita: 1000, pedidos: 20 } };
+    const html = renderToStaticMarkup(createElement(DashboardView, {
+      template: t2, data: { ...data, visuals: [...data.visuals, result] }, totalRows: 10,
+    }));
+    const head = html.slice(html.indexOf("Por canal"));
+    expect(head.indexOf("Pedidos")).toBeLessThan(head.indexOf("Canal"));
+    const foot = head.slice(head.indexOf("<tfoot"), head.indexOf("</tfoot>"));
+    expect(foot).toContain("Total");
+    expect(foot).not.toContain(">20<");
+  });
+
   it("keeps the flat layout for dashboards without analyses", () => {
     const flat = templateSchema.parse({ ...template, analyses: [], summary: [] });
     const html = render(flat);

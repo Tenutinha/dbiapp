@@ -612,26 +612,35 @@ function efdContrib(): Json {
     fields: ["competencia"], measures: totalsA.map((m) => m.id), sort: "field_desc", total: true, limit: 240, span: 12,
     where: isReg("A100", "A170"), fact: "bloco_a_servicos",
   };
-  // The same values note by note (A100), one line per NFS-e: the note's own totals, as the file states them.
-  const a100Field = (id: string, label: string, sql: string): Field => ({ id, label, sql: `CASE WHEN ${isA100} THEN ${sql} END` });
+  // The same values note by note: one line per NFS-e (A100) with its items (A170) added up beside it.
+  // A line is the note's number in its file (its items carry it too, from the note above them); the key is
+  // written only on the note, so it is a measure shown first instead of a field.
   fields.push(
-    a100Field("a_chv_nfse", "CHV_NFSE", `COALESCE(${a100("CHV_NFSE")}, '(sem chave)')`),
-    a100Field("a_num_doc", "NUM_DOC", a100("NUM_DOC")),
-    a100Field("a_dt_doc", "DT_DOC", `strftime(${F}.dt_doc, '%Y-%m-%d')`),
+    { id: "a_num_doc", label: "NUM_DOC", sql: `${F}.doc` },
+    { id: "a_dt_doc", label: "DT_DOC", sql: `strftime(${F}.dt_doc, '%Y-%m-%d')` },
   );
-  const byNote: Measure[] = [
-    { id: "a_vl_doc", label: "VL_DOC", sql: "", format: "currency_exact" },
-    ...["VL_DESC", "VL_BC_PIS", "VL_PIS", "VL_BC_COFINS", "VL_COFINS"].map((name): Measure => (
-      { id: `n_${name.toLowerCase()}`, label: name, sql: nota(name), format: "currency_exact" }
-    )),
-  ];
-  measures.push(...byNote.filter((m) => m.sql !== ""));
+  const noteValues: Measure[] = ["VL_DESC", "VL_BC_PIS", "VL_PIS", "VL_BC_COFINS", "VL_COFINS"].map((name): Measure => (
+    { id: `n_${name.toLowerCase()}`, label: `${name} (A100)`, sql: nota(name), format: "currency_exact" }
+  ));
+  const itemValues: Measure[] = ["VL_ITEM", "VL_DESC", "VL_BC_PIS", "VL_PIS", "VL_BC_COFINS", "VL_COFINS"].map((name): Measure => (
+    { id: `i_${name.toLowerCase()}`, label: `${name} (A170)`, sql: itemServico(name), format: "currency_exact" }
+  ));
+  measures.push(
+    { id: "a_chv_nfse", label: "CHV_NFSE", sql: `COALESCE(max(CASE WHEN ${notaValida} THEN ${a100("CHV_NFSE")} END), '(sem chave)')`, format: "text" },
+    ...noteValues,
+    ...itemValues,
+  );
   const byNoteTable: Json = {
-    id: "t_a_nota", type: "table", title: "Notas de serviço (A100), uma linha por chave",
-    fields: ["a_chv_nfse", "competencia", "a_num_doc", "a_dt_doc", "participante"],
-    measures: [...byNote.map((m) => m.id), "a_vl_pis_ret", "a_vl_cofins_ret", "a_vl_iss"],
+    id: "t_a_nota", type: "table", title: "Notas de serviço: a nota (A100) e a soma dos seus itens (A170)",
+    fields: ["competencia", "a_num_doc", "a_dt_doc", "participante"],
+    leading: ["a_chv_nfse"],
+    measures: [
+      "a_chv_nfse", "a_vl_doc", ...noteValues.map((m) => m.id), "a_vl_pis_ret", "a_vl_cofins_ret", "a_vl_iss",
+      "a_itens", ...itemValues.map((m) => m.id),
+    ],
     sort: "field_desc", total: true, limit: 5000, span: 12,
-    where: notaValida, fact: "bloco_a_servicos",
+    // The valid notes and the items (a cancelled note has none).
+    where: `(${isA170} OR ${notaValida})`, fact: "bloco_a_servicos",
   };
   /** The bloco A section reads the fact that holds that block for every period. */
   const servico = (v: Json): Json => ({ ...v, fact: "bloco_a_servicos" });

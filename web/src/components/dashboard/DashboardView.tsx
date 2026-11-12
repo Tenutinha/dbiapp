@@ -88,25 +88,33 @@ function VisualBody({ template, result }: { template: Template; result: VisualRe
       );
     }
     case "table": {
-      const ms = visual.measures.map(measure);
+      // Leading measures (a value that names the line) come first, then the fields, then the other measures.
+      const leading = new Set(visual.leading ?? []);
+      const lead = visual.measures.filter((id) => leading.has(id)).map(measure);
+      const ms = visual.measures.filter((id) => !leading.has(id)).map(measure);
+      const measureColumn = (m: ChartMeasure): ScrollColumn => m.format === "text"
+        ? { label: m.label, headClass: "text-left", cellClass: "max-w-48 truncate text-left", hint: true }
+        : { label: m.label, headClass: "text-right", cellClass: "text-right font-mono text-xs tabular-nums" };
       const columns: ScrollColumn[] = [
+        ...lead.map(measureColumn),
         ...visual.fields.map((f) => ({ label: fieldLabel(f), headClass: "", cellClass: "max-w-56 truncate", hint: true })),
-        ...ms.map((m) => m.format === "text"
-          ? { label: m.label, headClass: "text-left", cellClass: "max-w-48 truncate text-left", hint: true }
-          : { label: m.label, headClass: "text-right", cellClass: "text-right font-mono text-xs tabular-nums" }),
+        ...ms.map(measureColumn),
       ];
       const cells = rows.map((r) => [
+        ...lead.map((m) => formatValue(r[m.id], m.format)),
         ...visual.fields.map((f) => String(r[f] ?? "")),
         ...ms.map((m) => formatValue(r[m.id], m.format)),
       ]);
       const keys = rows.map((r) => visual.fields.map((f) => String(r[f] ?? "")));
-      const sortValues: SortValue[][] = rows.map((r, i) => [
-        ...keys[i],
-        ...ms.map((m) => {
-          const v = r[m.id];
-          return typeof v === "boolean" ? String(v) : v;
-        }),
-      ]);
+      const raw = (r: (typeof rows)[number], m: ChartMeasure): SortValue => {
+        const v = r[m.id];
+        return typeof v === "boolean" ? String(v) : v;
+      };
+      const sortValues: SortValue[][] = rows.map((r, i) => [...lead.map((m) => raw(r, m)), ...keys[i], ...ms.map((m) => raw(r, m))]);
+      // The totals line: a label under the first column, nothing under what names the lines, the totals of the rest.
+      const footer = total
+        ? ["Total", ...[...lead, ...visual.fields].slice(1).map(() => ""), ...ms.map((m) => formatValue(total[m.id], m.format))]
+        : undefined;
       const note = rows.length >= visual.limit
         ? `Estas são as primeiras ${rows.length.toLocaleString("pt-BR")} linhas. Use os filtros para chegar às demais.`
         : undefined;
@@ -114,7 +122,7 @@ function VisualBody({ template, result }: { template: Template; result: VisualRe
         <CrossTable
           visualId={visual.id} fields={visual.fields} keys={keys} columns={columns} rows={cells} sortValues={sortValues} note={note}
           initialSort={visual.sort === "field" ? { column: 0, dir: "asc" } : visual.sort === "field_desc" ? { column: 0, dir: "desc" } : undefined}
-          footer={total ? ["Total", ...visual.fields.slice(1).map(() => ""), ...ms.map((m) => formatValue(total[m.id], m.format))] : undefined}
+          footer={footer}
         />
       );
     }

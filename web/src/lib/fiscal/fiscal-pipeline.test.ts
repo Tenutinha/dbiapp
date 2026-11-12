@@ -113,8 +113,12 @@ describe.each(FISCAL_IMPORTERS.map((i) => [i.templateId, i] as const))("template
       expect(t.analyses.find((a) => a.id === "bloco_a")).toMatchObject({ visuals: ["t_a_competencia", "t_a_nota"], layout: "row" });
       // Beside it, note by note: the valid note of the sample with its key, the cancelled one left out.
       const notes = data.visuals.find((v) => v.visual.id === "t_a_nota");
-      expect(notes?.rows).toEqual([expect.objectContaining({ a_chv_nfse: "(sem chave)", competencia: "2025-01", a_num_doc: "501", a_vl_doc: 600, n_vl_pis: 9.9, a_vl_iss: 24 })]);
-      expect(notes?.total).toMatchObject({ a_vl_doc: 600, n_vl_cofins: 45.6 });
+      // One line per note, with its item added up beside it.
+      expect(notes?.rows).toEqual([expect.objectContaining({
+        a_chv_nfse: "(sem chave)", competencia: "2025-01", a_num_doc: "501", a_dt_doc: "2025-01-10",
+        a_vl_doc: 600, n_vl_pis: 9.9, a_vl_iss: 24, a_itens: 1, i_vl_item: 600, i_vl_pis: 9.9, i_vl_cofins: 45.6,
+      })]);
+      expect(notes?.total).toMatchObject({ a_vl_doc: 600, n_vl_cofins: 45.6, i_vl_item: 600 });
       expect(t.visuals.some((v) => v.id === "r_a100")).toBe(false);
       expect(data.visuals.find((v) => v.visual.id === "t_a_competencia")?.rows).toEqual([{
         competencia: "2025-01", a_notas: 1, a_itens: 1, a_vl_doc: 600, a_vl_item: 600, a_vl_desc: 0, a_vl_bc_pis: 600, a_vl_pis: 9.9,
