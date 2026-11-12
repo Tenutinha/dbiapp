@@ -4,28 +4,17 @@ import { useState, useTransition } from "react";
 import { updateTemplateAction, type TemplateFormState } from "@/app/plataforma/catalogo/actions";
 import { prepareForSave } from "@/lib/templates/draft";
 import { templateSchema, type Template } from "@/lib/templates/schema";
-import { AnalysesStep } from "./AnalysesStep";
-import { FilesStep } from "./FilesStep";
 import { GeneralStep } from "./GeneralStep";
-import { ModelStep } from "./ModelStep";
-import { SummaryStep } from "./SummaryStep";
+import { StructureStep } from "./StructureStep";
 
-const STEPS = ["Geral", "Arquivos", "Campos e medidas", "Análises", "Sumário"] as const;
+/** Geral, then everything else in one table (summary → files, analyses, fields), like the admin. */
+const STEPS = ["Geral", "Estrutura"] as const;
 
-/** Which step an error path ("tables.0.name", "visuals.3"…) belongs to. */
+/** Which tab an error belongs to: "Geral" (name, text, area, id) or the structure table (everything else). */
 function stepOfError(error: string): number {
   if (error.startsWith("Geral:")) return 0;
-  if (error.startsWith("Arquivos:")) return 1;
-  if (error.startsWith("Campos e medidas:")) return 2;
-  if (error.startsWith("Análises:")) return 3;
   const root = error.split(/[.:]/)[0];
-  if (root === "tables" || root === "relationships") return 1;
-  if (root === "fields" || root === "measures" || root === "filters" || root === "filterDefaults") return 2;
-  if (root === "visuals" || root === "analyses" || /visual|analysis \w/.test(error)) return 3;
-  if (root === "summary" || error.includes("summary")) return 4;
-  if (/relationship|dimension|fact table|sortBy|\.key/.test(error)) return 1;
-  if (/field|measure|filter/.test(error)) return 2;
-  return 0;
+  return ["id", "name", "description", "area", "origin", "version"].includes(root) ? 0 : 1;
 }
 
 /** Plain-language messages for the most common problems; anything else keeps its technical text. */
@@ -131,10 +120,7 @@ export function DashboardForm({
 
       <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
         {step === 0 && <GeneralStep {...stepProps} />}
-        {step === 1 && <FilesStep {...stepProps} />}
-        {step === 2 && <ModelStep {...stepProps} />}
-        {step === 3 && <AnalysesStep {...stepProps} />}
-        {step === 4 && <SummaryStep {...stepProps} />}
+        {step === 1 && <StructureStep {...stepProps} />}
       </div>
 
       <footer className="flex flex-col gap-3 border-t border-line px-5 py-3">
