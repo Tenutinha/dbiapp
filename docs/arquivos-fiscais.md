@@ -1,8 +1,8 @@
 # Arquivos fiscais (SPED e NF-e): do arquivo original ao dashboard
 
 Este documento descreve como os arquivos fiscais de um cliente viram as tabelas Parquet que os dashboards
-fiscais leem: onde ficam, como são lidos, quais tabelas existem, como carregar hoje e, na última parte, a
-**estratégia proposta** para que a criação e a atualização dessas tabelas aconteçam sozinhas a cada envio.
+fiscais leem: onde ficam, como são lidos, quais tabelas existem, como carregar, como cada arquivo é lido uma
+única vez (montagem por arquivo), a **linhagem** de cada tabela e as próximas fases.
 
 Moldes fiscais hoje: **EFD ICMS/IPI** (`efd-icms-ipi`), **EFD Contribuições** (`efd-contribuicoes`),
 **ECD** (`ecd`) e **NF-e** (`nfe`).
@@ -74,9 +74,10 @@ ingestão). Depois: gerar moldes, testes, PR, deploy e carga (seção 4).
 - **Explorador de arquivos** (📁 Arquivos): o envio dos arquivos para a pasta do cliente; mostra se cada arquivo
   é reconhecido e "Organizar pasta" o leva para `<espaço>/fiscal/<molde>/<CNPJ>/<período>/`.
 - **Gerenciador de dados do dashboard** → "Arquivos fiscais": lista empresas e períodos guardados e tem o botão
-  **Montar tabelas**, que relê **todos** os arquivos e põe as tabelas no rascunho; depois, publicar.
-- Limite: pela tela, a montagem recusa mais de **250 MB** de arquivos brutos (limites da função na Vercel:
-  disco e 300 s). Um cliente com anos de EFD Contribuições (≈8 GB) ou uma ECD grande passa disso.
+  **Montar tabelas**, que lê os arquivos novos ou trocados (seção 5) e põe as tabelas no rascunho; depois, publicar.
+  O resultado diz quantos arquivos foram lidos agora e quantos já tinham sido lidos.
+- Limite: pela tela, a montagem recusa ler mais de **250 MB** de arquivos de uma vez (limites da função na Vercel:
+  disco e 300 s). A primeira carga de anos de EFD Contribuições (≈8 GB) ou uma ECD grande passa disso; um mês novo, não.
 
 ## 4. Carga pelo script (volumes grandes)
 
@@ -89,8 +90,9 @@ node --env-file=<.env> --conditions=react-server --import tsx scripts/fiscal/car
 
 | Opção | O que faz |
 |---|---|
-| (nenhuma) | atualiza o molde, relê todos os arquivos, monta **todas** as tabelas e publica |
-| `--so-blocos` | atualiza o molde e refaz só as tabelas por bloco e as dimensões; mantém `registros` |
+| (nenhuma) | atualiza o molde, lê os arquivos novos ou trocados, monta **todas** as tabelas e publica |
+| `--so-blocos` | o mesmo, mas mantém `registros` como está publicada |
+| `--reler-tudo` | lê de novo todos os arquivos, mesmo os já lidos |
 | `--so-molde` | só atualiza o molde no catálogo (visuais, medidas, seções); não toca nos dados |
 
 Montagem local para conferir antes de publicar: `scripts/fiscal/montar-local.ts <molde> <pasta> <arquivos…>
@@ -112,90 +114,95 @@ Montagem local para conferir antes de publicar: `scripts/fiscal/montar-local.ts 
 
 ---
 
-## 5. Estratégia proposta: tabelas criadas e atualizadas a cada envio
+## 5. Montagem por arquivo (fase 1, implementada)
 
-> Proposta, ainda não implementada.
+Nos SPED, **cada arquivo original é lido uma única vez**. "Montar tabelas" e o script só leem os arquivos novos
+ou trocados; os outros vêm do que já foi lido.
 
-### O que se quer
+### Partes por arquivo
 
-- Criar um cliente, enviar os SPEDs dele e vincular o dashboard: o sistema **sugere criar as tabelas**.
-- Enviar mais meses depois: o sistema **acrescenta** os dados novos às tabelas, sem reler tudo.
-- Enviar uma retificadora: o sistema **troca** só aquele mês.
-
-### Princípio: uma parte Parquet por arquivo original
-
-Hoje cada tabela é refeita inteira a cada montagem. A proposta é que cada **arquivo original** (empresa + período)
-gere a **sua parte** de cada tabela, e que a tabela publicada seja a **lista dessas partes**:
+Cada arquivo original (empresa + período) é lido para uma pasta própria do dashboard, com uma parte Parquet por
+tabela:
 
 ```
-<espaço>/dashboards/<molde>-<id>/partes/<CNPJ>/<aaaa-mm>/<tabela>.<rand>.parquet
+<espaço>/dashboards/<molde>-<id>/partes/<CNPJ>/<aaaa-mm>/<id do arquivo>/
+    registros.parquet  bloco_a_servicos.parquet  …  participantes.parquet  …  pronto.json
 ```
 
-O motor já lê uma tabela feita de várias partes (`storage-parts.ts`, usado no engate de vários arquivos por
-tabela). Com isso:
+- O **id do arquivo** é um resumo do caminho, do tamanho, da data de gravação e da versão do leitor
+  (`SPED_READER_VERSION`, em `sped-kinds.ts`): muda quando o arquivo é trocado ou quando o leitor muda.
+- O **`pronto.json`** (o marcador) é gravado por último e diz o que a pasta tem: a origem, a versão do leitor e,
+  por tabela, a parte e o número de linhas. Pasta sem marcador é leitura interrompida.
+- Código: `web/src/lib/fiscal/parts-plan.ts` (o plano, puro) e `web/src/lib/services/fiscal-parts.ts`.
 
-| Evento | O que acontece |
+| Evento | O que acontece na próxima montagem |
 |---|---|
-| mês novo enviado | processa só esse arquivo e **acrescenta** as partes dele |
-| retificadora do mesmo mês | processa o arquivo novo e **substitui** as partes daquele mês |
-| arquivo apagado | **retira** as partes daquele mês |
-| molde ganha uma tabela nova | processa os arquivos só para a tabela nova |
-| leitor muda (correção) | marca as partes como desatualizadas e reprocessa |
+| mês novo enviado | só esse arquivo é lido |
+| retificadora do mesmo mês | só o arquivo novo é lido; a pasta do antigo é apagada |
+| arquivo apagado | a pasta dele é apagada e suas linhas saem das tabelas |
+| molde ganha uma tabela | os arquivos são lidos de novo (o marcador não tem a tabela nova) |
+| leitor muda (`SPED_READER_VERSION` sobe) | todos os arquivos são lidos de novo |
+| `--reler-tudo` no script | todas as pastas são apagadas e tudo é lido de novo |
 
-"Concatenar" deixa de ser reescrever um Parquet grande: é acrescentar um arquivo pequeno à lista.
+### Do que foi lido às tabelas do dashboard
 
-**Dimensões** (participantes, itens, estabelecimentos) se repetem em todo mês. Cada arquivo também gera as suas
-partes de dimensão, e na publicação elas são consolidadas numa só (uma linha por chave, a do mês mais
-recente vence) — operação de segundos no DuckDB.
+Depois da leitura, cada tabela do rascunho é **montada a partir das partes** (DuckDB junta os Parquet, sem reler
+os SPED) e passa pela ingestão de sempre:
 
-**Manutenção**: com muitas partes pequenas, uma rotina pode juntar as de um ano inteiro numa parte só.
+- **Fatos**: as partes de todos os arquivos; a principal (`registros`) só do período mais recente de cada empresa
+  quando o SPED declara `mainFactPeriods: "latest"` (EFD Contribuições). As tabelas publicadas continuam sendo um
+  Parquet por tabela, então abrir o dashboard não fica mais lento com o número de meses.
+- **Dimensões**: o que o dashboard já tem (rascunho, senão o publicado) mais o que os arquivos lidos agora
+  trouxeram; para cada código, fica o do período mais recente. Se todos os arquivos foram lidos agora, a dimensão
+  é montada só deles. Códigos de arquivos retirados podem continuar no cadastro (não atrapalha).
+- Pela tela, o limite de 250 MB passa a valer só para os arquivos **a ler**: acrescentar um mês a um cliente com
+  anos de histórico cabe numa requisição. A primeira carga de um histórico grande continua pelo script.
 
-### Manifesto: o que já foi processado
+## 6. Linhagem: de onde vem cada número
 
-Uma tabela no banco (ex.: `fiscal_processing`) com uma linha por arquivo original e dashboard:
+A cada montagem é gravado, ao lado das tabelas do rascunho, um **`linhagem.json`**
+(`<espaço>/dashboards/<molde>-<id>/v<n>/linhagem.json`), com, para cada tabela:
 
-| Coluna | Para quê |
-|---|---|
-| dashboard, molde | de quem é |
-| chave do arquivo no bucket, CNPJ, período | qual arquivo |
-| tamanho e hash (md5 do GCS) | saber se o arquivo mudou |
-| versão do leitor e do molde | saber se as partes ficaram desatualizadas |
-| partes geradas (tabela → chave, linhas) | o que entra na publicação |
-| estado: `novo`, `processando`, `pronto`, `desatualizado`, `erro` (+ mensagem) | o que mostrar e o que fazer |
+- **como** ela é feita, em palavras: arquivo inteiro ou blocos, registros mantidos ou deixados de fora, linhas
+  somadas (por quais campos, o que se soma), e, nas dimensões, a regra do período mais recente;
+- **de quais arquivos** vieram as linhas: caminho do arquivo original, empresa, período, tamanho, data de
+  gravação e quantas linhas cada um pôs na tabela;
+- a versão do leitor e a hora da montagem.
 
-A análise de arquivos que já existe (`storage_file_analysis`, migração 013) reconhece o arquivo; o manifesto
-registra o que foi feito com ele em cada dashboard.
+Além disso, **cada linha** de uma fato guarda a sua origem: `arquivo` (empresa e mês) e `linha` (a linha no
+arquivo original). Nas linhas somadas (resumos do bloco C), `linha` é 0.
+
+Código: `web/src/lib/fiscal/lineage.ts`. Ainda não há tela para a linhagem (fase 2).
+
+## 7. Próximas fases (proposta)
 
 ### A sugestão na tela
 
-Comparando a pasta fiscal do cliente com o manifesto, o sistema sabe o que falta, e mostra:
+Comparando a pasta fiscal do cliente com as partes já lidas, o sistema sabe o que falta, e pode mostrar:
 
 - ao **vincular** um molde fiscal a um cliente que já tem arquivos reconhecidos: *"Este cliente tem 103 arquivos
   EFD Contribuições (jan/2018 a jul/2026). Criar as tabelas do dashboard?"*;
 - no **gerenciador de dados** e no **explorador**, depois de um envio: *"4 arquivos novos e 1 retificado ainda não
   estão no dashboard — Atualizar"*;
-- uma lista por empresa e período com o estado de cada arquivo (novo, pronto, com erro).
+- uma lista por empresa e período com o estado de cada arquivo (novo, pronto, com erro);
+- a **linhagem** de cada tabela e de cada visual ("de onde vêm estes números").
 
 ### Onde roda o processamento
 
-- **Um arquivo por vez.** Cada arquivo de EFD (60 a 120 MB) cabe numa requisição da Vercel; a tela dispara os
-  arquivos em sequência e mostra o progresso ("37 de 103"). Se a página fechar, o manifesto diz onde parou.
-- **Arquivos grandes** (ECD de 600 a 750 MB, ou mais de ~250 MB) não cabem: vão para um **processador fora da
-  Vercel** (um job em contêiner, por exemplo no Google Cloud Run, que lê do bucket e grava as partes), que
-  usa exatamente o mesmo código de leitura. Até ele existir, o caminho é o script da seção 4.
-- **Publicação** ao fim do lote: monta a lista de partes de cada tabela, consolida as dimensões e publica uma
-  versão nova (ou deixa no rascunho, conforme a preferência do espaço).
+- **Um arquivo por requisição**, com progresso na tela ("37 de 103"); se a página fechar, os marcadores dizem
+  onde parou.
+- **Arquivos grandes** (ECD de 600 a 750 MB) num **processador fora da Vercel** (um job em contêiner, por exemplo
+  no Google Cloud Run, que lê do bucket e grava as partes), com o mesmo código de leitura. Até lá, o script.
 
-### Fases sugeridas
+### Fases
 
-1. **Partes por arquivo e manifesto**, ainda disparados pelo botão "Montar tabelas" — mas só processando o que
-   é novo ou mudou. Resolve o "concatenar" e deixa as recargas de minutos para segundos.
-2. **Sugestão na tela** (ao vincular e após envio) e progresso arquivo a arquivo.
+1. ✅ **Partes por arquivo, marcador e linhagem**, pelo botão "Montar tabelas" e pelo script.
+2. **Sugestão na tela**, estado por arquivo, progresso arquivo a arquivo e tela da linhagem.
 3. **Processador fora da Vercel** para arquivos grandes e lotes longos.
 4. **Atualização automática** ao enviar arquivos (opcional por espaço), sem clique.
 
 ### Pontos em aberto
 
 - Publicar sozinho ou sempre pedir confirmação? (Sugestão: rascunho, com aviso; publicação automática como opção.)
-- Quanto tempo guardar partes de versões antigas (hoje só a versão publicada fica na pasta).
+- Erros por arquivo ficam só no resultado da montagem; guardar o histórico pede uma tabela no banco.
 - O bloco C completo: com partes por mês e leitura direta do bucket, ele poderia voltar a ser publicado inteiro.
