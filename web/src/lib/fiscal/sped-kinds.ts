@@ -46,10 +46,45 @@ export interface SpedKind {
   /** Dimension tables this kind builds besides the fact. */
   dimensions: readonly string[];
   /**
-   * Extra fact tables that keep only some blocks of the file (table → blocks), shaped like the main fact.
+   * Extra fact tables that keep only some blocks of the file, shaped like the main fact.
    * Light enough to hold every period, when the whole file of every period would be too much.
    */
-  blockFacts: Readonly<Record<string, readonly string[]>>;
+  blockFacts: Readonly<Record<string, BlockFact>>;
+}
+
+/** What an extra fact keeps of the file. */
+export interface BlockFact {
+  blocks: readonly string[];
+  /** Records of those blocks left out (e.g. the notes and their free text, when only the items matter). */
+  skip?: readonly string[];
+  /** Only these records are kept (instead of every record of the blocks). */
+  only?: readonly string[];
+  /** Sums one heavy record up, so millions of lines become a table the panels can read at once. */
+  collapse?: Collapse;
+}
+
+/**
+ * How the lines of one record are summed up: one line per combination of the file, the operation, the
+ * key fields and (optionally) the establishment and the item; the value fields are added, the others emptied.
+ * The result keeps the record's layout, so everything written for that record still reads it.
+ */
+export interface Collapse {
+  record: string;
+  /** Fields (layout names) that stay as they are and tell the lines apart. */
+  keys: readonly string[];
+  /** Numeric fields that are added. */
+  sums: readonly string[];
+  /** Keep one line per establishment (else the lines go to the declarant). */
+  byEstablishment: boolean;
+  /** Keep one line per item (the link to the items dimension). */
+  byItem: boolean;
+}
+
+/** Whether a block fact keeps this record. */
+export function keepsRecord(fact: BlockFact, record: string): boolean {
+  if (!fact.blocks.includes(record[0] ?? "")) return false;
+  if (fact.only) return fact.only.includes(record);
+  return !fact.skip?.includes(record);
 }
 
 const DOC = ["NUM_DOC", "NUM_DOC_INI", "NUM_CFE", "NUM_COO_FIN", "NUM_LCTO"] as const;
@@ -84,6 +119,10 @@ function identifyEcd(r: SpedRecord | undefined): SpedIdentity & { uf: string | n
   return { cnpj, nome: text(r[4]) ?? cnpj, periodo: spedMonth(r[2]) as string, dtFin: spedDate(r[3]), uf: text(r[6]) };
 }
 
+/** Items of the goods notes (EFD Contribuições, C170): what tells them apart in a summary, and what is added. */
+const C170_KEYS = ["CFOP", "CST_PIS", "ALIQ_PIS", "CST_COFINS", "ALIQ_COFINS"] as const;
+const C170_SUMS = ["QTD", "VL_ITEM", "VL_DESC", "VL_BC_PIS", "VL_PIS", "VL_BC_COFINS", "VL_COFINS"] as const;
+
 export const SPED_KINDS: readonly SpedKind[] = [
   {
     templateId: "efd-icms-ipi",
@@ -109,16 +148,26 @@ export const SPED_KINDS: readonly SpedKind[] = [
     establishmentRecords: new Set(["A010", "C010", "D010", "F010", "I010", "P010"]),
     identify: identifyContrib,
     dimensions: ["estabelecimentos", "participantes", "itens"],
-    // Every block but the two heavy ones: 0 (the registers repeated every month) and C (the goods documents).
     blockFacts: {
-      bloco_a_servicos: ["A"],
-      bloco_d_transporte_comunicacao: ["D"],
-      bloco_f_demais_operacoes: ["F"],
-      bloco_i_instituicoes_financeiras: ["I"],
-      bloco_m_apuracao_pis_cofins: ["M"],
-      bloco_p_previdenciaria_receita_bruta: ["P"],
-      bloco_1_complemento_saldos: ["1"],
-      bloco_9_encerramento: ["9"],
+      bloco_a_servicos: { blocks: ["A"] },
+      bloco_d_transporte_comunicacao: { blocks: ["D"] },
+      bloco_f_demais_operacoes: { blocks: ["F"] },
+      bloco_i_instituicoes_financeiras: { blocks: ["I"] },
+      bloco_m_apuracao_pis_cofins: { blocks: ["M"] },
+      bloco_p_previdenciaria_receita_bruta: { blocks: ["P"] },
+      bloco_1_complemento_saldos: { blocks: ["1"] },
+      bloco_9_encerramento: { blocks: ["9"] },
+      // Bloco C whole is tens of millions of lines: the panels read its items (C170) summed up instead.
+      bloco_c_resumo: {
+        blocks: ["C"],
+        skip: ["C100", "C110", "C111", "C120"],
+        collapse: { record: "C170", keys: C170_KEYS, sums: C170_SUMS, byEstablishment: true, byItem: false },
+      },
+      bloco_c_resumo_itens: {
+        blocks: ["C"],
+        only: ["C170"],
+        collapse: { record: "C170", keys: C170_KEYS, sums: C170_SUMS, byEstablishment: false, byItem: true },
+      },
     },
   },
   {
