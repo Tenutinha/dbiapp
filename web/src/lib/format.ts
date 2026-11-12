@@ -1,7 +1,8 @@
 import type { ValueFormat } from "./templates/schema";
 
 const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
-const currencyExact = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2, maximumFractionDigits: 2 });
+/** Money to the cent, without the "R$": in a table full of values the symbol only adds noise. */
+const currencyExact = new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const currencyCompact = new Intl.NumberFormat("pt-BR", {
   style: "currency", currency: "BRL", notation: "compact", maximumFractionDigits: 2,
 });
