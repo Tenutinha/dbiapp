@@ -109,11 +109,15 @@ describe.each(FISCAL_IMPORTERS.map((i) => [i.templateId, i] as const))("template
       expect([first("k_m_pis_recolher"), first("k_m_cofins_recolher"), first("k_f_aquisicoes")]).toEqual([23.1, 106.4, 200]);
       expect(t.visuals.find((v) => v.id === "r_m200")?.fact).toBe("bloco_m_apuracao_pis_cofins");
       // Bloco A opens with its totals by competência: the item and the valid note of the sample, the cancelled one left out.
-      expect(t.analyses.find((a) => a.id === "bloco_a")?.visuals[0]).toBe("t_a_competencia");
+      // Bloco A is its totals: the listings of its raw records are left out.
+      expect(t.analyses.find((a) => a.id === "bloco_a")?.visuals).toEqual(["t_a_competencia"]);
+      expect(t.visuals.some((v) => v.id === "r_a100")).toBe(false);
       expect(data.visuals.find((v) => v.visual.id === "t_a_competencia")?.rows).toEqual([{
         competencia: "2025-01", a_notas: 1, a_itens: 1, a_vl_doc: 600, a_vl_item: 600, a_vl_desc: 0, a_vl_bc_pis: 600, a_vl_pis: 9.9,
         a_vl_bc_cofins: 600, a_vl_cofins: 45.6, a_vl_pis_ret: 0, a_vl_cofins_ret: 0, a_vl_iss: 24,
       }]);
+      // … and closes with the totals of every competência.
+      expect(data.visuals.find((v) => v.visual.id === "t_a_competencia")?.total).toMatchObject({ a_notas: 1, a_vl_doc: 600, a_vl_pis: 9.9, a_vl_iss: 24 });
       // The original lines of bloco C stay with the main fact: its extra facts are summaries.
       expect(t.visuals.find((v) => v.id === "r_c100")?.fact).toBeUndefined();
       // The summaries hold the item of the sample (C170) with its values, without the note it came from.

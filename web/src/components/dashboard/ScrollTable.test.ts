@@ -64,6 +64,20 @@ describe("ScrollTable", () => {
     expect(html).not.toContain("linhas");
   });
 
+  it("fecha a tabela com a linha de totais, fora das linhas que rolam e classificam", () => {
+    const html = renderToStaticMarkup(createElement(ScrollTable, { columns, rows: rowsOf(60), footer: ["Total", "R$ 99,00"] }));
+    const foot = html.slice(html.indexOf("<tfoot"), html.indexOf("</tfoot>"));
+    expect(foot).toContain("Total");
+    expect(foot).toContain("R$ 99,00");
+    expect(html.indexOf("<tfoot")).toBeGreaterThan(html.indexOf("cliente-25"));
+  });
+
+  it("mostra a seta na coluna pela qual as linhas já vêm ordenadas", () => {
+    const html = renderToStaticMarkup(createElement(ScrollTable, { columns, rows: rowsOf(3), initialSort: { column: 0, dir: "desc" } }));
+    expect(html).toContain('aria-sort="descending"');
+    expect(html.indexOf("cliente-3")).toBeLessThan(html.indexOf("cliente-1"));
+  });
+
   it("mostra a observação quando todas as linhas já estão na tela", () => {
     const html = renderToStaticMarkup(createElement(ScrollTable, { columns, rows: rowsOf(3), note: "Use os filtros." }));
     expect(html).toContain("Use os filtros.");

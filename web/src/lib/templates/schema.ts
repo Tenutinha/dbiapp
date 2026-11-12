@@ -137,8 +137,17 @@ const visualSchema = z.discriminatedUnion("type", [
     limit: z.number().int().min(1).max(1000).default(20),
     /** Measure to sort by (default: the first one), always descending. */
     orderBy: ident.optional(),
-    /** "field": rows in the order of the first field, ascending (e.g. month by month) instead of by a measure. */
-    sort: z.enum(["measure_desc", "field"]).optional(),
+    /**
+     * "field" / "field_desc": rows in the order of the first field (e.g. month by month, or the latest month
+     * first) instead of by a measure. The reader can still sort by any column on the screen.
+     */
+    sort: z.enum(["measure_desc", "field", "field_desc"]).optional(),
+    /**
+     * Closes the table with a line of totals: each measure computed over everything the table covers
+     * (its condition and the screen filters), not added up from the lines shown — so it also holds for
+     * averages and rates, and when the table shows only its first lines.
+     */
+    total: z.boolean().optional(),
   }),
   z.object({
     ...base,

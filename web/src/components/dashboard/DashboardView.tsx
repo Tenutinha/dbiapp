@@ -31,7 +31,7 @@ interface DashboardViewProps {
 }
 
 function VisualBody({ template, result }: { template: Template; result: VisualResult }) {
-  const { visual, rows } = result;
+  const { visual, rows, total } = result;
   const measure = (id: string): ChartMeasure => {
     const m = template.measures.find((x) => x.id === id);
     return { id, label: m?.label ?? id, format: m?.format ?? "number" };
@@ -111,7 +111,11 @@ function VisualBody({ template, result }: { template: Template; result: VisualRe
         ? `Estas são as primeiras ${rows.length.toLocaleString("pt-BR")} linhas. Use os filtros para chegar às demais.`
         : undefined;
       return (
-        <CrossTable visualId={visual.id} fields={visual.fields} keys={keys} columns={columns} rows={cells} sortValues={sortValues} note={note} />
+        <CrossTable
+          visualId={visual.id} fields={visual.fields} keys={keys} columns={columns} rows={cells} sortValues={sortValues} note={note}
+          initialSort={visual.sort === "field" ? { column: 0, dir: "asc" } : visual.sort === "field_desc" ? { column: 0, dir: "desc" } : undefined}
+          footer={total ? ["Total", ...visual.fields.slice(1).map(() => ""), ...ms.map((m) => formatValue(total[m.id], m.format))] : undefined}
+        />
       );
     }
   }

@@ -35,6 +35,10 @@ interface ScrollTableProps {
   selectedRows?: ReadonlySet<number>;
   /** Makes the rows clickable. `additive` = Ctrl/Cmd/Shift held. */
   onRowClick?: (index: number, additive: boolean) => void;
+  /** The order the rows already come in, when it is by one column: its header shows the arrow from the start. */
+  initialSort?: TableSort;
+  /** A last line that stays in view under the rows and does not sort with them (the totals), in column order. */
+  footer?: readonly string[];
 }
 
 export function nextVisible(current: number, total: number): number {
@@ -61,8 +65,8 @@ export function sortOrder(values: readonly (readonly SortValue[])[], sort: Table
 }
 
 /**
- * The sort after a double click on a header: numbers start from the largest, text from A; a second
- * double click reverses it and a third goes back to the original order.
+ * The sort after a click on a header: numbers start from the largest, text from A; a second click
+ * reverses it and a third goes back to the original order.
  */
 export function nextSort(current: TableSort | null, column: number, numeric: boolean): TableSort | null {
   const first = numeric ? "desc" : "asc";
@@ -79,16 +83,16 @@ interface Shown {
 /**
  * Table of fixed maximum height that scrolls inside its card and draws its rows 25 at a time, so a long
  * table neither stretches the page nor puts hundreds of rows in the DOM before anyone looks at them.
- * A double click on a column header sorts by it.
+ * A click on a column header sorts by it.
  */
-export function ScrollTable({ columns, rows, sortValues, dense = false, note, selectedRows, onRowClick }: ScrollTableProps) {
+export function ScrollTable({ columns, rows, sortValues, dense = false, note, selectedRows, onRowClick, initialSort, footer }: ScrollTableProps) {
   const [shown, setShown] = useState<Shown>({ rows, count: PAGE_SIZE });
   // New data (a filter changed): start again from the top.
   if (shown.rows !== rows) setShown({ rows, count: PAGE_SIZE });
   const count = Math.min(shown.rows === rows ? shown.count : PAGE_SIZE, rows.length);
 
   // Kept across data changes: a filter does not undo the chosen order.
-  const [sort, setSort] = useState<TableSort | null>(null);
+  const [sort, setSort] = useState<TableSort | null>(initialSort ?? null);
   const values = sortValues ?? rows;
   const order = useMemo(() => sortOrder(values, sort && sort.column < columns.length ? sort : null), [values, sort, columns.length]);
 
@@ -139,13 +143,16 @@ export function ScrollTable({ columns, rows, sortValues, dense = false, note, se
               return (
                 <th
                   key={j}
-                  onDoubleClick={() => sortBy(j)}
+                  onClick={() => sortBy(j)}
                   aria-sort={dir === "asc" ? "ascending" : dir === "desc" ? "descending" : undefined}
-                  title="Duplo clique para classificar"
-                  className={`cursor-pointer select-none whitespace-nowrap ${dense ? "px-1.5" : "px-1"} py-2 font-medium hover:text-text ${dir ? "text-text" : ""} ${c.headClass}`}
+                  title="Clique para classificar por esta coluna"
+                  className={`group cursor-pointer select-none whitespace-nowrap ${dense ? "px-1.5" : "px-1"} py-2 font-medium hover:text-text ${dir ? "text-text" : ""} ${c.headClass}`}
                 >
                   {c.label}
-                  {dir && <span aria-hidden className="ml-1 text-brand-2">{dir === "asc" ? "▲" : "▼"}</span>}
+                  {/* The arrow of the column in use; on the others, a faint one shows on hover that they sort too. */}
+                  {dir
+                    ? <span aria-hidden className="ml-1 text-brand-2">{dir === "asc" ? "▲" : "▼"}</span>
+                    : <span aria-hidden className="ml-1 opacity-0 group-hover:opacity-40">▼</span>}
                 </th>
               );
             })}
@@ -171,6 +178,15 @@ export function ScrollTable({ columns, rows, sortValues, dense = false, note, se
             );
           })}
         </tbody>
+        {footer && (
+          <tfoot className="sticky bottom-0 z-10 bg-card">
+            <tr className="border-t border-line font-semibold">
+              {columns.map((c, j) => (
+                <td key={j} className={`${pad} ${c.cellClass}`} title={c.hint ? footer[j] : undefined}>{footer[j] ?? ""}</td>
+              ))}
+            </tr>
+          </tfoot>
+        )}
       </table>
       {hasMore && (
         <div ref={sentinel} className="px-1.5 py-2 text-[11px] text-muted">

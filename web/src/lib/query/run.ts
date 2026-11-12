@@ -3,13 +3,17 @@
  */
 import { queryRows, withConnection, type Row } from "../duck/engine";
 import type { Template, Visual } from "../templates/schema";
-import { buildFilterOptionsQuery, buildVisualQuery, MissingFactError, type FilterSelection, type TableFiles } from "./build";
+import {
+  buildFilterOptionsQuery, buildTableTotalQuery, buildVisualQuery, MissingFactError, type FilterSelection, type TableFiles,
+} from "./build";
 import type { CrossSelection } from "./cross";
 import type { FactFilter } from "./fact-filter";
 
 export interface VisualResult {
   visual: Visual;
   rows: Row[];
+  /** A table's line of totals (measure id → value), when the visual asks for one. */
+  total?: Row;
   error?: string;
 }
 
@@ -77,7 +81,10 @@ export async function runDashboard(
     if (visual.type === "text") return { visual, rows: [] };
     try {
       const q = buildVisualQuery(template, files, visual, resolved, factFilter, cross);
-      return { visual, rows: await queryRows(conn, q.sql, q.params) };
+      const rows = await queryRows(conn, q.sql, q.params);
+      if (visual.type !== "table" || !visual.total || rows.length === 0) return { visual, rows };
+      const totals = buildTableTotalQuery(template, files, visual, resolved, factFilter, cross);
+      return { visual, rows, total: (await queryRows(conn, totals.sql, totals.params))[0] };
     } catch (err) {
       // An extra fact that has no data yet: nothing to show, not a failure.
       if (err instanceof MissingFactError) return { visual, rows: [] };

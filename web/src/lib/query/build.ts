@@ -227,8 +227,8 @@ function selectFor(t: Template, visual: QueryVisual, filters: FilterSelection): 
       return {
         select: [...fs.map(fieldCol), ...visual.measures.map((m) => measureCol(measure(m)))],
         groupBy: fs.map((_, i) => String(i + 1)),
-        tail: visual.sort === "field"
-          ? `ORDER BY ${fs[0].id} ASC LIMIT ${visual.limit}`
+        tail: visual.sort === "field" || visual.sort === "field_desc"
+          ? `ORDER BY ${fs[0].id} ${visual.sort === "field" ? "ASC" : "DESC"} LIMIT ${visual.limit}`
           : `ORDER BY ${visual.orderBy ?? visual.measures[0]} DESC NULLS LAST LIMIT ${visual.limit}`,
       };
     }
@@ -254,8 +254,27 @@ export function buildVisualQuery(
   t: Template, files: TableFiles, visual: QueryVisual, filters: FilterSelection, factFilter: FactFilter = [],
   cross: CrossSelection = [],
 ): BuiltQuery {
+  return assemble(t, files, visual, selectFor(t, visual, filters), filters, factFilter, cross);
+}
+
+/**
+ * The line of totals of a table: its measures over everything it covers (same condition, same filters and
+ * picked items), without the grouping and without the limit.
+ */
+export function buildTableTotalQuery(
+  t: Template, files: TableFiles, visual: Extract<Visual, { type: "table" }>, filters: FilterSelection, factFilter: FactFilter = [],
+  cross: CrossSelection = [],
+): BuiltQuery {
+  const select = visual.measures.map((id) => measureCol(lookup(t.measures, id, "measure")));
+  return assemble(t, files, visual, { select, groupBy: [], tail: "" }, filters, factFilter, cross);
+}
+
+function assemble(
+  t: Template, files: TableFiles, visual: QueryVisual, parts: { select: string[]; groupBy: string[]; tail: string },
+  filters: FilterSelection, factFilter: FactFilter, cross: CrossSelection,
+): BuiltQuery {
   const source = factSource(t, visual.fact);
-  const { select, groupBy, tail } = selectFor(t, visual, filters);
+  const { select, groupBy, tail } = parts;
   // Built apart first: the FROM only joins the dimensions the query mentions, and its parameters come first.
   const where = buildWhere(t, filters, visual.skipFilters, [], {
     selection: cross, visualId: visual.id, skipFields: visual.skipFilters,
