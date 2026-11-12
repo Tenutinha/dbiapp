@@ -1,7 +1,7 @@
 import { unstable_rethrow } from "next/navigation";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { analyzeFolder, organizeApply, organizePreview } from "@/lib/services/file-analysis";
+import { analyzeFolder, organizeStep } from "@/lib/services/file-analysis";
 import {
   createFolder, explorerMeta, listExplorerFolder, moveItems, planUpload, removeItems, renameItem, requireOrgStorage,
 } from "@/lib/services/org-storage";
@@ -16,15 +16,14 @@ const orgParams = z.object({ org: z.string().regex(/^[a-z0-9-]{1,40}$/) });
 /** Path relative to the organization's folder ("" = its root); validated again by the storage layer. */
 const path = z.string().trim().max(500);
 const paths = z.array(path.min(1)).min(1).max(500);
-/** "Organizar" may list up to 5,000 files; the dialog sends them in batches (organize-batches), kept whole per destination. */
-const organizePaths = z.array(path.min(1)).min(1).max(5000);
+/** Where an "Organizar" run stands (handed back by the browser between steps; checked again by the service). */
+const organizeCursor = z.object({ queue: z.array(path).min(1).max(20_000), skip: z.number().int().min(0), expanded: z.boolean() }).nullable();
 
 const body = z.discriminatedUnion("action", [
   z.object({ action: z.literal("list"), folder: path }),
   z.object({ action: z.literal("meta") }),
   z.object({ action: z.literal("analyze"), folder: path }),
-  z.object({ action: z.literal("organizePreview"), folder: path }),
-  z.object({ action: z.literal("organizeApply"), folder: path, paths: organizePaths }),
+  z.object({ action: z.literal("organizeStep"), folder: path, cursor: organizeCursor }),
   z.object({ action: z.literal("uploadPlan"), folder: path, file: fileName, size: z.number().int().nonnegative() }),
   z.object({ action: z.literal("mkdir"), folder: path, name: z.string().trim().min(1).max(200) }),
   z.object({ action: z.literal("rename"), path: path.min(1), name: z.string().trim().min(1).max(200) }),
@@ -47,8 +46,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ org: string }>
         case "list": return listExplorerFolder(org, input.folder);
         case "meta": return explorerMeta(org);
         case "analyze": return analyzeFolder(org, input.folder);
-        case "organizePreview": return organizePreview(org, input.folder);
-        case "organizeApply": return organizeApply(org, input.folder, input.paths);
+        case "organizeStep": return organizeStep(org, input.folder, input.cursor);
         case "uploadPlan": return planUpload(org.org, input.folder, input.file, input.size);
         case "mkdir": return createFolder(org, input.folder, input.name);
         case "rename": return renameItem(org, input.path, input.name);

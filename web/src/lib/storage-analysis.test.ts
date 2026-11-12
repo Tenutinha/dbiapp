@@ -3,9 +3,9 @@ import type { TemplateTable } from "./templates/schema";
 import {
   fiscalStandardFolder,
   isStale,
+  isStandardPeriodFolder,
   judge,
   parseCsvHeader,
-  resolveCopies,
   type FileFacts,
   type SpaceDashboard,
 } from "./storage-analysis";
@@ -95,37 +95,14 @@ describe("isStale", () => {
   });
 });
 
-describe("resolveCopies", () => {
-  const at = (d: string): string => `2026-01-${d}T00:00:00.000Z`;
-
-  it("suggests every move without competition", () => {
-    const out = resolveCopies([{ path: "a.txt", to: "f/1", documentId: "x", updatedAt: at("01") }], new Map());
-    expect(out).toEqual([{ suggested: true, replaces: false }]);
-  });
-
-  it("keeps only the newest loose copy of the same document", () => {
-    const out = resolveCopies(
-      [
-        { path: "orig.txt", to: "f/1", documentId: "x", updatedAt: at("01") },
-        { path: "retif.txt", to: "f/1", documentId: "x", updatedAt: at("05") },
-        { path: "outro.txt", to: "f/2", documentId: "x", updatedAt: at("02") },
-      ],
-      new Map(),
-    );
-    expect(out[0]).toMatchObject({ suggested: false, replaces: false, note: "Há uma cópia mais nova deste documento: retif.txt." });
-    expect(out[1]).toEqual({ suggested: true, replaces: false });
-    expect(out[2]).toEqual({ suggested: true, replaces: false });
-  });
-
-  it("replaces a filed copy only when the loose one is newer", () => {
-    // The SPED already filed keeps its own name: any .txt in the period folder is the same document.
-    const filed = new Map([["f/1", [{ name: "PISCOFINS_original.txt", updatedAt: at("03") }]]]);
-    expect(resolveCopies([{ path: "novo.txt", to: "f/1", documentId: "x", updatedAt: at("09") }], filed)[0]).toEqual({ suggested: true, replaces: true });
-    expect(resolveCopies([{ path: "velho.txt", to: "f/1", documentId: "x", updatedAt: at("01") }], filed)[0]).toMatchObject({
-      suggested: false,
-      replaces: true,
-      note: "A cópia já arquivada é mais nova; organizar esta a substituiria.",
-    });
+describe("isStandardPeriodFolder", () => {
+  it("recognizes <espaço>/fiscal/<molde>/<CNPJ>/<AAAA-MM> (already filed: not opened by Organizar)", () => {
+    expect(isStandardPeriodFolder("clientes/martinello/fiscal/efd-contribuicoes/32951535000134/2019-01")).toBe(true);
+    expect(isStandardPeriodFolder("fiscal/nfe/11222333000181/2025-12/")).toBe(true);
+    expect(isStandardPeriodFolder("clientes/martinello/fiscal/efd-contribuicoes")).toBe(false);
+    expect(isStandardPeriodFolder("clientes/martinello/fiscal/efd-contribuicoes/32951535000134")).toBe(false);
+    expect(isStandardPeriodFolder("clientes/martinello/lote/32951535000134/2019-01")).toBe(false);
+    expect(isStandardPeriodFolder("clientes/martinello/fiscal/efd-contribuicoes/32951535000134/2019-13")).toBe(false);
   });
 });
 

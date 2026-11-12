@@ -187,26 +187,14 @@ export function isStale(
   return !stored || stored.sizeBytes !== current.sizeBytes || stored.updatedAt !== current.updatedAt;
 }
 
-// ---------- "Organizar pasta": copies of the same document ----------
+// ---------- "Organizar pasta": standard folders and copies of the same document ----------
 
-/** A loose fiscal file about to be filed. */
-export interface CopyCandidate {
-  path: string;
-  /** Standard destination folder. */
-  to: string;
-  /** What makes it "the same document" there (SPED: one per layout, company and month). */
-  documentId: string;
-  updatedAt: string | null;
-}
-
-/** What to do with one candidate when other copies of its document exist (loose or already filed). */
-export interface CopyDecision {
-  /** Ticked by default in the preview: it is the newest copy of its document. */
-  suggested: boolean;
-  /** Filing it deletes the copy already in the destination. */
-  replaces: boolean;
-  /** Why it is not suggested. */
-  note?: string;
+/**
+ * A standard period folder, <espaço>/fiscal/<molde>/<CNPJ>/<AAAA-MM>: what is there is already filed, so
+ * "Organizar pasta" does not open it.
+ */
+export function isStandardPeriodFolder(path: string): boolean {
+  return /(^|\/)fiscal\/[a-z0-9-]+\/\d{11,14}\/\d{4}-(0[1-9]|1[0-2])$/.test(path.replace(/\/+$/, ""));
 }
 
 /** Former name of a filed fiscal file: <documento>.<8 hex>.<txt|xml>. */
@@ -227,33 +215,3 @@ export function isSameFiscalDocument(existingName: string, documentId: string, e
   return existingName.toLowerCase().endsWith(`.${ext}`);
 }
 
-const newer = (a: string | null, b: string | null): boolean => (a ?? "") > (b ?? "");
-const baseName = (path: string): string => path.slice(path.lastIndexOf("/") + 1);
-
-/**
- * Filing keeps one copy per document in its folder (a new one replaces the old). So among the loose copies
- * of a document and the one already filed, only the newest is suggested; the others are left unticked
- * with the reason, and never two copies of the same document are filed in one go.
- */
-export function resolveCopies(
-  moves: readonly CopyCandidate[],
-  filed: ReadonlyMap<string, readonly { name: string; updatedAt: string | null }[]>,
-): CopyDecision[] {
-  const groupKey = (m: { to: string; documentId: string }): string => `${m.to}\u0000${m.documentId}`;
-  const newestLoose = new Map<string, CopyCandidate>();
-  for (const m of moves) {
-    const best = newestLoose.get(groupKey(m));
-    if (!best || newer(m.updatedAt, best.updatedAt)) newestLoose.set(groupKey(m), m);
-  }
-  return moves.map((m) => {
-    const ext = m.path.toLowerCase().endsWith(".xml") ? "xml" : "txt";
-    const existing = (filed.get(m.to) ?? []).filter((f) => isSameFiscalDocument(f.name, m.documentId, ext));
-    const replaces = existing.length > 0;
-    const best = newestLoose.get(groupKey(m))!;
-    if (best !== m) return { suggested: false, replaces, note: `Há uma cópia mais nova deste documento: ${baseName(best.path)}.` };
-    if (existing.some((f) => newer(f.updatedAt, m.updatedAt))) {
-      return { suggested: false, replaces, note: "A cópia já arquivada é mais nova; organizar esta a substituiria." };
-    }
-    return { suggested: true, replaces };
-  });
-}

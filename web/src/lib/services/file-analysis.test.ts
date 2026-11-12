@@ -92,41 +92,62 @@ describe("analyzeFolder", () => {
   });
 });
 
+/** Runs "Organizar pasta" to the end, step by step, as the dialog does. */
+async function organizeAll(folder: string, stepFiles?: number) {
+  const total = { moved: [] as { path: string; to: string }[], kept: [] as { path: string; reason: string }[], unrecognized: 0, others: 0, scanned: 0, steps: 0 };
+  let cursor: Awaited<ReturnType<typeof svc.organizeStep>>["next"] = null;
+  do {
+    const step = await svc.organizeStep(ctx, folder, cursor, stepFiles);
+    total.moved.push(...step.moved);
+    total.kept.push(...step.kept);
+    total.unrecognized += step.unrecognized;
+    total.others += step.others;
+    total.scanned += step.scanned;
+    total.steps += 1;
+    cursor = step.next;
+  } while (cursor && total.steps < 100);
+  return total;
+}
+
+const filedIn = (rel: string) => readdir(path.join(orgDir, rel));
+
 describe("organize", () => {
-  it("previews loose fiscal files going to their standard folders", async () => {
-    const plan = await svc.organizePreview(ctx, "clientes/martinello");
-    expect(plan.moves.map((m) => [m.path, m.to])).toEqual([
+  it("files the loose fiscal files in their standard folders, with their own names", async () => {
+    const res = await organizeAll("clientes/martinello");
+    expect(res.moved.map((m) => [m.path, m.to]).sort()).toEqual([
+      ["clientes/martinello/lote/PISCOFINS.txt", "clientes/martinello/fiscal/efd-contribuicoes/11222333000181/2025-01"],
       ["clientes/martinello/lote/icms.txt", "clientes/martinello/fiscal/efd-icms-ipi/11222333000181/2025-01"],
       ["clientes/martinello/lote/nota.xml", "clientes/martinello/fiscal/nfe/11222333000181/2025-02"],
-      ["clientes/martinello/lote/PISCOFINS.txt", "clientes/martinello/fiscal/efd-contribuicoes/11222333000181/2025-01"],
     ]);
-    expect(plan.unrecognized).toEqual(["clientes/martinello/lote/leia.txt"]);
-    expect(plan.others).toBe(3);
+    expect(res.unrecognized).toBe(1); // leia.txt
+    expect(res.others).toBe(3);
+    expect(await filedIn("clientes/martinello/fiscal/efd-contribuicoes/11222333000181/2025-01")).toEqual(["PISCOFINS.txt"]);
+    expect((await readdir(path.join(orgDir, "clientes/martinello/lote"))).sort()).toEqual(["itens.csv", "leia.txt", "manual.pdf", "outra.csv"]);
   });
 
-  it("files only the chosen ones and then sees them in place", async () => {
-    const res = await svc.organizeApply(ctx, "clientes/martinello", ["clientes/martinello/lote/PISCOFINS.txt"]);
-    expect(res.failed).toEqual([]);
-    expect(res.done).toHaveLength(1);
-    const filed = await readdir(path.join(orgDir, "clientes/martinello/fiscal/efd-contribuicoes/11222333000181/2025-01"));
-    expect(filed).toHaveLength(1);
-    // Filed with its own name, not renamed.
-    expect(filed[0]).toBe("PISCOFINS.txt");
-    const again = await svc.organizePreview(ctx, "clientes/martinello");
-    expect(again.inPlace).toBe(1);
-    expect(again.moves.map((m) => m.path)).not.toContain("clientes/martinello/lote/PISCOFINS.txt");
+  it("gives the same result in small steps (nothing skipped, nothing twice)", async () => {
+    const res = await organizeAll("clientes/martinello", 2);
+    expect(res.steps).toBeGreaterThan(3);
+    expect(res.moved).toHaveLength(3);
+    expect(res.scanned).toBe(7);
+    expect(res.kept).toEqual([]);
   });
 
-  it("flags a document that will replace one already filed", async () => {
-    await svc.organizeApply(ctx, "clientes/martinello", ["clientes/martinello/lote/PISCOFINS.txt"]);
-    await put("clientes/martinello/lote/PISCOFINS-corrigido.txt", EFD_CONTRIB);
-    const plan = await svc.organizePreview(ctx, "clientes/martinello");
-    expect(plan.moves.find((m) => m.path.endsWith("PISCOFINS-corrigido.txt"))?.replaces).toBe(true);
+  it("leaves the standard folders closed and finds nothing more to do the second time", async () => {
+    await organizeAll("clientes/martinello");
+    const again = await organizeAll("clientes/martinello");
+    expect(again.moved).toEqual([]);
+    expect(again.scanned).toBe(4); // only what stayed in "lote"; the filed ones are not opened
+  });
+
+  it("never leaves the folder being organized", async () => {
+    await expect(svc.organizeStep(ctx, "clientes/martinello/lote", { queue: ["clientes/outro"], skip: 0, expanded: false })).rejects.toThrow();
+    await expect(svc.organizeStep(ctx, "clientes/martinello", { queue: ["clientes/martinello/dashboards"], skip: 0, expanded: false })).rejects.toThrow();
   });
 });
 
 describe("organize (copies of the same document)", () => {
-  it("suggests only the newest loose copy and never files two copies at once", async () => {
+  it("keeps the newest copy filed and never lets an older one replace it", async () => {
     const { utimes } = await import("node:fs/promises");
     await put("clientes/martinello/lote/original.txt", EFD_CONTRIB);
     await put("clientes/martinello/lote/retificadora.txt", EFD_CONTRIB);
@@ -134,19 +155,8 @@ describe("organize (copies of the same document)", () => {
     await utimes(path.join(orgDir, "clientes/martinello/lote/retificadora.txt"), new Date("2026-03-01"), new Date("2026-03-01"));
     await utimes(path.join(orgDir, "clientes/martinello/lote/PISCOFINS.txt"), new Date("2026-02-01"), new Date("2026-02-01"));
 
-    const plan = await svc.organizePreview(ctx, "clientes/martinello/lote");
-    const copies = plan.moves.filter((m) => m.to.endsWith("efd-contribuicoes/11222333000181/2025-01"));
-    expect(copies.map((m) => [m.path.split("/").pop(), m.suggested])).toEqual([
-      ["original.txt", false],
-      ["PISCOFINS.txt", false],
-      ["retificadora.txt", true],
-    ]);
-
-    const res = await svc.organizeApply(ctx, "clientes/martinello/lote", copies.map((m) => m.path));
-    expect(res.done).toHaveLength(1);
-    expect(res.failed.map((f) => f.error)).toEqual([
-      "Outra cópia deste mesmo documento já foi escolhida.",
-      "Outra cópia deste mesmo documento já foi escolhida.",
-    ]);
+    const res = await organizeAll("clientes/martinello/lote");
+    expect(await filedIn("clientes/martinello/fiscal/efd-contribuicoes/11222333000181/2025-01")).toEqual(["retificadora.txt"]);
+    expect(res.kept.map((k) => k.path)).toEqual(["clientes/martinello/lote/original.txt"]);
   });
 });

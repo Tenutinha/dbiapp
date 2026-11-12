@@ -3,10 +3,10 @@
  * (straight to the bucket with a signed URL, or through the server on local storage).
  */
 import type { BatchResult, ExplorerFolder, FolderUploadPlan } from "@/lib/services/org-storage";
-import type { FileInsight, OrganizePlan, OrganizeResult } from "@/lib/services/file-analysis";
+import type { FileInsight, OrganizeCursor, OrganizeStep } from "@/lib/services/file-analysis";
 import type { ExplorerMeta } from "@/lib/storage-explorer";
 
-export type { FileInsight, OrganizePlan, OrganizeResult } from "@/lib/services/file-analysis";
+export type { FileInsight, OrganizeCursor, OrganizeResult, OrganizeStep } from "@/lib/services/file-analysis";
 
 export type { BatchResult, ExplorerFolder } from "@/lib/services/org-storage";
 export type { ExplorerItem } from "@/lib/storage-explorer";
@@ -40,8 +40,8 @@ export const explorerApi = {
   meta: (org: string) => call<ExplorerMeta>(org, { action: "meta" }),
   /** Layout and verdict of every file of a folder, by path. */
   analyze: (org: string, folder: string) => call<Record<string, FileInsight>>(org, { action: "analyze", folder }),
-  organizePreview: (org: string, folder: string) => call<OrganizePlan>(org, { action: "organizePreview", folder }),
-  organizeApply: (org: string, folder: string, paths: string[]) => call<OrganizeResult>(org, { action: "organizeApply", folder, paths }),
+  /** One step of "Organizar pasta" (a batch of files); call again with `next` until it is null. */
+  organizeStep: (org: string, folder: string, cursor: OrganizeCursor | null) => call<OrganizeStep>(org, { action: "organizeStep", folder, cursor }),
   mkdir: (org: string, folder: string, name: string) => call<{ path: string }>(org, { action: "mkdir", folder, name }),
   rename: (org: string, path: string, name: string) => call<{ path: string }>(org, { action: "rename", path, name }),
   move: (org: string, paths: string[], target: string) => call<BatchResult>(org, { action: "move", paths, target }),

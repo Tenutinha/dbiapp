@@ -8,8 +8,8 @@ import { FISCAL_IMPORTERS, SPED_HEAD_BYTES } from "../fiscal/importers";
 import { describeSource } from "../ingest/ingest";
 import { storage, StorageKeyError } from "../storage";
 import {
-  fiscalStandardFolder, isStale, judge, parseCsvHeader, resolveCopies, spaceRoot,
-  type CopyCandidate, type FileFacts, type SpaceDashboard, type Verdict,
+  fiscalStandardFolder, isSameFiscalDocument, isStale, isStandardPeriodFolder, judge, parseCsvHeader, spaceRoot,
+  type FileFacts, type SpaceDashboard, type Verdict,
 } from "../storage-analysis";
 import { relativeToOrg, type BrowseEntryFile } from "../storage-browse";
 import { clientSlugOf, CLIENTS_DIR, isReadOnlyPath, isSystemPath, joinPath, parentOf } from "../storage-explorer";
@@ -32,8 +32,6 @@ const MAX_PARQUET_BYTES = 50 * 1024 * 1024;
 const MAX_XML_BYTES = 5 * 1024 * 1024;
 /** Files analysed at the same time. */
 const PARALLEL = 6;
-/** Files walked by "Organizar pasta" (folder and sub-folders). */
-const MAX_ORGANIZE_FILES = 5000;
 
 const DOCUMENT_EXTENSIONS = new Set(["json", "zip", "xlsx", "xls", "pdf", "pbix"]);
 
@@ -186,141 +184,155 @@ export async function analyzeFolder(ctx: OrgContext, folder: string): Promise<Re
   );
 }
 
-// ---------- "Organizar pasta": loose fiscal files to their standard folders ----------
+// ---------- "Organizar pasta": loose fiscal files to their standard folders, a batch at a time ----------
 
-export interface OrganizeMove {
-  path: string;
-  /** Destination folder (relative to the organization's folder). */
-  to: string;
-  layout: string;
-  /** Ticked by default: the newest copy of its document (see resolveCopies). */
-  suggested: boolean;
-  /** The same document is already filed there: filing this one deletes it. */
-  replaces: boolean;
-  /** Why it is not suggested (an older copy). */
-  note?: string;
+/**
+ * Where an organize run stands, kept by the browser between steps: the folders still to look at (the first
+ * is the current one) and how many files at the start of the current folder stay where they are. Files are
+ * listed by name and the filed ones leave the folder, so the ones that stay are always the first ones.
+ */
+export interface OrganizeCursor {
+  queue: string[];
+  /** Files at the start of queue[0] already looked at and left in place. */
+  skip: number;
+  /** Whether the sub-folders of queue[0] were already added to the queue. */
+  expanded: boolean;
 }
 
-export interface OrganizePlan {
-  moves: OrganizeMove[];
-  /** Fiscal files already in their standard folder. */
-  inPlace: number;
-  /** .txt / .xml files that are not a recognized fiscal layout (they stay where they are). */
-  unrecognized: string[];
-  /** Other files (CSV, Parquet, documents…) — never moved. */
+export interface OrganizeStep {
+  /** Filed now: from → destination folder. */
+  moved: { path: string; to: string }[];
+  /** Fiscal files left where they are, with why (a newer copy is already filed, or the move failed). */
+  kept: { path: string; reason: string }[];
+  /** .txt / .xml files that are not a recognized fiscal layout. */
+  unrecognized: number;
+  /** Other files (CSV, Parquet, documents…), never moved. */
   others: number;
-  /** More files than one run looks at. */
-  truncated: boolean;
+  /** Files looked at in this step. */
+  scanned: number;
+  /** Where to go on; null when the folder is done. */
+  next: OrganizeCursor | null;
 }
 
-/** Every file under a folder (sub-folders too, platform folders skipped), up to MAX_ORGANIZE_FILES. */
-async function walkFiles(ctx: OrgContext, folder: string): Promise<{ files: { path: string; file: BrowseEntryFile }[]; truncated: boolean }> {
-  const out: { path: string; file: BrowseEntryFile }[] = [];
-  let level = [folder];
-  let truncated = false;
-  while (level.length > 0 && out.length < MAX_ORGANIZE_FILES) {
-    const listed = await Promise.all(level.map(async (f) => ({ f, list: await folderListing(ctx, f) })));
-    level = [];
-    for (const { f, list } of listed) {
-      truncated ||= list.truncated;
-      // Files lying directly in "clientes" belong to no space: never filed from there.
-      const parts = f.split("/").filter(Boolean);
-      if (!(parts.length === 1 && parts[0] === CLIENTS_DIR)) {
-        for (const file of visible(list.files)) out.push({ path: joinPath(f, file.name), file });
-      }
-      for (const sub of list.folders) {
-        const path = joinPath(f, sub.replace(/\/$/, ""));
-        if (!isReadOnlyPath(path)) level.push(path);
-      }
-    }
+/** Files looked at per step: each one may be read and moved, so a step ends well within the time limit. */
+const STEP_FILES = 40;
+/** A step also stops after this long (many small folders cost listings, not files). */
+const STEP_MS = 20_000;
+const MAX_QUEUE = 20_000;
+
+function startCursor(base: string, cursor: OrganizeCursor | null): OrganizeCursor {
+  if (!cursor) return { queue: [base], skip: 0, expanded: false };
+  // The browser only hands back what a step gave it; still, never leave the folder being organized.
+  const inside = (p: string): boolean => base === "" || p === base || p.startsWith(`${base}/`);
+  if (cursor.queue.length > MAX_QUEUE || !cursor.queue.every((p) => inside(p) && !isReadOnlyPath(p))) {
+    throw new UserFacingError("Organização interrompida. Abra “Organizar pasta” de novo.");
   }
-  return { files: out.slice(0, MAX_ORGANIZE_FILES), truncated: truncated || out.length > MAX_ORGANIZE_FILES || level.length > 0 };
+  return { queue: [...cursor.queue], skip: Math.max(0, Math.floor(cursor.skip)), expanded: cursor.expanded === true };
 }
 
-/** Documents already filed in a destination folder, with their dates (errors fail the preview: never guess). */
-async function filedIn(ctx: OrgContext, folder: string): Promise<{ name: string; updatedAt: string | null }[]> {
-  const list = await folderListing(ctx, folder);
-  return visible(list.files).map((f) => ({ name: f.name, updatedAt: current(f).updatedAt }));
-}
+const byName = (a: BrowseEntryFile, b: BrowseEntryFile): number => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
 
-interface Planned {
-  plan: OrganizePlan;
-  /** For each move, the file and its fiscal facts as read for the preview. */
-  sources: Map<string, { file: BrowseEntryFile; facts: Extract<FileFacts, { kind: "fiscal" }> }>;
-}
-
-async function planOrganize(ctx: OrgContext, folder: string): Promise<Planned> {
+/**
+ * One step of "Organizar pasta": looks at the next files of the folder (sub-folders too) and files the
+ * recognized fiscal ones in their standard folder, keeping their names. It never lists the whole tree
+ * first, so a folder of any size starts at once; the browser calls again with `next` until it is null.
+ * Standard period folders are not opened (what is there is already in place).
+ */
+export async function organizeStep(
+  ctx: OrgContext, folder: string, cursor: OrganizeCursor | null, stepFiles: number = STEP_FILES,
+): Promise<OrganizeStep> {
   const base = folder.replace(/^\/+|\/+$/g, "");
-  if (isSystemPath(base)) throw new UserFacingError("Esta pasta é da plataforma e não pode ser organizada.");
-  const { files, truncated } = await walkFiles(ctx, base);
-  const candidates = files.filter(({ file }) => ["txt", "xml"].includes(extOf(file.name)));
-  const facts = await factsOf(ctx, candidates.map((c) => c.file));
-  const plan: OrganizePlan = { moves: [], inPlace: 0, unrecognized: [], others: files.length - candidates.length, truncated };
-  const sources: Planned["sources"] = new Map();
-  const loose: (CopyCandidate & { layout: string })[] = [];
-  for (const { path, file } of candidates) {
-    const f = facts.get(file.key);
-    if (!f || f.kind !== "fiscal") {
-      plan.unrecognized.push(path);
+  if (isReadOnlyPath(base)) throw new UserFacingError("Esta pasta é da plataforma e não pode ser organizada.");
+  const c = startCursor(base, cursor);
+  const out: OrganizeStep = { moved: [], kept: [], unrecognized: 0, others: 0, scanned: 0, next: null };
+  const started = Date.now();
+  const filedCache = new Map<string, BrowseEntryFile[]>();
+
+  while (c.queue.length > 0 && out.scanned < stepFiles && Date.now() - started < STEP_MS) {
+    const current = c.queue[0];
+    const leave = (): void => {
+      c.queue.shift();
+      c.skip = 0;
+      c.expanded = false;
+    };
+    if (isStandardPeriodFolder(current)) {
+      leave();
       continue;
     }
-    const to = fiscalStandardFolder(path, f.templateId, f.cnpj, f.periodo);
-    if (parentOf(path) === to) {
-      plan.inPlace += 1;
+    const list = await folderListing(ctx, current);
+    if (!c.expanded) {
+      const subs = list.folders.map((sub) => joinPath(current, sub.replace(/\/$/, ""))).filter((p) => !isReadOnlyPath(p));
+      c.queue.push(...subs.slice(0, MAX_QUEUE - c.queue.length));
+      c.expanded = true;
+    }
+    // Files lying directly in "clientes" belong to no space: never filed from there.
+    const parts = current.split("/").filter(Boolean);
+    const files = parts.length === 1 && parts[0] === CLIENTS_DIR ? [] : visible(list.files).sort(byName);
+    const batch = files.slice(c.skip, c.skip + (stepFiles - out.scanned));
+    if (batch.length === 0) {
+      leave();
       continue;
     }
-    sources.set(path, { file, facts: f });
-    loose.push({ path, to, documentId: f.documentId, updatedAt: current(file).updatedAt, layout: `${f.title} · ${f.label}` });
+    const facts = await factsOf(ctx, batch.filter((f) => ["txt", "xml"].includes(extOf(f.name))));
+    let stayed = 0;
+    for (const file of batch) {
+      out.scanned += 1;
+      const path = joinPath(current, file.name);
+      const f = facts.get(file.key);
+      if (!["txt", "xml"].includes(extOf(file.name))) {
+        out.others += 1;
+        stayed += 1;
+        continue;
+      }
+      if (!f || f.kind !== "fiscal") {
+        out.unrecognized += 1;
+        stayed += 1;
+        continue;
+      }
+      const to = fiscalStandardFolder(path, f.templateId, f.cnpj, f.periodo);
+      if (parentOf(path) === to) {
+        stayed += 1;
+        continue;
+      }
+      const reason = await keepReason(ctx, filedCache, to, file, f.documentId);
+      if (reason) {
+        out.kept.push({ path, reason });
+        stayed += 1;
+        continue;
+      }
+      try {
+        const target = fiscalFolder(ctx.org.slug, clientSlugOf(path), f.templateId);
+        const filed = await fileFiscal(ctx.org.slug, target, file.key, file.name, { cnpj: f.cnpj, periodo: f.periodo, documentId: f.documentId, label: f.label });
+        filedCache.delete(to);
+        // What the explorer knows follows the file; replaced copies are forgotten. Bookkeeping never fails the move.
+        await moveAnalyses(ctx.org.id, file.key, filed.key).catch((err: unknown) => console.error("[file-analysis] keep analysis", err));
+        await forgetAnalyses(ctx.org.id, filed.replacedKeys).catch((err: unknown) => console.error("[file-analysis] forget analysis", err));
+        out.moved.push({ path, to: parentOf(relativeToOrg(ctx.org.slug, filed.key)) });
+      } catch (err) {
+        if (!(err instanceof UserFacingError)) console.error("[file-analysis] organize failed", path, err);
+        out.kept.push({ path, reason: err instanceof UserFacingError ? err.message : "Não foi possível mover." });
+        stayed += 1;
+      }
+    }
+    c.skip += stayed;
   }
-  const destinations = [...new Set(loose.map((m) => m.to))];
-  const filed = new Map(await Promise.all(destinations.map(async (to) => [to, await filedIn(ctx, to)] as const)));
-  const decisions = resolveCopies(loose, filed);
-  plan.moves = loose.map((m, i) => ({ path: m.path, to: m.to, layout: m.layout, ...decisions[i] }));
-  const byPath = (a: string, b: string): number => a.localeCompare(b, "pt-BR", { sensitivity: "base" });
-  plan.moves.sort((a, b) => byPath(a.path, b.path));
-  plan.unrecognized.sort(byPath);
-  return { plan, sources };
+  out.next = c.queue.length > 0 ? c : null;
+  return out;
 }
 
-export async function organizePreview(ctx: OrgContext, folder: string): Promise<OrganizePlan> {
-  return (await planOrganize(ctx, folder)).plan;
+/** Why a loose copy must not be filed: the copy of the same document already filed is newer. */
+async function keepReason(
+  ctx: OrgContext, cache: Map<string, BrowseEntryFile[]>, to: string, file: BrowseEntryFile, documentId: string,
+): Promise<string | null> {
+  if (!cache.has(to)) cache.set(to, visible((await folderListing(ctx, to)).files));
+  const ext = file.name.toLowerCase().endsWith(".xml") ? "xml" : "txt";
+  const mine = current(file).updatedAt ?? "";
+  const newer = (cache.get(to) ?? []).some((f) => isSameFiscalDocument(f.name, documentId, ext) && (current(f).updatedAt ?? "") > mine);
+  return newer ? "A cópia já arquivada é mais nova; esta ficou onde está." : null;
 }
 
+/** What a whole run did, for the explorer's notice once the dialog closes. */
 export interface OrganizeResult {
   done: { path: string; to: string }[];
   failed: { path: string; error: string }[];
-}
-
-/**
- * Files the chosen loose fiscal files — only ones the preview (worked out again here) would move, and
- * never two copies of the same document at once (filing one would delete the other).
- */
-export async function organizeApply(ctx: OrgContext, folder: string, paths: readonly string[]): Promise<OrganizeResult> {
-  const { plan, sources } = await planOrganize(ctx, folder);
-  const wanted = new Set(paths);
-  const result: OrganizeResult = { done: [], failed: [] };
-  const taken = new Set<string>();
-  for (const move of plan.moves.filter((m) => wanted.has(m.path))) {
-    const source = sources.get(move.path);
-    if (!source) continue;
-    const group = `${move.to}\u0000${source.facts.documentId}`;
-    if (taken.has(group)) {
-      result.failed.push({ path: move.path, error: "Outra cópia deste mesmo documento já foi escolhida." });
-      continue;
-    }
-    taken.add(group);
-    try {
-      const f = source.facts;
-      const target = fiscalFolder(ctx.org.slug, clientSlugOf(move.path), f.templateId);
-      const filed = await fileFiscal(ctx.org.slug, target, source.file.key, source.file.name, { cnpj: f.cnpj, periodo: f.periodo, documentId: f.documentId, label: f.label });
-      // What the explorer knows follows the file; replaced copies are forgotten. Bookkeeping never fails the move.
-      await moveAnalyses(ctx.org.id, source.file.key, filed.key).catch((err: unknown) => console.error("[file-analysis] keep analysis", err));
-      await forgetAnalyses(ctx.org.id, filed.replacedKeys).catch((err: unknown) => console.error("[file-analysis] forget analysis", err));
-      result.done.push({ path: move.path, to: parentOf(relativeToOrg(ctx.org.slug, filed.key)) });
-    } catch (err) {
-      if (!(err instanceof UserFacingError)) console.error("[file-analysis] organize failed", move.path, err);
-      result.failed.push({ path: move.path, error: err instanceof UserFacingError ? err.message : "Não foi possível mover." });
-    }
-  }
-  return result;
 }
