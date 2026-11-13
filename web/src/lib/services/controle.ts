@@ -11,7 +11,8 @@ import { readNfcePage, readReceipt } from "../controle/extract";
 import {
   isReceiptPath, maxReceiptBytes, receiptExt, receiptMime, receiptPath, type ReceiptMime,
 } from "../controle/receipts";
-import { describeKey, formatCnpj, isValidKey, parseNfceQr } from "../controle/nfce";
+import { describeKey, formatCnpj, isValidKey, pageText, parseNfceQr } from "../controle/nfce";
+import { parseNfceItems, withPageItems } from "../controle/nfce-items";
 import { fetchNfcePage } from "../controle/nfce-page";
 import { purchaseInput, todayInBrazil, type PurchaseDraft, type PurchaseInput, type SaleInput } from "../controle/schema";
 import type { EntryStatus } from "../controle/status";
@@ -159,7 +160,9 @@ export async function importNfce(access: ControleAccess, qr: string, receipt: Pu
   if (!nfce) throw new UserFacingError("Este QR Code não é de uma NFC-e.");
   if (await nfceInUse(access.space.clientId, nfce.key)) throw new UserFacingError(NOTE_ALREADY_IN);
 
-  const read = await readNfcePage(await fetchNfcePage(nfce.url));
+  const html = await fetchNfcePage(nfce.url);
+  // The AI reads store, date, total and payment; the items come straight from the page when its layout is known.
+  const read = withPageItems(await readNfcePage(pageText(html)), parseNfceItems(html));
   const info = describeKey(nfce.key);
   const draft: PurchaseDraft = { ...read, supplier: read.supplier ?? `CNPJ ${formatCnpj(info.cnpj)}`, status: "efetivado" };
   if (!read.readable) {

@@ -1,11 +1,11 @@
 /**
  * Fetches the public page of an NFC-e on its state's SEFAZ (the address its QR Code carries) and
- * returns its text. Only government hosts are ever requested — on the first address and on every
+ * returns its HTML, decoded. Only government hosts are ever requested — on the first address and on every
  * redirect — with a short timeout and a size cap, so a forged QR Code cannot point the server elsewhere.
  */
 import "server-only";
 import { UserFacingError } from "../services/datasets";
-import { isSefazHost, pageText } from "./nfce";
+import { isSefazHost } from "./nfce";
 
 const TIMEOUT_MS = 15_000;
 const MAX_BYTES = 3_000_000;
@@ -44,7 +44,7 @@ function decode(bytes: Uint8Array, contentType: string | null): string {
   }
 }
 
-/** The text of the SEFAZ page of an NFC-e (see parseNfceQr for the addresses that get here). */
+/** The HTML of the SEFAZ page of an NFC-e (see parseNfceQr for the addresses that get here). */
 export async function fetchNfcePage(address: string): Promise<string> {
   let url = new URL(address);
   const cookies = new Map<string, string>(); // portals that set a session cookie and redirect back
@@ -86,7 +86,7 @@ export async function fetchNfcePage(address: string): Promise<string> {
       console.error("[controle] nfce page answered", res.status, url.hostname);
       throw new UserFacingError(UNREACHABLE);
     }
-    return pageText(decode(await readCapped(res), res.headers.get("content-type")));
+    return decode(await readCapped(res), res.headers.get("content-type"));
   }
   throw new UserFacingError(UNREACHABLE);
 }

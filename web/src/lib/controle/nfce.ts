@@ -81,7 +81,14 @@ export function parseNfceQr(text: string): NfceQr | null {
 /** Whether a host may be fetched (also checked on every redirect). */
 export const isSefazHost = (hostname: string): boolean => hostname.endsWith(".gov.br");
 
-const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
+/** Accents written as named entities ("&Atilde;", "&ccedil;"), common on SEFAZ pages. */
+const ACCENTS: Record<string, string> = { acute: "́", grave: "̀", circ: "̂", tilde: "̃", uml: "̈", cedil: "̧" };
+const ACCENTED = Object.fromEntries(
+  [..."aeiouAEIOUncNC"].flatMap((letter) => Object.entries(ACCENTS).map(([name, mark]) => [`${letter}${name}`, `${letter}${mark}`.normalize("NFC")])),
+);
+const ENTITIES: Record<string, string> = {
+  ...ACCENTED, amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ", ordm: "º", ordf: "ª", deg: "°",
+};
 
 /**
  * The readable text of a SEFAZ page: scripts and styles out, table cells separated by " | ",
@@ -99,7 +106,7 @@ export function pageText(html: string, max = 60_000): string {
         const n = code[1].toLowerCase() === "x" ? parseInt(code.slice(2), 16) : Number(code.slice(1));
         return Number.isFinite(n) && n > 0 && n < 0x110000 ? String.fromCodePoint(n) : " ";
       }
-      return ENTITIES[code.toLowerCase()] ?? whole;
+      return ENTITIES[code] ?? ENTITIES[code.toLowerCase()] ?? whole;
     })
     .replace(/[ \t ]+/g, " ")
     .replace(/ *\n[\s|]*/g, "\n")

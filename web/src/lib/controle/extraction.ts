@@ -39,7 +39,9 @@ function toItem(raw: ReceiptReading["itens"][number]): PurchaseItemInput | null 
     ? Math.max(0.001, Math.round(raw.quantidade * 1000) / 1000)
     : 1;
   const unitPriceCents = reaisToCents(raw.valor_unitario);
-  const totalCents = reaisToCents(raw.valor_total) ?? (unitPriceCents === null ? null : lineTotal(quantity, unitPriceCents));
+  const total = reaisToCents(raw.valor_total);
+  // A zero line next to a unit price is a misread, not a free item: quantity × unit price stands in.
+  const totalCents = total !== null && (total > 0 || !unitPriceCents) ? total : unitPriceCents === null ? null : lineTotal(quantity, unitPriceCents);
   if (totalCents === null) return null;
   return { description, quantity, unit: clip(raw.unidade, 12), unitPriceCents, totalCents };
 }
