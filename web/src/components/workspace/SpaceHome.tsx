@@ -108,6 +108,7 @@ export async function SpaceHome({ org, client, membership, user, searchParams }:
       userName={user.name}
       outlines={outlines}
       notes={notes}
+      top={header}
     >
       <DashboardArrival dashboardId={access.instanceId} />
       <DashboardSwitch>
@@ -115,7 +116,7 @@ export async function SpaceHome({ org, client, membership, user, searchParams }:
       <div key={access.instanceId} className="dash-enter">
         <DashboardOpener />
         {/* A new dashboard opens at once as a skeleton; a filter change keeps the page and only its cards wait. */}
-        <Suspense fallback={<DashboardFallback header={header} hasPrevious={previous !== null} />}>
+        <Suspense fallback={<DashboardFallback />}>
           <DashboardBody
             instanceId={access.instanceId}
             templateId={access.templateId}
@@ -125,7 +126,6 @@ export async function SpaceHome({ org, client, membership, user, searchParams }:
             before={
               <>
                 {previous && <NextDashboard direction="previous" id={previous.id} name={previous.name} number={previous.number} />}
-                {header}
               </>
             }
             after={next && <NextDashboard id={next.id} name={next.name} number={next.number} />}
