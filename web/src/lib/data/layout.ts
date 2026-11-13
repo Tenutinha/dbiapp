@@ -1,5 +1,6 @@
 import "server-only";
 import { sql } from "../db";
+import { visibleToViewer } from "./restricted";
 import type { DashboardRow, LayoutPlan, SectionRow } from "../layout/toc";
 
 /** A "space" is the organization itself (clientId null) or one of its clients. */
@@ -16,7 +17,8 @@ export interface SpaceLayout {
   dashboards: DashboardRow[];
 }
 
-export async function getSpaceLayout(space: SpaceRef): Promise<SpaceLayout> {
+/** `platformAdmin`: whether the viewer is the platform administrator (only then restricted dashboards are listed). */
+export async function getSpaceLayout(space: SpaceRef, viewer: { platformAdmin: boolean }): Promise<SpaceLayout> {
   const [sections, dashboards] = await Promise.all([
     sql<SectionRow[]>`
       SELECT id, title, position FROM dashboard_sections
@@ -28,6 +30,7 @@ export async function getSpaceLayout(space: SpaceRef): Promise<SpaceLayout> {
       FROM dashboard_instances i
       LEFT JOIN dataset_versions v ON v.id = i.active_version_id
       WHERE i.organization_id = ${space.orgId} AND ${clientFilter(space.clientId)} AND i.archived_at IS NULL
+        AND ${visibleToViewer(viewer.platformAdmin)}
       ORDER BY i.position, i.created_at`,
   ]);
   return { sections, dashboards };

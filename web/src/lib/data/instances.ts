@@ -1,5 +1,6 @@
 import "server-only";
 import { sql } from "../db";
+import { visibleToViewer } from "./restricted";
 
 /** A dashboard linked to the organization or to one of its clients, as the administration lists it. */
 export interface AdminDashboardRow {
@@ -15,7 +16,8 @@ export interface AdminDashboardRow {
   hasDraft: boolean;
 }
 
-export async function listOrgDashboards(orgId: string): Promise<AdminDashboardRow[]> {
+/** `viewer.platformAdmin`: only the platform administrator sees the dashboards restricted to it. */
+export async function listOrgDashboards(orgId: string, viewer: { platformAdmin: boolean }): Promise<AdminDashboardRow[]> {
   return sql<AdminDashboardRow[]>`
     SELECT i.id, i.name, i.template_id AS "templateId", i.client_id AS "clientId", c.name AS "clientName",
            (i.active_version_id IS NOT NULL) AS published, v.published_at AS "publishedAt",
@@ -23,7 +25,7 @@ export async function listOrgDashboards(orgId: string): Promise<AdminDashboardRo
     FROM dashboard_instances i
     LEFT JOIN org_clients c ON c.id = i.client_id
     LEFT JOIN dataset_versions v ON v.id = i.active_version_id
-    WHERE i.organization_id = ${orgId} AND i.archived_at IS NULL
+    WHERE i.organization_id = ${orgId} AND i.archived_at IS NULL AND ${visibleToViewer(viewer.platformAdmin)}
     ORDER BY c.name NULLS FIRST, i.position, i.created_at`;
 }
 

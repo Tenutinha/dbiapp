@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { canSeeDashboard } from "@/lib/permissions";
 import { getOrgContext, orgActions, requireAction, requireInstance, type OrgContext } from "@/lib/access";
 import { AccessError } from "@/lib/auth";
 import { archiveDashboard, linkDashboard } from "@/lib/data/instances";
@@ -45,7 +46,7 @@ export async function linkDashboardAction(_prev: FormState, formData: FormData):
       return { ok: false, message: "Cliente não encontrado." };
     }
     const entry = await getCatalogEntry(input.templateId);
-    if (!entry || entry.status !== "published") return { ok: false, message: "Este dashboard não está disponível no catálogo." };
+    if (!entry || entry.status !== "published" || !canSeeDashboard(ctx.membership, entry.template.access)) return { ok: false, message: "Este dashboard não está disponível no catálogo." };
 
     const result = await linkDashboard(ctx.org.id, clientId, entry.template.id, entry.template.name);
     if (result.outcome === "created") await afterLink(entry.template.id, result.id);

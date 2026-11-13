@@ -43,7 +43,7 @@ vi.mock("../data/file-analysis", () => ({
 }));
 
 const svc = await import("./file-analysis");
-const ctx = { org: { id: "o1", slug: "davos", name: "Davos" } } as never;
+const ctx = { org: { id: "o1", slug: "davos", name: "Davos" }, membership: { orgRole: "admin", clientRoles: {} } } as never;
 const orgDir = path.join(root, "orgs", "davos");
 
 async function put(rel: string, content: string | Uint8Array): Promise<void> {
