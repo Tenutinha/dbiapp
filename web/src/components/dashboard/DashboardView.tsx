@@ -9,7 +9,11 @@ import { MapChart, type MapMeasure } from "./MapChart";
 import { PAGE_CLASS, PageStrip } from "./PageStrip";
 import { CrossTable } from "./CrossTable";
 import { ScrollTable, type ScrollColumn, type SortValue } from "./ScrollTable";
+import { FieldPicker } from "./FieldPicker";
 import { VisualCard } from "./VisualCard";
+
+/** Classes of the tones a text measure gives its values (template `tones`). */
+const TONE_CLASS: Record<string, string> = { ok: "text-ok", warn: "text-accent", danger: "font-medium text-danger" };
 
 const SPAN: Record<number, string> = {
   1: "md:col-span-1", 2: "md:col-span-2", 3: "md:col-span-3", 4: "md:col-span-4",
@@ -98,8 +102,12 @@ function VisualBody({ template, result }: { template: Template; result: VisualRe
       const leading = new Set(visual.leading ?? []);
       const lead = visual.measures.filter((id) => leading.has(id)).map(measure);
       const ms = visual.measures.filter((id) => !leading.has(id)).map(measure);
-      const measureColumn = (m: ChartMeasure): ScrollColumn => m.format === "text"
-        ? { label: m.label, headClass: "text-left", cellClass: "max-w-48 truncate text-left", hint: true }
+      const tonesOf = (id: string): Record<string, string> | undefined => {
+        const tones = template.measures.find((x) => x.id === id)?.tones;
+        return tones && Object.fromEntries(Object.entries(tones).map(([value, tone]) => [value, TONE_CLASS[tone]]));
+      };
+      const measureColumn = (m: ChartMeasure): ScrollColumn => m.format === "text" || m.format === "date"
+        ? { label: m.label, headClass: "text-left", cellClass: "max-w-48 truncate text-left", hint: true, tones: tonesOf(m.id) }
         : { label: m.label, headClass: "text-right", cellClass: "text-right font-mono text-xs tabular-nums" };
       const columns: ScrollColumn[] = [
         ...lead.map(measureColumn),
@@ -117,9 +125,10 @@ function VisualBody({ template, result }: { template: Template; result: VisualRe
         return typeof v === "boolean" ? String(v) : v;
       };
       const sortValues: SortValue[][] = rows.map((r, i) => [...lead.map((m) => raw(r, m)), ...keys[i], ...ms.map((m) => raw(r, m))]);
-      // The totals line: a label under the first column, nothing under what names the lines, the totals of the rest.
+      // The totals line: a label under the first column, nothing under what names the lines (nor under labels and
+      // dates, which do not add up), the totals of the rest.
       const footer = total
-        ? ["Total", ...[...lead, ...visual.fields].slice(1).map(() => ""), ...ms.map((m) => formatValue(total[m.id], m.format))]
+        ? ["Total", ...[...lead, ...visual.fields].slice(1).map(() => ""), ...ms.map((m) => (m.format === "text" || m.format === "date" ? "" : formatValue(total[m.id], m.format)))]
         : undefined;
       const note = rows.length >= visual.limit
         ? `Estas são as primeiras ${rows.length.toLocaleString("pt-BR")} linhas. Use os filtros para chegar às demais.`
@@ -147,6 +156,13 @@ export function visibleResults(results: readonly VisualResult[]): VisualResult[]
   return results.filter((r) => !(r.visual.hideEmpty && r.rows.length === 0 && !r.error));
 }
 
+/** The picker of the field a table groups by, when the reader can swap it. */
+function visualTools(template: Template, visual: VisualResult["visual"]): React.ReactNode {
+  if (visual.type !== "table" || !visual.fieldChoices) return undefined;
+  const options = visual.fieldChoices.map((id) => ({ id, label: template.fields.find((f) => f.id === id)?.label ?? id }));
+  return <FieldPicker visualId={visual.id} current={visual.fields[0]} options={options} />;
+}
+
 export function VisualGrid({ template, results: all, layout }: VisualGridProps) {
   const results = visibleResults(all);
   if (results.length === 0) return null;
@@ -160,7 +176,7 @@ export function VisualGrid({ template, results: all, layout }: VisualGridProps) 
         className="-mx-1 flex snap-x snap-mandatory gap-4 overflow-x-auto px-1 pb-3 focus-visible:outline focus-visible:outline-1 focus-visible:outline-brand"
       >
         {results.map((result) => (
-          <VisualCard key={result.visual.id} title={result.visual.title} className="w-[calc(100%-3rem)] shrink-0 snap-start">
+          <VisualCard key={result.visual.id} title={result.visual.title} tools={visualTools(template, result.visual)} className="w-[calc(100%-3rem)] shrink-0 snap-start">
             <VisualBody template={template} result={result} />
           </VisualCard>
         ))}
@@ -173,6 +189,7 @@ export function VisualGrid({ template, results: all, layout }: VisualGridProps) 
         <VisualCard
           key={result.visual.id}
           title={result.visual.title}
+          tools={visualTools(template, result.visual)}
           className={`${SPAN[result.visual.span]} ${result.visual.type === "kpi" ? "" : "sm:col-span-2"} ${result.visual.type === "text" ? "border-l-4 border-l-brand" : ""}`}
         >
           <VisualBody template={template} result={result} />

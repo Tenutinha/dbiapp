@@ -7,6 +7,7 @@ import { parseSelection, runDashboard, type DashboardData } from "../query/run";
 import { storage } from "../storage";
 import type { Template } from "../templates/schema";
 import { openingVisuals, withoutHidden } from "../templates/sections";
+import { withChosenFields } from "../templates/field-choice";
 import { requireTemplate, resolveLocalFiles } from "./datasets";
 
 export interface LoadedDashboard {
@@ -18,9 +19,9 @@ export interface LoadedDashboard {
 }
 
 /** What every load of a dashboard needs: the readers' template, the local files and the data filter. */
-async function prepare(instanceId: string, templateId: string, activeVersionId: string) {
-  // Analyses taken off the air are neither shown nor computed for readers.
-  const template = withoutHidden(await requireTemplate(templateId));
+async function prepare(instanceId: string, templateId: string, activeVersionId: string, searchParams: Readonly<Record<string, string | string[] | undefined>>) {
+  // Analyses taken off the air are neither shown nor computed for readers; swappable tables take the reader’s field.
+  const template = withChosenFields(withoutHidden(await requireTemplate(templateId)), searchParams);
   const [files, rawFilter] = await Promise.all([listFiles(activeVersionId), getDataFilterRaw(instanceId)]);
   const factFilter = parseFactFilter(rawFilter, factColumns(template));
   const byTable = Object.fromEntries(files.map((f) => [f.tableName, f.storagePath]));
@@ -46,7 +47,7 @@ export async function loadDashboard(
   /** "opening": only the first analysis (and the filters) is computed now; the others are left `pending`. */
   how: "whole" | "opening" = "whole",
 ): Promise<LoadedDashboard> {
-  const { template, factFilter, totalRows, local } = await prepare(instanceId, templateId, activeVersionId);
+  const { template, factFilter, totalRows, local } = await prepare(instanceId, templateId, activeVersionId, searchParams);
   const opening = how === "opening" ? openingVisuals(template) : null;
   const data = await runDashboard(
     storage.workRoot, template, local, parseSelection(template, searchParams), factFilter, parseCross(template, searchParams),
@@ -66,7 +67,7 @@ export async function loadAnalysis(
   analysisId: string,
   searchParams: Readonly<Record<string, string | string[] | undefined>>,
 ): Promise<{ template: Template; results: DashboardData["visuals"] } | null> {
-  const { template, factFilter, local } = await prepare(instanceId, templateId, activeVersionId);
+  const { template, factFilter, local } = await prepare(instanceId, templateId, activeVersionId, searchParams);
   const analysis = template.analyses.find((a) => a.id === analysisId);
   if (!analysis) return null;
   const data = await runDashboard(

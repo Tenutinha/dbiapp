@@ -13,6 +13,7 @@ const percent = new Intl.NumberFormat("pt-BR", { style: "percent", maximumFracti
 export function formatValue(value: unknown, format: ValueFormat, compact = false): string {
   if (value === null || value === undefined || value === "") return "—";
   if (format === "text") return String(value);
+  if (format === "date") return formatDay(value);
   const n = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(n)) return String(value);
   switch (format) {
@@ -28,6 +29,13 @@ export function formatValue(value: unknown, format: ValueFormat, compact = false
     default:
       return number.format(n);
   }
+}
+
+/** "2026-12-31" (or a Date) → "31/12/2026"; anything else as it came. */
+function formatDay(value: unknown): string {
+  const iso = value instanceof Date ? value.toISOString() : String(value);
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
 }
 
 export function formatBytes(bytes: number): string {

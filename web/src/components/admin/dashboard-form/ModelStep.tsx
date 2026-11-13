@@ -16,6 +16,7 @@ const FORMAT_OPTIONS = [
   { value: "integer", label: "Número inteiro" },
   { value: "percent", label: "Percentual" },
   { value: "text", label: "Texto" },
+  { value: "date", label: "Data (AAAA-MM-DD)" },
 ];
 
 /** Label edits also rename the id, unless the id is already in use (visuals and filters point to it). */
