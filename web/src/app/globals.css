@@ -119,6 +119,13 @@ body {
   .scroll-quiet:focus-within {
     scrollbar-color: color-mix(in srgb, currentColor 30%, transparent) transparent;
   }
+  /* A dashboard on screen draws its own page scrollbar, under its header (MainScrollbar). */
+  html.main-scrollbar {
+    scrollbar-width: none;
+  }
+  html.main-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
   /* A dashboard taking the screen: a short fade, so changing dashboards reads as one page turning. */
   @media (prefers-reduced-motion: no-preference) {
     .dash-enter {

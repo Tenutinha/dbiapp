@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { FunnelIcon } from "@/components/dashboard/FilterBar";
 import { filterDock, useFilterDock } from "@/components/dashboard/filter-dock";
 import { useActiveAnchor } from "./active-anchor";
+import { MainScrollbar } from "./MainScrollbar";
 import { PageScrollbar } from "./PageScrollbar";
 import { useHostSidebarToggle, useSidebar } from "./sidebar-context";
 import { HamburgerIcon } from "./SidebarShell";
@@ -67,8 +68,9 @@ export function DashHeader({ title, topics, updated }: DashHeaderProps) {
   const sidebar = useSidebar();
   useHostSidebarToggle(sidebar);
   const collapsed = sidebar?.collapsed === true;
+  const ref = useRef<HTMLElement>(null);
   return (
-    <header className="sticky top-14 z-20 -mx-4 mb-5 bg-header text-on-header shadow-sm sm:-mx-8 lg:top-0 lg:-mx-14">
+    <header ref={ref} className="sticky top-14 z-20 -mx-4 mb-5 bg-header text-on-header shadow-sm sm:-mx-8 lg:top-0 lg:-mx-14">
       {/* Panel collapsed (wide screens): the button that opens it and the space's logo, where the panel had them,
           out of the flow so the title stays in line with the visuals below. */}
       {collapsed && (
@@ -110,6 +112,7 @@ export function DashHeader({ title, topics, updated }: DashHeaderProps) {
       </div>
       {/* Pages side by side: their scrollbar lives here, always in sight. */}
       {coming === null && <PageScrollbar />}
+      <MainScrollbar header={ref} />
       </div>
     </header>
   );
