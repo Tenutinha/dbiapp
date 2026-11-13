@@ -17,6 +17,7 @@ import { ScreenTitle } from "@/components/workspace/Workspace";
 import { getEffectiveBranding } from "@/lib/data/branding";
 import { getSpaceLayout } from "@/lib/data/layout";
 import { getPublishedDashboard, resolveSpaceLink } from "@/lib/data/space-links";
+import { isFiscalPanel } from "@/lib/fiscal/panel";
 import { formatDateTime } from "@/lib/format";
 import { buildToc, nextItem, previousItem, updatedLine } from "@/lib/layout/toc";
 import { chooseDashboard, DASHBOARD_PARAM, spaceLinkPath } from "@/lib/space-link";
@@ -55,7 +56,10 @@ export default async function PublicSpacePage({ params, searchParams }: Props) {
     getSpaceLayout({ orgId: link.orgId, clientId: link.clientId }),
     getEffectiveBranding(link.orgId, link.clientId),
   ]);
-  const toc = buildToc(layout.sections, layout.dashboards, { includeUnpublished: false, includeEmptySections: false });
+  // The panel of fiscal data shows the space's files and actions: never through a public link.
+  const toc = buildToc(layout.sections, layout.dashboards.filter((d) => !isFiscalPanel(d.templateId)), {
+    includeUnpublished: false, includeEmptySections: false,
+  });
   const chosenId = chooseDashboard(toc.flatMap((g) => g.items.map((i) => i.id)), requested);
   const chosen = chosenId ? await getPublishedDashboard(link.orgId, link.clientId, chosenId) : null;
   // Only what the frame of the page needs is awaited here; the data arrives inside the Suspense below.

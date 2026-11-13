@@ -18,7 +18,7 @@ import type { RemoteBucket } from "./blob/types";
 import { env } from "./env";
 import * as keys from "./storage-keys";
 import { assertKey, StorageKeyError } from "./storage-keys";
-import { browsePrefix, type FolderListing } from "./storage-browse";
+import { browsePrefix, type BrowseEntryFile, type FolderListing } from "./storage-browse";
 
 export { StorageKeyError };
 
@@ -125,6 +125,41 @@ export const storage = {
     return objects.length;
   },
 
+  /**
+   * Every file under a prefix (all levels) with its size and date; `names` keeps only those file names.
+   * One paginated listing on Google Cloud Storage; elsewhere, one listing per folder.
+   */
+  async listTree(prefix: string, names?: readonly string[]): Promise<BrowseEntryFile[]> {
+    assertKey(prefix.replace(/\/$/, ""));
+    const folder = prefix.endsWith("/") ? prefix : `${prefix}/`;
+    const keep = (name: string): boolean => !names || names.includes(name);
+    if (isRemote()) {
+      const remote = bucket();
+      if (remote.listTree) return remote.listTree(folder, names);
+      const out: BrowseEntryFile[] = [];
+      const walk = async (p: string): Promise<void> => {
+        const level = await remote.list(p, 10_000);
+        out.push(...level.files.filter((f) => !f.name.endsWith(".emptyFolderPlaceholder") && keep(f.name)));
+        await Promise.all(level.folders.map((f) => walk(`${p}${f}/`)));
+      };
+      await walk(folder);
+      return out;
+    }
+    const out: BrowseEntryFile[] = [];
+    const walk = async (p: string): Promise<void> => {
+      const dir = path.resolve(env.workRoot, ...p.split("/").filter(Boolean));
+      for (const e of await readdir(dir, { withFileTypes: true }).catch(() => [])) {
+        if (e.isDirectory()) await walk(`${p}${e.name}/`);
+        else if (!e.name.endsWith(".part") && keep(e.name)) {
+          const info = await stat(path.join(dir, e.name));
+          out.push({ key: `${p}${e.name}`, name: e.name, sizeBytes: info.size, updatedAt: info.mtime });
+        }
+      }
+    };
+    await walk(folder);
+    return out;
+  },
+
   /** Every object under a prefix (all levels), as keys. */
   async listAll(prefix: string): Promise<string[]> {
     assertKey(prefix.replace(/\/$/, ""));
@@ -214,6 +249,24 @@ export const storage = {
 
   async read(key: string): Promise<Uint8Array> {
     return new Uint8Array(await readFile(await this.localPath(key)));
+  },
+
+  /**
+   * An object as it is in the bucket now, never from this machine's cache: for the small records that are
+   * written again at the same key (a parts marker, a failure record, a lineage).
+   */
+  async readFresh(key: string): Promise<Uint8Array> {
+    if (isRemote()) {
+      assertKey(key);
+      return bucket().download(key);
+    }
+    return new Uint8Array(await readFile(workPath(key)));
+  },
+
+  /** Writes a small record at a key that may already hold an older one (objects are never overwritten in the bucket). */
+  async replaceBytes(key: string, bytes: Uint8Array, contentType: string): Promise<void> {
+    await this.remove([key]);
+    await this.putBytes(key, bytes, contentType);
   },
 
   /** The first `bytes` of an object, without downloading it whole. */

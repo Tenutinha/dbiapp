@@ -10,6 +10,8 @@ import { AccessError, DEV_USER_COOKIE, devAuthEnabled } from "@/lib/auth";
 import { linkDashboard } from "@/lib/data/instances";
 import { createShareLink, revokeShareLink } from "@/lib/data/repository";
 import { publishDraft, type PublishResult, UserFacingError } from "@/lib/services/datasets";
+import { afterLink } from "@/lib/services/panel-activation";
+import { isFiscalPanel } from "@/lib/fiscal/panel";
 import { getCatalogEntry } from "@/lib/templates/registry";
 
 export interface ActionResult<T = undefined> {
@@ -58,9 +60,11 @@ export async function activateTemplate(formData: FormData): Promise<void> {
   }
 
   // Re-linking a dashboard that was unlinked from this space brings its data back.
-  const { id } = await linkDashboard(orgId, clientId, template.id, template.name);
+  const { id, outcome } = await linkDashboard(orgId, clientId, template.id, template.name);
+  if (outcome === "created") await afterLink(template.id, id);
   revalidatePath(`/${input.org}`, "layout");
-  redirect(`/${input.org}/d/${id}/dados`);
+  // The panel of fiscal data has no data of its own: it opens in its space.
+  redirect(isFiscalPanel(template.id) ? `/${input.org}/d/${id}` : `/${input.org}/d/${id}/dados`);
 }
 
 function revalidateInstance(orgSlug: string, instanceId: string): void {

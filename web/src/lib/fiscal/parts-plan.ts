@@ -35,8 +35,17 @@ export interface PartsFolder {
   cnpj: string;
   periodo: string;
   id: string;
-  /** Null when the folder has no marker (an interrupted read). */
+  /** Null when the folder has no marker (an interrupted read, or a read that failed). */
   marker: PartsMarker | null;
+  /** Why the last read of this file failed (kept until the file or the reader changes). */
+  failure?: PartsFailure | null;
+}
+
+/** What a failed read leaves in the file's parts folder (erro.json), instead of the marker. */
+export interface PartsFailure {
+  error: string;
+  /** When it failed (ISO). */
+  at: string;
 }
 
 export interface PartsPlan {
@@ -44,7 +53,10 @@ export interface PartsPlan {
   read: RawFile[];
   /** Files whose parts are complete and current. */
   ready: { file: RawFile; marker: PartsMarker }[];
-  /** Folders nobody needs any more: replaced or deleted files, older readers, interrupted reads. */
+  /**
+   * Folders nobody needs any more: replaced or deleted files, older readers. The folder of a file about to
+   * be read again (an interrupted or failed read) is not here: the read starts by emptying it.
+   */
   obsolete: PartsFolder[];
 }
 
@@ -58,8 +70,8 @@ export function partsFolderId(file: RawFile, reader: number): string {
 
 /**
  * The plan: a file is ready when its folder (same content, same reader) has a marker listing every table
- * the template now asks for; otherwise it is read again. Folders that match no stored file are obsolete,
- * and so is an incomplete folder of a file that will be read again.
+ * the template now asks for; otherwise it is read again (into that same folder). Folders that match no
+ * stored file are obsolete.
  */
 export function planParts(
   files: readonly RawFile[], folders: readonly PartsFolder[], tables: readonly string[], reader: number,
@@ -77,6 +89,7 @@ export function planParts(
       kept.add(place);
     } else {
       read.push(file);
+      kept.add(place);
     }
   }
   const obsolete = folders.filter((f) => !kept.has(`${f.cnpj}/${f.periodo}/${f.id}`));
@@ -95,6 +108,13 @@ export function filesForFact<T extends { file: RawFile }>(ready: readonly T[], p
     if (!seen || r.file.periodo > seen) latest.set(r.file.cnpj, r.file.periodo);
   }
   return ready.filter((r) => latest.get(r.file.cnpj) === r.file.periodo);
+}
+
+/** Checks a failure record read back from storage. */
+export function parseFailure(value: unknown): PartsFailure | null {
+  if (!value || typeof value !== "object") return null;
+  const f = value as Partial<PartsFailure>;
+  return typeof f.error === "string" && typeof f.at === "string" ? { error: f.error.slice(0, 500), at: f.at } : null;
 }
 
 /** Checks a marker read back from storage (it is data, it may be from an older release or broken). */
