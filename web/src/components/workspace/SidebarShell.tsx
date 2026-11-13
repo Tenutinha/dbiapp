@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { DEFAULT_THEME } from "@/lib/theme/theme";
 import type { SpaceOption } from "@/lib/space-options";
+import { SidebarContext, type SidebarState } from "./sidebar-context";
 import { SpaceSwitcher } from "./SpaceSwitcher";
 import { SpaceLogo } from "./ThemeScope";
 
@@ -45,7 +46,7 @@ function saveCollapsed(value: boolean): void {
   }
 }
 
-function HamburgerIcon() {
+export function HamburgerIcon() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
       <path d="M4 6h16M4 12h16M4 18h16" />
@@ -68,7 +69,7 @@ export function DbiLogo() {
   );
 }
 
-const ICON_BUTTON = "grid size-9 place-items-center rounded-lg border border-line transition hover:bg-text/5";
+export const ICON_BUTTON = "grid size-9 place-items-center rounded-lg border border-line transition hover:bg-text/5";
 
 /**
  * Light "table of contents" panel: fixed on desktop (collapsible with the hamburger button), a drawer on
@@ -97,8 +98,21 @@ export function SidebarShell({
     saveCollapsed(next);
   };
 
+  // Bars on top of the page that took over the "open the panel" button (the dashboard header).
+  const [hosts, setHosts] = useState(0);
+  const hostToggle = useCallback(() => {
+    setHosts((n) => n + 1);
+    return () => setHosts((n) => n - 1);
+  }, []);
+  const expand = useCallback(() => {
+    setCollapsed(false);
+    saveCollapsed(false);
+  }, []);
+  const sidebar = useMemo<SidebarState>(() => ({ collapsed, expand, logoUrl, hostToggle }), [collapsed, expand, logoUrl, hostToggle]);
+  const hosted = hosts > 0;
+
   return (
-    <>
+    <SidebarContext.Provider value={sidebar}>
       <div className="sticky top-0 z-30 flex h-14 items-center justify-between gap-3 border-b border-line/70 bg-bg/90 px-4 backdrop-blur lg:hidden">
         <button
           type="button"
@@ -116,7 +130,7 @@ export function SidebarShell({
         </Link>
       </div>
 
-      {collapsed && (
+      {collapsed && !hosted && (
         <button
           type="button"
           onClick={toggleCollapsed}
@@ -177,10 +191,10 @@ export function SidebarShell({
       </aside>
 
       <main
-        className={`px-4 pb-16 transition-[margin] sm:px-8 lg:px-14 ${collapsed ? "lg:ml-0 lg:pt-10" : "lg:ml-[300px]"}`}
+        className={`px-4 pb-16 transition-[margin] sm:px-8 lg:px-14 ${collapsed ? (hosted ? "lg:ml-0" : "lg:ml-0 lg:pt-10") : "lg:ml-[300px]"}`}
       >
         {content}
       </main>
-    </>
+    </SidebarContext.Provider>
   );
 }

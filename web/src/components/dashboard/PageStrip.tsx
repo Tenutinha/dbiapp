@@ -138,7 +138,7 @@ export function PageStrip({ pages, tabs: showTabs = true, children }: PageStripP
         aria-label="Páginas lado a lado: role para o lado ou use as abas"
         tabIndex={0}
         style={height ? { height } : undefined}
-        className="relative flex snap-x snap-mandatory items-start overflow-x-auto overflow-y-hidden focus-visible:outline focus-visible:outline-1 focus-visible:outline-brand motion-safe:scroll-smooth motion-safe:transition-[height] motion-safe:duration-200"
+        className={`relative flex snap-x snap-mandatory items-start overflow-x-auto overflow-y-hidden ${showTabs ? "" : "[scrollbar-width:none] [&::-webkit-scrollbar]:hidden"} focus-visible:outline focus-visible:outline-1 focus-visible:outline-brand motion-safe:scroll-smooth motion-safe:transition-[height] motion-safe:duration-200`}
       >
         {children}
       </div>
