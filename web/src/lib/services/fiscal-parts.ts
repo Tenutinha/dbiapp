@@ -49,6 +49,14 @@ export const LINEAGE_FILE = "linhagem.json";
 export const MAX_HOSTED_READ_BYTES = 250 * 1024 ** 2;
 /** Whether this server runs where a request has those limits (the hosted app, not a script or a local server). */
 export const hostedLimits = (): boolean => Boolean(process.env.VERCEL);
+/**
+ * Raw files read at the same time. Reading a file is mostly waiting on the bucket (download, one upload per
+ * table), so a script loading thousands of files sets DBI_FISCAL_READ_CONCURRENCY (e.g. 6); a request reads one at a time.
+ */
+export function readConcurrency(value = process.env.DBI_FISCAL_READ_CONCURRENCY): number {
+  const n = Number(value);
+  return Number.isInteger(n) && n >= 1 ? Math.min(n, 16) : 1;
+}
 
 export interface PartsRebuildResult {
   ok: boolean;
@@ -69,6 +77,8 @@ export interface PartsOptions {
   only?: "blocks";
   /** Reads every file again, even the ones already read. */
   rereadAll?: boolean;
+  /** Called after each file read (or skipped): files done, files to read. */
+  onProgress?: (done: number, total: number) => void;
 }
 
 /** The facts this kind of SPED writes for the template: its main fact and the block facts it declares. */
@@ -371,11 +381,18 @@ export async function rebuildSpedFromParts(
   const skipped: PartsRebuildResult["skipped"] = [];
   const justRead: { file: RawFile; marker: PartsMarker }[] = [];
   try {
-    for (const file of plan.read) {
-      const result = await readOne(access, importer, template, facts, file, work);
-      if (result.ok) justRead.push({ file, marker: result.marker });
-      else skipped.push({ path: relativeToOrg(access.org.slug, file.key), error: result.error });
-    }
+    // A few files at a time (see readConcurrency); the order they end in does not matter, `ready` is sorted when assembling.
+    const queue = [...plan.read];
+    let done = 0;
+    await Promise.all(Array.from({ length: Math.min(readConcurrency(), queue.length) }, async () => {
+      for (let file = queue.shift(); file; file = queue.shift()) {
+        const result = await readOne(access, importer, template, facts, file, work);
+        if (result.ok) justRead.push({ file, marker: result.marker });
+        else skipped.push({ path: relativeToOrg(access.org.slug, file.key), error: result.error });
+        done += 1;
+        options.onProgress?.(done, plan.read.length);
+      }
+    }));
     return await assemble(
       access, importer, template,
       { plan, justRead, skipped, dimensionsFrom: options.rereadAll ? "read" : "dashboard", only: options.only }, work,

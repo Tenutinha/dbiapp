@@ -12,6 +12,8 @@
  *   node --env-file=<.env> --conditions=react-server --import tsx scripts/fiscal/carregar-fiscal.ts \
  *     --molde <id> --org <slug> [--cliente <slug>] [--so-molde] [--so-blocos] [--reler-tudo]
  *
+ * Arquivos lidos ao mesmo tempo: DBI_FISCAL_READ_CONCURRENCY (padrão 1; 6 vai bem numa carga de milhares de arquivos).
+ *
  * Com --so-blocos, a fato principal fica como está publicada; só as tabelas por bloco (ex.: bloco_a_servicos)
  * e as dimensões entram no rascunho. Com --reler-tudo, todos os arquivos são lidos de novo.
  */
@@ -127,6 +129,10 @@ async function main(): Promise<void> {
   const result = await rebuildFiscal(access, {
     ...(process.argv.includes("--so-blocos") ? { only: "blocks" as const } : {}),
     rereadAll: process.argv.includes("--reler-tudo"),
+    // A line every 25 files, so a long load shows where it is.
+    onProgress: (done, total) => {
+      if (done % 25 === 0 || done === total) console.log(`  lidos ${done} de ${total} (${((Date.now() - started) / 60000).toFixed(1)} min)`);
+    },
   });
   const how = result.read !== undefined ? `: ${result.read} lidos agora, ${result.reused ?? 0} já lidos antes` : "";
   console.log(`arquivos no dashboard: ${result.files}${how} (${result.adopted} organizados da pasta do espaço) em ${((Date.now() - started) / 1000).toFixed(0)} s`);
