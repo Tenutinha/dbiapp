@@ -1,0 +1,2361 @@
+{
+  "id": "odeon-erp",
+  "nome": "ERP Odeon",
+  "descricao": "Tabelas oficiais do ERP da Odeon Tecnologia, exportadas pela Odeon para cada cliente, e o tratamento que as leva aos moldes de Vendas, Financeiro e Estoque. A camada do modelo reproduz o Power Query dos projetos Power BI (prefixos vnd_, fin_ e est_); as receitas dos moldes fazem o resto, inclusive as colunas DAX.",
+  "oficiais": [
+    {
+      "nome": "cartao",
+      "origem": "dbo.Cartao",
+      "carga": "completa",
+      "descricao": "Lida pelos projetos Financeiro. Colunas tiradas da conversão de tipos do Power Query: confirmar com a exportação da Odeon.",
+      "colunas": [
+        {
+          "nome": "codigo",
+          "tipo": "text"
+        },
+        {
+          "nome": "nome",
+          "tipo": "text"
+        }
+      ]
+    },
+    {
+      "nome": "clientes",
+      "origem": "dbo.Clientes",
+      "carga": "completa",
+      "descricao": "Lida pelos projetos Financeiro, Vendas. Colunas tiradas da conversão de tipos do Power Query: confirmar com a exportação da Odeon.",
+      "colunas": [
+        {
+          "nome": "cliente",
+          "tipo": "text"
+        },
+        {
+          "nome": "razaosocial",
+          "tipo": "text"
+        },
+        {
+          "nome": "uf",
+          "tipo": "text"
+        },
+        {
+          "nome": "cidade",
+          "tipo": "text"
+        },
+        {
+          "nome": "bairro",
+          "tipo": "text"
+        },
+        {
+          "nome": "profissao",
+          "tipo": "text"
+        },
+        {
+          "nome": "dataatualizacao",
+          "tipo": "timestamp"
+        },
+        {
+          "nome": "ibge",
+          "tipo": "text"
+        },
+        {
+          "nome": "flgtipo",
+          "tipo": "text"
+        }
+      ]
+    },
+    {
+      "nome": "custos",
+      "origem": "dbo.Custos",
+      "carga": "completa",
+      "descricao": "Lida pelos projetos Vendas. Colunas tiradas da conversão de tipos do Power Query: confirmar com a exportação da Odeon.",
+      "colunas": [
+        {
+          "nome": "clienteodeon",
+          "tipo": "text"
+        },
+        {
+          "nome": "filial_custo",
+          "tipo": "text"
+        },
+        {
+          "nome": "item",
+          "tipo": "text"
+        },
+        {
+          "nome": "produto",
+          "tipo": "text"
+        },
+        {
+          "nome": "vlrcue",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "vlrcuei",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "vlrcg",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "vlrcgi",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "vlrcmup",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "vlrcmupi",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "vlrcmg",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "vlrcmgi",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "vlrultimo_custo_nota",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "vlrcusto_reposicao",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "vlrcusto_fornecedor",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "vlrcusto_fixo",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "dataatualizacao",
+          "tipo": "timestamp"
+        }
+      ]
+    },
+    {
+      "nome": "entradas",
+      "origem": "dbo.Entradas",
+      "carga": "completa",
+      "descricao": "Lida pelos projetos Vendas. Colunas tiradas da conversão de tipos do Power Query: confirmar com a exportação da Odeon.",
+      "colunas": [
+        {
+          "nome": "filial",
+          "tipo": "text"
+        },
+        {
+          "nome": "deposito",
+          "tipo": "text"
+        },
+        {
+          "nome": "tiponotaentrada",
+          "tipo": "text"
+        },
+        {
+          "nome": "tipoentrada",
+          "tipo": "text"
+        },
+        {
+          "nome": "fornecedor",
+          "tipo": "text"
+        },
+        {
+          "nome": "cliente",
+          "tipo": "text"
+        },
+        {
+          "nome": "dataemissao",
+          "tipo": "date"
+        },
+        {
+          "nome": "dataentrada",
+          "tipo": "date"
+        },
+        {
+          "nome": "nrnota",
+          "tipo": "text"
+        },
+        {
+          "nome": "nrsaida",
+          "tipo": "text"
+        },
+        {
+          "nome": "item",
+          "tipo": "text"
+        },
+        {
+          "nome": "custoultimaentrada",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "custoultimaentradaimposto",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "customedio",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "valorfrete",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "dataatualizacao",
+          "tipo": "timestamp"
+        }
+      ]
+    },
+    {
+      "nome": "estoque",
+      "origem": "dbo.Estoque",
+      "carga": "completa",
+      "descricao": "Lida pelos projetos Vendas. Colunas tiradas da conversão de tipos do Power Query: confirmar com a exportação da Odeon.",
+      "colunas": [
+        {
+          "nome": "filial",
+          "tipo": "text"
+        },
+        {
+          "nome": "deposito",
+          "tipo": "text"
+        },
+        {
+          "nome": "item",
+          "tipo": "text"
+        },
+        {
+          "nome": "custoultentrada",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "custoultentradaimposto",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "customedio",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "precovenda",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "qtde_minimo",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "qtde_maximo",
+          "tipo": "text"
+        },
+        {
+          "nome": "dtultinventario",
+          "tipo": "date"
+        },
+        {
+          "nome": "data_estoque",
+          "tipo": "timestamp"
+        },
+        {
+          "nome": "ultima_entrada",
+          "tipo": "timestamp"
+        },
+        {
+          "nome": "ultima_venda",
+          "tipo": "text"
+        },
+        {
+          "nome": "dataposicaoestoque",
+          "tipo": "timestamp"
+        },
+        {
+          "nome": "dataatualizacao",
+          "tipo": "timestamp"
+        }
+      ]
+    },
+    {
+      "nome": "filiais",
+      "origem": "dbo.Filiais",
+      "carga": "completa",
+      "descricao": "Lida pelos projetos Estoque, Vendas. Colunas tiradas da conversão de tipos do Power Query: confirmar com a exportação da Odeon.",
+      "colunas": [
+        {
+          "nome": "filial",
+          "tipo": "text"
+        },
+        {
+          "nome": "fantasia",
+          "tipo": "text"
+        },
+        {
+          "nome": "cidade",
+          "tipo": "text"
+        },
+        {
+          "nome": "bairro",
+          "tipo": "text"
+        },
+        {
+          "nome": "aream2",
+          "tipo": "text"
+        },
+        {
+          "nome": "dataatualizacao",
+          "tipo": "timestamp"
+        },
+        {
+          "nome": "grupofilial",
+          "tipo": "text"
+        }
+      ]
+    },
+    {
+      "nome": "fornecedor",
+      "origem": "dbo.Fornecedor",
+      "carga": "completa",
+      "descricao": "Lida pelos projetos Estoque, Financeiro, Vendas. Colunas tiradas da conversão de tipos do Power Query: confirmar com a exportação da Odeon.",
+      "colunas": [
+        {
+          "nome": "clienteodeon",
+          "tipo": "text"
+        },
+        {
+          "nome": "fornecedor",
+          "tipo": "text"
+        },
+        {
+          "nome": "razaosocial",
+          "tipo": "text"
+        },
+        {
+          "nome": "uf",
+          "tipo": "text"
+        },
+        {
+          "nome": "cidade",
+          "tipo": "text"
+        },
+        {
+          "nome": "bairro",
+          "tipo": "text"
+        },
+        {
+          "nome": "dataatualizacao",
+          "tipo": "timestamp"
+        }
+      ]
+    },
+    {
+      "nome": "funcionario",
+      "origem": "dbo.Funcionario",
+      "carga": "completa",
+      "descricao": "Lida pelos projetos Estoque, Vendas. Colunas tiradas da conversão de tipos do Power Query: confirmar com a exportação da Odeon.",
+      "colunas": [
+        {
+          "nome": "clienteodeon",
+          "tipo": "text"
+        },
+        {
+          "nome": "matricula",
+          "tipo": "text"
+        },
+        {
+          "nome": "nome",
+          "tipo": "text"
+        },
+        {
+          "nome": "cargo",
+          "tipo": "text"
+        },
+        {
+          "nome": "dataatualizacao",
+          "tipo": "timestamp"
+        }
+      ]
+    },
+    {
+      "nome": "grupofiliais",
+      "origem": "dbo.GrupoFiliais",
+      "carga": "completa",
+      "descricao": "Lida pelos projetos Vendas. Colunas tiradas da conversão de tipos do Power Query: confirmar com a exportação da Odeon.",
+      "colunas": [
+        {
+          "nome": "grupo",
+          "tipo": "text"
+        }
+      ]
+    },
+    {
+      "nome": "item",
+      "origem": "dbo.vw_item",
+      "carga": "completa",
+      "descricao": "Lida pelos projetos Estoque, Vendas. Colunas tiradas da conversão de tipos do Power Query: confirmar com a exportação da Odeon.",
+      "colunas": [
+        {
+          "nome": "clienteodeon",
+          "tipo": "text"
+        },
+        {
+          "nome": "item",
+          "tipo": "text"
+        },
+        {
+          "nome": "produto",
+          "tipo": "text"
+        },
+        {
+          "nome": "descricaoproduto",
+          "tipo": "text"
+        },
+        {
+          "nome": "descricaoitem",
+          "tipo": "text"
+        },
+        {
+          "nome": "tamanho",
+          "tipo": "text"
+        },
+        {
+          "nome": "cor",
+          "tipo": "text"
+        },
+        {
+          "nome": "marca",
+          "tipo": "text"
+        },
+        {
+          "nome": "subgrupo",
+          "tipo": "text"
+        },
+        {
+          "nome": "fornecedor",
+          "tipo": "text"
+        },
+        {
+          "nome": "dataatualizacao",
+          "tipo": "text"
+        },
+        {
+          "nome": "tempo_entrada",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "marca_nome",
+          "tipo": "text"
+        },
+        {
+          "nome": "diasrecompra",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "grupo_linha",
+          "tipo": "text"
+        },
+        {
+          "nome": "linha",
+          "tipo": "text"
+        },
+        {
+          "nome": "grupo",
+          "tipo": "text"
+        },
+        {
+          "nome": "sub_grupo",
+          "tipo": "text"
+        },
+        {
+          "nome": "chave_linha",
+          "tipo": "text"
+        },
+        {
+          "nome": "codigo_e_descricao",
+          "tipo": "text"
+        },
+        {
+          "nome": "descricaocor",
+          "tipo": "text"
+        },
+        {
+          "nome": "descricaotamanho",
+          "tipo": "text"
+        }
+      ]
+    },
+    {
+      "nome": "modalidades",
+      "origem": "dbo.Modalidades",
+      "carga": "completa",
+      "descricao": "Lida pelos projetos Financeiro. Colunas tiradas da conversão de tipos do Power Query: confirmar com a exportação da Odeon.",
+      "colunas": [
+        {
+          "nome": "modalidade",
+          "tipo": "text"
+        },
+        {
+          "nome": "descricao",
+          "tipo": "text"
+        },
+        {
+          "nome": "flgnatureza",
+          "tipo": "text"
+        }
+      ]
+    },
+    {
+      "nome": "origens",
+      "origem": "dbo.Origens",
+      "carga": "completa",
+      "descricao": "Lida pelos projetos Financeiro. Colunas tiradas da conversão de tipos do Power Query: confirmar com a exportação da Odeon.",
+      "colunas": [
+        {
+          "nome": "origem",
+          "tipo": "text"
+        },
+        {
+          "nome": "descricao",
+          "tipo": "text"
+        },
+        {
+          "nome": "grupoorigens_descricao",
+          "tipo": "text"
+        }
+      ]
+    },
+    {
+      "nome": "planejamento_filial_diario",
+      "origem": "dbo.Planejamento_Filial_Diario",
+      "carga": "completa",
+      "descricao": "Lida pelos projetos Vendas. Colunas tiradas da conversão de tipos do Power Query: confirmar com a exportação da Odeon.",
+      "colunas": [
+        {
+          "nome": "filial",
+          "tipo": "text"
+        },
+        {
+          "nome": "data",
+          "tipo": "date"
+        },
+        {
+          "nome": "vlrcota",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "dataultimaatualizacao",
+          "tipo": "timestamp"
+        }
+      ]
+    },
+    {
+      "nome": "planejamento_filial_linha_mensal",
+      "origem": "dbo.Planejamento_Filial_Linha_Mensal",
+      "carga": "completa",
+      "descricao": "Lida pelos projetos Vendas. Colunas tiradas da conversão de tipos do Power Query: confirmar com a exportação da Odeon.",
+      "colunas": [
+        {
+          "nome": "data",
+          "tipo": "date"
+        },
+        {
+          "nome": "vlrmeta_total",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "linha",
+          "tipo": "text"
+        },
+        {
+          "nome": "filial",
+          "tipo": "text"
+        },
+        {
+          "nome": "ano",
+          "tipo": "text"
+        }
+      ]
+    },
+    {
+      "nome": "planejamento_filial_mensal",
+      "origem": "dbo.Planejamento_Filial_Mensal",
+      "carga": "completa",
+      "descricao": "Lida pelos projetos Vendas. Colunas tiradas da conversão de tipos do Power Query: confirmar com a exportação da Odeon.",
+      "colunas": [
+        {
+          "nome": "clienteodeon",
+          "tipo": "text"
+        },
+        {
+          "nome": "filial",
+          "tipo": "text"
+        },
+        {
+          "nome": "data",
+          "tipo": "timestamp"
+        },
+        {
+          "nome": "vlrmeta_total",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "vlrmeta_prazo",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "vlrmeta_vista",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "dataultimaatualizacao",
+          "tipo": "timestamp"
+        }
+      ]
+    },
+    {
+      "nome": "planejamento_filial_vendedor_mensal",
+      "origem": "dbo.Planejamento_Filial_Vendedor_Mensal",
+      "carga": "completa",
+      "descricao": "Lida pelos projetos Vendas. Colunas tiradas da conversão de tipos do Power Query: confirmar com a exportação da Odeon.",
+      "colunas": [
+        {
+          "nome": "data",
+          "tipo": "date"
+        },
+        {
+          "nome": "vendedor",
+          "tipo": "text"
+        },
+        {
+          "nome": "filial",
+          "tipo": "text"
+        },
+        {
+          "nome": "vlrmeta_total",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "ano",
+          "tipo": "text"
+        }
+      ]
+    },
+    {
+      "nome": "planopagamento",
+      "origem": "dbo.PlanoPagamento",
+      "carga": "completa",
+      "descricao": "Lida pelos projetos Estoque, Vendas. Colunas tiradas da conversão de tipos do Power Query: confirmar com a exportação da Odeon.",
+      "colunas": [
+        {
+          "nome": "clienteodeon",
+          "tipo": "text"
+        },
+        {
+          "nome": "plano",
+          "tipo": "text"
+        },
+        {
+          "nome": "descricaoplano",
+          "tipo": "text"
+        },
+        {
+          "nome": "descricaomodalidade",
+          "tipo": "text"
+        },
+        {
+          "nome": "dataultimaatulizacao",
+          "tipo": "timestamp"
+        }
+      ]
+    },
+    {
+      "nome": "statustitulos",
+      "origem": "dbo.StatusTitulos",
+      "carga": "completa",
+      "descricao": "Lida pelos projetos Financeiro. Colunas tiradas da conversão de tipos do Power Query: confirmar com a exportação da Odeon.",
+      "colunas": [
+        {
+          "nome": "codigo",
+          "tipo": "text"
+        },
+        {
+          "nome": "descricao",
+          "tipo": "text"
+        }
+      ]
+    },
+    {
+      "nome": "titulosreceber",
+      "origem": "dbo.TitulosReceber",
+      "carga": "completa",
+      "descricao": "Lida pelos projetos Financeiro. Colunas tiradas da conversão de tipos do Power Query: confirmar com a exportação da Odeon.",
+      "colunas": [
+        {
+          "nome": "dtemissao",
+          "tipo": "date"
+        }
+      ]
+    },
+    {
+      "nome": "vendas",
+      "origem": "dbo.Vendas",
+      "carga": "completa",
+      "descricao": "Lida pelos projetos Estoque, Vendas. Colunas tiradas da conversão de tipos do Power Query: confirmar com a exportação da Odeon.",
+      "colunas": [
+        {
+          "nome": "clienteodeon",
+          "tipo": "text"
+        },
+        {
+          "nome": "filial",
+          "tipo": "text"
+        },
+        {
+          "nome": "tipo",
+          "tipo": "text"
+        },
+        {
+          "nome": "nrsaida",
+          "tipo": "text"
+        },
+        {
+          "nome": "nrnota",
+          "tipo": "text"
+        },
+        {
+          "nome": "data",
+          "tipo": "date"
+        },
+        {
+          "nome": "diasemana",
+          "tipo": "text"
+        },
+        {
+          "nome": "horario",
+          "tipo": "text"
+        },
+        {
+          "nome": "cliente",
+          "tipo": "text"
+        },
+        {
+          "nome": "plano_pagamento",
+          "tipo": "text"
+        },
+        {
+          "nome": "origem",
+          "tipo": "text"
+        },
+        {
+          "nome": "vendedor",
+          "tipo": "text"
+        },
+        {
+          "nome": "item",
+          "tipo": "text"
+        },
+        {
+          "nome": "vlrunitario",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "desconto",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "acrescimo",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "vlrliquido",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "vlrcue",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "vlrultimaentrada",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "vlrmedio",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "cfopvenda",
+          "tipo": "text"
+        },
+        {
+          "nome": "cfopdevolucao",
+          "tipo": "text"
+        },
+        {
+          "nome": "dataultimaalteracaobi",
+          "tipo": "date"
+        },
+        {
+          "nome": "dataatualizacao",
+          "tipo": "date"
+        },
+        {
+          "nome": "nrorcamento",
+          "tipo": "text"
+        },
+        {
+          "nome": "qtde",
+          "tipo": "decimal"
+        }
+      ]
+    }
+  ],
+  "modelo": [
+    {
+      "nome": "vnd_clientes",
+      "descricao": "Clientes como sai do Power Query do projeto Vendas (sem as colunas DAX).",
+      "colunas": [
+        {
+          "nome": "clienteodeon",
+          "tipo": "integer"
+        },
+        {
+          "nome": "cliente",
+          "tipo": "text"
+        },
+        {
+          "nome": "razaosocial",
+          "tipo": "text"
+        },
+        {
+          "nome": "uf",
+          "tipo": "text"
+        },
+        {
+          "nome": "cidade",
+          "tipo": "text"
+        },
+        {
+          "nome": "bairro",
+          "tipo": "text"
+        },
+        {
+          "nome": "profissao",
+          "tipo": "text"
+        },
+        {
+          "nome": "ibge",
+          "tipo": "text"
+        },
+        {
+          "nome": "tipo",
+          "tipo": "text"
+        },
+        {
+          "nome": "municipio",
+          "tipo": "text"
+        },
+        {
+          "nome": "latitude",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "longitude",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "capital",
+          "tipo": "text"
+        },
+        {
+          "nome": "uf_codigo",
+          "tipo": "integer"
+        },
+        {
+          "nome": "siafi_id",
+          "tipo": "text"
+        },
+        {
+          "nome": "ddd",
+          "tipo": "integer"
+        },
+        {
+          "nome": "fuso_horario",
+          "tipo": "text"
+        },
+        {
+          "nome": "regiao",
+          "tipo": "text"
+        },
+        {
+          "nome": "pais",
+          "tipo": "text"
+        },
+        {
+          "nome": "limitecredito",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "datacadastro",
+          "tipo": "timestamp"
+        },
+        {
+          "nome": "filialcadastro",
+          "tipo": "integer"
+        }
+      ]
+    },
+    {
+      "nome": "vnd_filiais",
+      "descricao": "Filiais como sai do Power Query do projeto Vendas (sem as colunas DAX).",
+      "colunas": [
+        {
+          "nome": "filial",
+          "tipo": "text"
+        },
+        {
+          "nome": "fantasia",
+          "tipo": "text"
+        },
+        {
+          "nome": "cidade",
+          "tipo": "text"
+        },
+        {
+          "nome": "bairro",
+          "tipo": "text"
+        },
+        {
+          "nome": "clienteodeon",
+          "tipo": "integer"
+        },
+        {
+          "nome": "ibge",
+          "tipo": "text"
+        },
+        {
+          "nome": "latitude",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "longitude",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "uf",
+          "tipo": "text"
+        },
+        {
+          "nome": "fantasia_2",
+          "tipo": "text"
+        },
+        {
+          "nome": "grupofilial",
+          "tipo": "text"
+        },
+        {
+          "nome": "descricaogrupo",
+          "tipo": "text"
+        },
+        {
+          "nome": "filial_ordem",
+          "tipo": "integer"
+        }
+      ]
+    },
+    {
+      "nome": "vnd_funcionario",
+      "descricao": "Funcionario como sai do Power Query do projeto Vendas (sem as colunas DAX).",
+      "colunas": [
+        {
+          "nome": "clienteodeon",
+          "tipo": "text"
+        },
+        {
+          "nome": "matricula",
+          "tipo": "text"
+        },
+        {
+          "nome": "nome",
+          "tipo": "text"
+        },
+        {
+          "nome": "cargo",
+          "tipo": "text"
+        }
+      ]
+    },
+    {
+      "nome": "vnd_item",
+      "descricao": "Item como sai do Power Query do projeto Vendas (sem as colunas DAX).",
+      "colunas": [
+        {
+          "nome": "clienteodeon",
+          "tipo": "text"
+        },
+        {
+          "nome": "produto",
+          "tipo": "text"
+        },
+        {
+          "nome": "descricaoproduto",
+          "tipo": "text"
+        },
+        {
+          "nome": "descricaoitem",
+          "tipo": "text"
+        },
+        {
+          "nome": "tamanho",
+          "tipo": "text"
+        },
+        {
+          "nome": "cor",
+          "tipo": "text"
+        },
+        {
+          "nome": "marca",
+          "tipo": "text"
+        },
+        {
+          "nome": "subgrupo",
+          "tipo": "text"
+        },
+        {
+          "nome": "fornecedor",
+          "tipo": "text"
+        },
+        {
+          "nome": "dataatualizacao",
+          "tipo": "text"
+        },
+        {
+          "nome": "tempo_entrada",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "codigo_e_descricao",
+          "tipo": "text"
+        },
+        {
+          "nome": "descricaocor",
+          "tipo": "text"
+        },
+        {
+          "nome": "descricaotamanho",
+          "tipo": "text"
+        },
+        {
+          "nome": "item",
+          "tipo": "text"
+        },
+        {
+          "nome": "marca_nome",
+          "tipo": "text"
+        },
+        {
+          "nome": "diasrecompra",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "grupo_linha",
+          "tipo": "text"
+        },
+        {
+          "nome": "linha",
+          "tipo": "text"
+        },
+        {
+          "nome": "grupo",
+          "tipo": "text"
+        },
+        {
+          "nome": "sub_grupo",
+          "tipo": "text"
+        },
+        {
+          "nome": "chave_linha",
+          "tipo": "text"
+        }
+      ]
+    },
+    {
+      "nome": "vnd_planejamento_filial_mensal",
+      "descricao": "Planejamento_Filial_Mensal como sai do Power Query do projeto Vendas (sem as colunas DAX).",
+      "colunas": [
+        {
+          "nome": "filial",
+          "tipo": "text"
+        },
+        {
+          "nome": "data",
+          "tipo": "timestamp"
+        },
+        {
+          "nome": "vlrmeta_total",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "vlrmeta_prazo",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "vlrmeta_vista",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "clienteodeon",
+          "tipo": "text"
+        },
+        {
+          "nome": "dataultimaatualizacao",
+          "tipo": "timestamp"
+        }
+      ]
+    },
+    {
+      "nome": "vnd_planopagamento",
+      "descricao": "PlanoPagamento como sai do Power Query do projeto Vendas (sem as colunas DAX).",
+      "colunas": [
+        {
+          "nome": "clienteodeon",
+          "tipo": "text"
+        },
+        {
+          "nome": "plano",
+          "tipo": "text"
+        },
+        {
+          "nome": "descricaoplano",
+          "tipo": "text"
+        },
+        {
+          "nome": "descricaomodalidade",
+          "tipo": "text"
+        }
+      ]
+    },
+    {
+      "nome": "vnd_vendas",
+      "descricao": "Vendas como sai do Power Query do projeto Vendas (sem as colunas DAX).",
+      "colunas": [
+        {
+          "nome": "clienteodeon",
+          "tipo": "text"
+        },
+        {
+          "nome": "filial",
+          "tipo": "text"
+        },
+        {
+          "nome": "tipo",
+          "tipo": "text"
+        },
+        {
+          "nome": "nrsaida",
+          "tipo": "text"
+        },
+        {
+          "nome": "nrnota",
+          "tipo": "text"
+        },
+        {
+          "nome": "data",
+          "tipo": "timestamp"
+        },
+        {
+          "nome": "horario",
+          "tipo": "text"
+        },
+        {
+          "nome": "cliente",
+          "tipo": "text"
+        },
+        {
+          "nome": "plano_pagamento",
+          "tipo": "text"
+        },
+        {
+          "nome": "origem",
+          "tipo": "text"
+        },
+        {
+          "nome": "vendedor",
+          "tipo": "text"
+        },
+        {
+          "nome": "item",
+          "tipo": "text"
+        },
+        {
+          "nome": "qtde",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "vlrunitario",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "desconto",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "acrescimo",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "vlrliquido_antigo",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "vlrcue",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "vlrultimaentrada",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "vlrmedio",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "cfopvenda",
+          "tipo": "text"
+        },
+        {
+          "nome": "cfopdevolucao",
+          "tipo": "text"
+        },
+        {
+          "nome": "dataultimaalteracaobi",
+          "tipo": "timestamp"
+        },
+        {
+          "nome": "dataatualizacao",
+          "tipo": "timestamp"
+        },
+        {
+          "nome": "origem_cidade",
+          "tipo": "text"
+        },
+        {
+          "nome": "destino_cidade",
+          "tipo": "text"
+        },
+        {
+          "nome": "origem_latitude",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "origem_longitude",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "destino_uf",
+          "tipo": "text"
+        },
+        {
+          "nome": "destino_latitude",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "destino_longitude",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "origem_ibge",
+          "tipo": "text"
+        },
+        {
+          "nome": "origem_uf",
+          "tipo": "text"
+        },
+        {
+          "nome": "destino_ibge",
+          "tipo": "text"
+        },
+        {
+          "nome": "destino_compra",
+          "tipo": "text"
+        },
+        {
+          "nome": "nrorcamento",
+          "tipo": "text"
+        },
+        {
+          "nome": "vlrliquido",
+          "tipo": "decimal"
+        }
+      ]
+    },
+    {
+      "nome": "fin_cartao",
+      "descricao": "Cartao como sai do Power Query do projeto Financeiro (sem as colunas DAX).",
+      "colunas": [
+        {
+          "nome": "chave_cartao",
+          "tipo": "text"
+        },
+        {
+          "nome": "cartao_descricao",
+          "tipo": "text"
+        }
+      ]
+    },
+    {
+      "nome": "fin_clientes",
+      "descricao": "Clientes como sai do Power Query do projeto Financeiro (sem as colunas DAX).",
+      "colunas": [
+        {
+          "nome": "chave_cliente",
+          "tipo": "text"
+        },
+        {
+          "nome": "razaosocial",
+          "tipo": "text"
+        },
+        {
+          "nome": "uf",
+          "tipo": "text"
+        },
+        {
+          "nome": "cidade",
+          "tipo": "text"
+        },
+        {
+          "nome": "bairro",
+          "tipo": "text"
+        },
+        {
+          "nome": "profissao",
+          "tipo": "text"
+        },
+        {
+          "nome": "ibge",
+          "tipo": "text"
+        },
+        {
+          "nome": "flgtipo",
+          "tipo": "text"
+        },
+        {
+          "nome": "limitecredito",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "datacadastro",
+          "tipo": "timestamp"
+        },
+        {
+          "nome": "filialcadastro",
+          "tipo": "integer"
+        }
+      ]
+    },
+    {
+      "nome": "fin_filiais",
+      "descricao": "Filiais como sai do Power Query do projeto Financeiro (sem as colunas DAX).",
+      "colunas": [
+        {
+          "nome": "chave_filial",
+          "tipo": "text"
+        },
+        {
+          "nome": "fantasia",
+          "tipo": "text"
+        },
+        {
+          "nome": "filial_cidade",
+          "tipo": "text"
+        },
+        {
+          "nome": "filial_bairro",
+          "tipo": "text"
+        },
+        {
+          "nome": "filial_ibge",
+          "tipo": "text"
+        },
+        {
+          "nome": "grupofilial",
+          "tipo": "text"
+        },
+        {
+          "nome": "descricaogrupo",
+          "tipo": "text"
+        }
+      ]
+    },
+    {
+      "nome": "fin_fornecedores",
+      "descricao": "Fornecedores como sai do Power Query do projeto Financeiro (sem as colunas DAX).",
+      "colunas": [
+        {
+          "nome": "chave_fornecedor",
+          "tipo": "text"
+        },
+        {
+          "nome": "fornecedore_razaosocial",
+          "tipo": "text"
+        },
+        {
+          "nome": "fornecedor_uf",
+          "tipo": "text"
+        },
+        {
+          "nome": "fornecedor_cidade",
+          "tipo": "text"
+        },
+        {
+          "nome": "fornecedor_bairro",
+          "tipo": "text"
+        },
+        {
+          "nome": "prazomedio",
+          "tipo": "integer"
+        },
+        {
+          "nome": "nrparcelas",
+          "tipo": "integer"
+        },
+        {
+          "nome": "categoria",
+          "tipo": "integer"
+        },
+        {
+          "nome": "transportadora",
+          "tipo": "text"
+        }
+      ]
+    },
+    {
+      "nome": "fin_modalidades",
+      "descricao": "Modalidades como sai do Power Query do projeto Financeiro (sem as colunas DAX).",
+      "colunas": [
+        {
+          "nome": "chave_modalidade",
+          "tipo": "text"
+        },
+        {
+          "nome": "modalidade_descricao",
+          "tipo": "text"
+        },
+        {
+          "nome": "modalidade_flgnatureza",
+          "tipo": "text"
+        }
+      ]
+    },
+    {
+      "nome": "fin_origens",
+      "descricao": "Origens como sai do Power Query do projeto Financeiro (sem as colunas DAX).",
+      "colunas": [
+        {
+          "nome": "chave_origem",
+          "tipo": "text"
+        },
+        {
+          "nome": "origem_descricao",
+          "tipo": "text"
+        },
+        {
+          "nome": "origem_grupo",
+          "tipo": "text"
+        }
+      ]
+    },
+    {
+      "nome": "fin_saldos",
+      "descricao": "Saldos como sai do Power Query do projeto Financeiro (sem as colunas DAX).",
+      "colunas": [
+        {
+          "nome": "datasaldo",
+          "tipo": "timestamp"
+        },
+        {
+          "nome": "filial",
+          "tipo": "text"
+        },
+        {
+          "nome": "banco_caixa",
+          "tipo": "text"
+        },
+        {
+          "nome": "vlrsaldo",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "saldo_origem",
+          "tipo": "text"
+        },
+        {
+          "nome": "banco_conta_agencia",
+          "tipo": "text"
+        }
+      ]
+    },
+    {
+      "nome": "fin_statustitulos",
+      "descricao": "StatusTitulos como sai do Power Query do projeto Financeiro (sem as colunas DAX).",
+      "colunas": [
+        {
+          "nome": "chave_status",
+          "tipo": "text"
+        },
+        {
+          "nome": "descricao",
+          "tipo": "text"
+        }
+      ]
+    },
+    {
+      "nome": "fin_titulospagar",
+      "descricao": "TitulosPagar como sai do Power Query do projeto Financeiro (sem as colunas DAX).",
+      "colunas": [
+        {
+          "nome": "chave_filial",
+          "tipo": "text"
+        },
+        {
+          "nome": "nrtitulo",
+          "tipo": "text"
+        },
+        {
+          "nome": "parcela",
+          "tipo": "text"
+        },
+        {
+          "nome": "chave_fornecedor",
+          "tipo": "text"
+        },
+        {
+          "nome": "chave_origem",
+          "tipo": "text"
+        },
+        {
+          "nome": "dtemissao",
+          "tipo": "timestamp"
+        },
+        {
+          "nome": "observacao",
+          "tipo": "text"
+        },
+        {
+          "nome": "nrdocumento",
+          "tipo": "text"
+        },
+        {
+          "nome": "nrnota",
+          "tipo": "text"
+        },
+        {
+          "nome": "nrpedido",
+          "tipo": "text"
+        },
+        {
+          "nome": "dtvencimento",
+          "tipo": "timestamp"
+        },
+        {
+          "nome": "dtpagamento",
+          "tipo": "timestamp"
+        },
+        {
+          "nome": "vlrtitulo",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "juros",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "multa",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "desconto",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "vlrpagamento",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "chave_filial_pagamento",
+          "tipo": "text"
+        },
+        {
+          "nome": "chave_modalidade",
+          "tipo": "text"
+        },
+        {
+          "nome": "banco",
+          "tipo": "text"
+        },
+        {
+          "nome": "contacorrente",
+          "tipo": "text"
+        },
+        {
+          "nome": "caixa",
+          "tipo": "text"
+        },
+        {
+          "nome": "flgprevisao",
+          "tipo": "text"
+        },
+        {
+          "nome": "vlrsaldo",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "chave_status",
+          "tipo": "text"
+        },
+        {
+          "nome": "agencia",
+          "tipo": "text"
+        },
+        {
+          "nome": "idtitulo",
+          "tipo": "text"
+        },
+        {
+          "nome": "dados_bancarios",
+          "tipo": "text"
+        },
+        {
+          "nome": "analise_status",
+          "tipo": "text"
+        },
+        {
+          "nome": "dtatual",
+          "tipo": "timestamp"
+        },
+        {
+          "nome": "dtpagamento_atual",
+          "tipo": "timestamp"
+        },
+        {
+          "nome": "dias_ate_pagamento",
+          "tipo": "integer"
+        },
+        {
+          "nome": "analise_aging",
+          "tipo": "text"
+        },
+        {
+          "nome": "pendentes",
+          "tipo": "text"
+        },
+        {
+          "nome": "dias_vencimento",
+          "tipo": "integer"
+        },
+        {
+          "nome": "faixa_vencimento",
+          "tipo": "text"
+        },
+        {
+          "nome": "vlrjurosdiario",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "vlrmulta",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "parcelamento",
+          "tipo": "text"
+        },
+        {
+          "nome": "faixa_vencimento_ordem",
+          "tipo": "integer"
+        },
+        {
+          "nome": "abatimento",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "pagamento_origem",
+          "tipo": "text"
+        },
+        {
+          "nome": "faixa_vencimento_nome",
+          "tipo": "text"
+        },
+        {
+          "nome": "chave_titulos",
+          "tipo": "text"
+        },
+        {
+          "nome": "mostrar",
+          "tipo": "text"
+        },
+        {
+          "nome": "dtmostrar",
+          "tipo": "timestamp"
+        },
+        {
+          "nome": "banco_caixa",
+          "tipo": "text"
+        },
+        {
+          "nome": "origem",
+          "tipo": "text"
+        }
+      ]
+    },
+    {
+      "nome": "fin_titulosreceber",
+      "descricao": "TitulosReceber como sai do Power Query do projeto Financeiro (sem as colunas DAX).",
+      "colunas": [
+        {
+          "nome": "chave_filial",
+          "tipo": "text"
+        },
+        {
+          "nome": "chave_cliente",
+          "tipo": "text"
+        },
+        {
+          "nome": "nrtitulo",
+          "tipo": "text"
+        },
+        {
+          "nome": "parcela",
+          "tipo": "text"
+        },
+        {
+          "nome": "dtemissao",
+          "tipo": "timestamp"
+        },
+        {
+          "nome": "dtvencimento",
+          "tipo": "timestamp"
+        },
+        {
+          "nome": "dtrecebimento",
+          "tipo": "timestamp"
+        },
+        {
+          "nome": "vlrtitulo",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "vlrsaldo",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "vlrjuros",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "vlrmulta",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "vlrdesconto",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "vlrabatimento",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "vlrtaxacobranca",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "vlrrecebido",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "chave_status",
+          "tipo": "text"
+        },
+        {
+          "nome": "convenio",
+          "tipo": "text"
+        },
+        {
+          "nome": "chave_cartao",
+          "tipo": "text"
+        },
+        {
+          "nome": "chave_origem",
+          "tipo": "text"
+        },
+        {
+          "nome": "chave_modalidade",
+          "tipo": "text"
+        },
+        {
+          "nome": "nrsaida",
+          "tipo": "text"
+        },
+        {
+          "nome": "fornecedor",
+          "tipo": "text"
+        },
+        {
+          "nome": "chave_titulo_parcela",
+          "tipo": "text"
+        },
+        {
+          "nome": "analise_status",
+          "tipo": "text"
+        },
+        {
+          "nome": "dtatual",
+          "tipo": "timestamp"
+        },
+        {
+          "nome": "dtrecebimento_vencimento",
+          "tipo": "timestamp"
+        },
+        {
+          "nome": "dias_ate_vencimento",
+          "tipo": "integer"
+        },
+        {
+          "nome": "analise_aging",
+          "tipo": "text"
+        },
+        {
+          "nome": "parcela_numero",
+          "tipo": "integer"
+        },
+        {
+          "nome": "vendedor",
+          "tipo": "text"
+        },
+        {
+          "nome": "filialrecebimento",
+          "tipo": "text"
+        },
+        {
+          "nome": "vendaprazo",
+          "tipo": "text"
+        },
+        {
+          "nome": "analistacredito",
+          "tipo": "text"
+        },
+        {
+          "nome": "idtitulo",
+          "tipo": "text"
+        },
+        {
+          "nome": "vlrjurosdiario",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "multa",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "origem",
+          "tipo": "text"
+        },
+        {
+          "nome": "dataultimaalteracaobi",
+          "tipo": "timestamp"
+        }
+      ]
+    },
+    {
+      "nome": "est_entradas",
+      "descricao": "Entradas como sai do Power Query do projeto Estoque (sem as colunas DAX).",
+      "colunas": [
+        {
+          "nome": "filial",
+          "tipo": "text"
+        },
+        {
+          "nome": "deposito",
+          "tipo": "text"
+        },
+        {
+          "nome": "tiponotaentrada",
+          "tipo": "text"
+        },
+        {
+          "nome": "tipoentrada",
+          "tipo": "text"
+        },
+        {
+          "nome": "fornecedor",
+          "tipo": "text"
+        },
+        {
+          "nome": "cliente",
+          "tipo": "text"
+        },
+        {
+          "nome": "dataemissao",
+          "tipo": "timestamp"
+        },
+        {
+          "nome": "dataentrada",
+          "tipo": "timestamp"
+        },
+        {
+          "nome": "nrnota",
+          "tipo": "text"
+        },
+        {
+          "nome": "nrsaida",
+          "tipo": "text"
+        },
+        {
+          "nome": "item",
+          "tipo": "text"
+        },
+        {
+          "nome": "qtde",
+          "tipo": "integer"
+        },
+        {
+          "nome": "custoultimaentrada",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "custoultimaentradaimposto",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "customedio",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "valorfrete",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "dataultimaalteracaobi",
+          "tipo": "timestamp"
+        }
+      ]
+    },
+    {
+      "nome": "est_estoque",
+      "descricao": "Estoque como sai do Power Query do projeto Estoque (sem as colunas DAX).",
+      "colunas": [
+        {
+          "nome": "filial",
+          "tipo": "text"
+        },
+        {
+          "nome": "item",
+          "tipo": "text"
+        },
+        {
+          "nome": "qtde_fisico",
+          "tipo": "integer"
+        },
+        {
+          "nome": "qtde_minimo",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "qtde_maximo",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "qtdeultinventario",
+          "tipo": "integer"
+        },
+        {
+          "nome": "dtultinventario",
+          "tipo": "timestamp"
+        },
+        {
+          "nome": "data_estoque",
+          "tipo": "timestamp"
+        },
+        {
+          "nome": "dataatualizacao",
+          "tipo": "timestamp"
+        },
+        {
+          "nome": "deposito",
+          "tipo": "text"
+        },
+        {
+          "nome": "custoultentrada",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "custoultentradaimposto",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "customedio",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "precovenda",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "ultima_entrada",
+          "tipo": "timestamp"
+        },
+        {
+          "nome": "ultima_venda",
+          "tipo": "timestamp"
+        },
+        {
+          "nome": "dataposicaoestoque",
+          "tipo": "timestamp"
+        },
+        {
+          "nome": "dataestoque_chave",
+          "tipo": "timestamp"
+        },
+        {
+          "nome": "data_estoque_hora",
+          "tipo": "timestamp"
+        }
+      ]
+    },
+    {
+      "nome": "est_filiais",
+      "descricao": "Filiais como sai do Power Query do projeto Estoque (sem as colunas DAX).",
+      "colunas": [
+        {
+          "nome": "filial",
+          "tipo": "text"
+        },
+        {
+          "nome": "fantasia",
+          "tipo": "text"
+        },
+        {
+          "nome": "cidade",
+          "tipo": "text"
+        },
+        {
+          "nome": "bairro",
+          "tipo": "text"
+        },
+        {
+          "nome": "ibge",
+          "tipo": "text"
+        },
+        {
+          "nome": "latitude",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "longitude",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "uf",
+          "tipo": "text"
+        },
+        {
+          "nome": "grupofilial",
+          "tipo": "text"
+        },
+        {
+          "nome": "descricaogrupo",
+          "tipo": "text"
+        }
+      ]
+    },
+    {
+      "nome": "est_item",
+      "descricao": "Item como sai do Power Query do projeto Estoque (sem as colunas DAX).",
+      "colunas": [
+        {
+          "nome": "produto",
+          "tipo": "text"
+        },
+        {
+          "nome": "descricaoproduto",
+          "tipo": "text"
+        },
+        {
+          "nome": "descricaoitem",
+          "tipo": "text"
+        },
+        {
+          "nome": "tamanho",
+          "tipo": "text"
+        },
+        {
+          "nome": "cor",
+          "tipo": "text"
+        },
+        {
+          "nome": "marca",
+          "tipo": "text"
+        },
+        {
+          "nome": "subgrupo",
+          "tipo": "text"
+        },
+        {
+          "nome": "fornecedor",
+          "tipo": "text"
+        },
+        {
+          "nome": "dataatualizacao",
+          "tipo": "text"
+        },
+        {
+          "nome": "codigo_e_descricao",
+          "tipo": "text"
+        },
+        {
+          "nome": "descricaotamanho",
+          "tipo": "text"
+        },
+        {
+          "nome": "descricaocor",
+          "tipo": "text"
+        },
+        {
+          "nome": "clienteodeon",
+          "tipo": "text"
+        },
+        {
+          "nome": "item",
+          "tipo": "text"
+        },
+        {
+          "nome": "tempo_entrada",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "marca_nome",
+          "tipo": "text"
+        },
+        {
+          "nome": "diasrecompra",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "grupo_linha",
+          "tipo": "text"
+        },
+        {
+          "nome": "linha",
+          "tipo": "text"
+        },
+        {
+          "nome": "grupo",
+          "tipo": "text"
+        },
+        {
+          "nome": "sub_grupo",
+          "tipo": "text"
+        },
+        {
+          "nome": "chave_linha",
+          "tipo": "text"
+        }
+      ]
+    },
+    {
+      "nome": "est_vendas",
+      "descricao": "Vendas como sai do Power Query do projeto Estoque (sem as colunas DAX).",
+      "colunas": [
+        {
+          "nome": "filial",
+          "tipo": "text"
+        },
+        {
+          "nome": "tipo",
+          "tipo": "text"
+        },
+        {
+          "nome": "nrsaida",
+          "tipo": "text"
+        },
+        {
+          "nome": "nrnota",
+          "tipo": "text"
+        },
+        {
+          "nome": "data",
+          "tipo": "timestamp"
+        },
+        {
+          "nome": "horario",
+          "tipo": "text"
+        },
+        {
+          "nome": "cliente",
+          "tipo": "text"
+        },
+        {
+          "nome": "plano_pagamento",
+          "tipo": "text"
+        },
+        {
+          "nome": "origem",
+          "tipo": "text"
+        },
+        {
+          "nome": "vendedor",
+          "tipo": "text"
+        },
+        {
+          "nome": "item",
+          "tipo": "text"
+        },
+        {
+          "nome": "qtde",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "vlrunitario",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "desconto",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "acrescimo",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "vlrliquido_antigo",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "vlrcue",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "vlrultimaentrada",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "vlrmedio",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "cfopvenda",
+          "tipo": "text"
+        },
+        {
+          "nome": "cfopdevolucao",
+          "tipo": "text"
+        },
+        {
+          "nome": "dataultimaalteracaobi",
+          "tipo": "timestamp"
+        },
+        {
+          "nome": "dataatualizacao",
+          "tipo": "timestamp"
+        },
+        {
+          "nome": "destino_compra",
+          "tipo": "text"
+        },
+        {
+          "nome": "nrorcamento",
+          "tipo": "text"
+        },
+        {
+          "nome": "clienteodeon",
+          "tipo": "text"
+        },
+        {
+          "nome": "origem_cidade",
+          "tipo": "text"
+        },
+        {
+          "nome": "origem_ibge",
+          "tipo": "text"
+        },
+        {
+          "nome": "origem_latitude",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "origem_longitude",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "origem_uf",
+          "tipo": "text"
+        },
+        {
+          "nome": "destino_uf",
+          "tipo": "text"
+        },
+        {
+          "nome": "destino_ibge",
+          "tipo": "text"
+        },
+        {
+          "nome": "destino_cidade",
+          "tipo": "text"
+        },
+        {
+          "nome": "destino_latitude",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "destino_longitude",
+          "tipo": "decimal"
+        },
+        {
+          "nome": "vlrliquido",
+          "tipo": "decimal"
+        }
+      ]
+    }
+  ],
+  "saidas": [
+    {
+      "molde": "vendas-filiais-produtos",
+      "tabelas": [
+        "filiais",
+        "funcionario",
+        "planopagamento",
+        "item",
+        "clientes",
+        "vendas",
+        "planejamento",
+        "dcalendario"
+      ]
+    },
+    {
+      "molde": "financeiro",
+      "tabelas": [
+        "filiais",
+        "modalidades",
+        "clientes",
+        "fornecedores",
+        "origens",
+        "cartao",
+        "titulosreceber",
+        "titulospagar",
+        "saldos",
+        "fluxo_de_caixa",
+        "calendario"
+      ]
+    },
+    {
+      "molde": "estoque-movimentacao",
+      "tabelas": [
+        "filiais",
+        "item",
+        "movimento",
+        "calendario"
+      ]
+    }
+  ]
+}
