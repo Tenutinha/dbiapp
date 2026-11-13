@@ -109,7 +109,7 @@ Diga com clareza quando o pedido esbarra nisto, em vez de entregar algo que pare
 
 - Uma medida lê uma fato só. Um dashboard pode ter várias fatos (cada visual escolhe a sua com `fact`), mas uma conta que mistura duas (realizado ÷ meta) precisa das colunas na mesma fato: veja "Mais de uma fato" em `visuais.md`.
 - Sem comparação com o período anterior, acumulado no ano nem percentual do total geral (não há inteligência de tempo nem cálculo que ignore os filtros).
-- Filtro de tela vale para a página toda; cada visual pode ignorar filtros (`skipFilters`) ou ter condição própria (`where`), mas não há filtro cruzado ao clicar num gráfico.
+- Filtro de tela vale para a página toda; cada visual pode ignorar filtros (`skipFilters`) ou ter condição própria (`where`). Clicar num item de gráfico ou tabela filtra os outros visuais (filtro cruzado, guardado no endereço), mas não há seleção que mude a medida de um visual.
 - Mapa só por município ou UF, com código IBGE.
 - Layout em grade de 12 colunas; não há posição livre.
 

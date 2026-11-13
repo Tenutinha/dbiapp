@@ -53,13 +53,15 @@ export interface ChartProps {
   measures: ChartMeasure[];
   rows: Record<string, string | number | boolean | null>[];
   horizontal?: boolean;
+  /** Each value written next to its bar or point. */
+  labels?: boolean;
 }
 
 /** Opacity of the items left out of the selection. */
 const DIMMED = 0.28;
 
 function buildOption(
-  { type, fieldId, measures, rows, horizontal }: ChartProps, c: ChartColors, picked: readonly string[],
+  { type, fieldId, measures, rows, horizontal, labels }: ChartProps, c: ChartColors, picked: readonly string[],
 ): echarts.EChartsCoreOption {
   const categories = rows.map((r) => String(r[fieldId] ?? ""));
   const opacity = (category: string): number => (picked.length === 0 || picked.includes(category) ? 1 : DIMMED);
@@ -88,18 +90,35 @@ function buildOption(
   }
 
   const fmt = measures[0].format;
-  const valueAxis = { type: "value", ...AXIS, axisLabel: { ...AXIS.axisLabel, formatter: (v: number) => formatValue(v, fmt, true) } };
-  const categoryAxis = { type: "category", data: categories, ...AXIS, axisLabel: { ...AXIS.axisLabel, hideOverlap: true } };
+  // Bars with their values written next to them need no value axis: it would only repeat the numbers.
+  const bareValues = labels === true && type === "bar";
+  const valueAxis = {
+    type: "value", ...AXIS,
+    axisLabel: { ...AXIS.axisLabel, show: !bareValues, formatter: (v: number) => formatValue(v, fmt, true) },
+    splitLine: { ...AXIS.splitLine, show: !bareValues },
+  };
+  const categoryAxis = {
+    type: "category", data: categories, ...AXIS,
+    // With values written beyond the bars, long names (a provider, a status) are cut so the bars keep their room.
+    axisLabel: { ...AXIS.axisLabel, hideOverlap: true, ...(horizontal && bareValues ? { width: 170, overflow: "truncate" } : {}) },
+  };
   return {
     color: PALETTE,
     tooltip: { ...tooltip, trigger: "axis", valueFormatter: (v: unknown) => formatValue(v, fmt) },
     legend: measures.length > 1 ? { top: 0, textStyle: { color: c.muted } } : undefined,
-    grid: { left: 8, right: 16, top: measures.length > 1 ? 32 : 12, bottom: 8, containLabel: true },
+    // Room on the far side of the bars for the values written beyond them.
+    grid: { left: 8, right: labels && horizontal ? 56 : 16, top: (measures.length > 1 ? 32 : 12) + (labels && !horizontal ? 8 : 0), bottom: 8, containLabel: true },
     xAxis: horizontal ? valueAxis : categoryAxis,
     yAxis: horizontal ? { ...categoryAxis, inverse: true } : valueAxis,
     series: measures.map((m, i) => ({
       name: m.label,
       type,
+      label: labels
+        ? {
+            show: true, position: horizontal ? "right" : "top", color: c.text, fontSize: 11, fontWeight: 600,
+            formatter: (p: { value: unknown }) => formatValue(p.value, m.format, "counts"),
+          }
+        : undefined,
       smooth: type === "line",
       showSymbol: false,
       areaStyle: type === "line" ? { opacity: 0.08 } : undefined,
@@ -127,7 +146,7 @@ interface ZrClick {
 }
 
 export function Chart(props: ChartProps) {
-  const { visualId, type, fieldId, measures, rows, horizontal } = props;
+  const { visualId, type, fieldId, measures, rows, horizontal, labels } = props;
   const el = useRef<HTMLDivElement>(null);
   const { own, pick, pending } = useCrossFilter(visualId, [fieldId]);
   const pickedKey = JSON.stringify(own[fieldId] ?? []);
@@ -141,7 +160,7 @@ export function Chart(props: ChartProps) {
     if (!el.current) return;
     const picked = JSON.parse(pickedKey) as string[];
     const chart = echarts.init(el.current, undefined, { renderer: "canvas" });
-    chart.setOption(buildOption({ visualId, type, fieldId, measures, rows, horizontal }, readColors(el.current), picked));
+    chart.setOption(buildOption({ visualId, type, fieldId, measures, rows, horizontal, labels }, readColors(el.current), picked));
 
     const choose = (value: string | undefined, e: MouseEvent | undefined): void => {
       if (value !== undefined) pickRef.current([{ fieldId, value }], isAdditive(e));
@@ -166,7 +185,7 @@ export function Chart(props: ChartProps) {
       observer.disconnect();
       chart.dispose();
     };
-  }, [visualId, type, fieldId, measures, rows, horizontal, pickedKey]);
+  }, [visualId, type, fieldId, measures, rows, horizontal, labels, pickedKey]);
 
   return (
     <div

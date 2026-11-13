@@ -9,6 +9,8 @@
  *     --template <template.json> --dados <pasta com <tabela>.parquet> --org <slug> [--cliente <slug>] [--nome "<nome>"]
  * Só com --template (sem --org), apenas grava o template no catálogo como rascunho.
  * Com --org e sem --dados, ativa o dashboard no espaço, vazio (os dados entram depois pela tela).
+ * Com --pasta <pasta da organização> em vez de --dados, lê as tabelas de lá, no armazenamento (bucket),
+ * como o "Importar pasta" da tela (ex.: --pasta clientes/araguaia/provimento/guias/preparado).
  */
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -17,11 +19,15 @@ import { findTemplate, insertTemplate, updateDefinition } from "../../src/lib/da
 import { createInstance } from "../../src/lib/data/repository";
 import { sql } from "../../src/lib/db";
 import { publishDraft, uploadTable } from "../../src/lib/services/datasets";
+import { importFolder } from "../../src/lib/services/storage-import";
 import { templateSchema, type Template } from "../../src/lib/templates/schema";
 
 interface Args {
   template: string;
+  /** Pasta local com <tabela>.parquet. */
   dados?: string;
+  /** Pasta da organização no armazenamento (relativa a orgs/<slug>/) com <tabela>.parquet. */
+  pasta?: string;
   /** Sem organização, só grava o template no catálogo (rascunho). */
   org?: string;
   cliente?: string;
@@ -36,10 +42,12 @@ function parseArgs(argv: readonly string[]): Args {
   const template = get("--template");
   const dados = get("--dados");
   const org = get("--org");
+  const pasta = get("--pasta");
   if (!template) {
-    throw new Error("uso: --template <arquivo> [--org <slug> [--cliente <slug>] [--nome <nome>] [--dados <pasta>]]");
+    throw new Error("uso: --template <arquivo> [--org <slug> [--cliente <slug>] [--nome <nome>] [--dados <pasta local> | --pasta <pasta no armazenamento>]]");
   }
-  return { template, dados, org, cliente: get("--cliente"), nome: get("--nome") };
+  if (dados && pasta) throw new Error("use --dados (pasta local) ou --pasta (armazenamento), não os dois");
+  return { template, dados, pasta, org, cliente: get("--cliente"), nome: get("--nome") };
 }
 
 interface Org { id: string; slug: string; name: string }
@@ -107,11 +115,10 @@ async function main(): Promise<void> {
 
   await registerTemplate(t, admin.id);
   const instanceId = await ensureInstance(org, client, t, name);
-  if (!args.dados) {
+  if (!args.dados && !args.pasta) {
     console.log(`ativado sem dados${client ? ` no espaço ${client.name}` : ""}: /${org.slug}/d/${instanceId}/dados`);
     return;
   }
-  const dados = args.dados;
   const [inst] = await sql<{ active_version_id: string | null }[]>`
     SELECT active_version_id FROM dashboard_instances WHERE id = ${instanceId}`;
   const access = {
@@ -126,11 +133,20 @@ async function main(): Promise<void> {
     publishedAt: null,
   } as unknown as InstanceAccess; // só os campos que uploadTable/publishDraft usam
 
-  for (const table of t.tables) {
-    const bytes = await readFile(path.join(dados, `${table.name}.parquet`));
-    const report = await uploadTable(access, table.name, new File([bytes], `${table.name}.parquet`));
-    if (!report.ok) throw new Error(`${table.name}: ${JSON.stringify(report)}`);
-    console.log(`dados: ${table.name}: ${report.rowCount.toLocaleString("pt-BR")} linhas`);
+  if (args.pasta) {
+    const imported = await importFolder(access, args.pasta);
+    if (imported.missing.length > 0) throw new Error(`faltam na pasta ${args.pasta}: ${imported.missing.join(", ")}`);
+    for (const report of imported.reports) {
+      if (!report.ok) throw new Error(`${report.table}: ${JSON.stringify(report)}`);
+      console.log(`dados (${args.pasta}): ${report.table}: ${report.rowCount.toLocaleString("pt-BR")} linhas`);
+    }
+  } else {
+    for (const table of t.tables) {
+      const bytes = await readFile(path.join(args.dados as string, `${table.name}.parquet`));
+      const report = await uploadTable(access, table.name, new File([bytes], `${table.name}.parquet`));
+      if (!report.ok) throw new Error(`${table.name}: ${JSON.stringify(report)}`);
+      console.log(`dados: ${table.name}: ${report.rowCount.toLocaleString("pt-BR")} linhas`);
+    }
   }
   const result = await publishDraft(access);
   if (!result.ok) throw new Error(`publicação: ${JSON.stringify(result)}`);

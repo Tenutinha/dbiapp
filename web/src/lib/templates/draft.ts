@@ -141,6 +141,7 @@ export function usedIds(t: Template): UsedIds {
     switch (v.type) {
       case "kpi":
         measures.add(v.measure);
+        if (v.detail?.measure) measures.add(v.detail.measure);
         break;
       case "bar":
       case "line":

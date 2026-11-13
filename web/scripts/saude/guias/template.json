@@ -1,0 +1,694 @@
+{
+  "id": "autorizacao-guias",
+  "version": 1,
+  "name": "Autorização de guias",
+  "area": "Saúde suplementar",
+  "origin": "qlikview",
+  "description": "Indicadores estratégicos e emissão de guias: solicitadas, aprovação, negativas, prazo da auditoria, valor autorizado e evitado, evolução mensal, tipo de atendimento, prestadores e situação, com beneficiários locais e de intercâmbio.",
+  "paging": "horizontal",
+  "tables": [
+    {
+      "name": "guias",
+      "kind": "fact",
+      "description": "Uma linha por guia emitida. Os valores são a soma dos serviços da guia; o beneficiário é um código pseudonimizado.",
+      "sortBy": "data_emissao",
+      "columns": [
+        {
+          "name": "guia",
+          "type": "text",
+          "description": "Número da guia (único)"
+        },
+        {
+          "name": "data_emissao",
+          "type": "date",
+          "description": "Data de emissão da guia"
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "description": "Situação da guia (liberada, negada, pedido de exame…)"
+        },
+        {
+          "name": "status_grupo",
+          "type": "text",
+          "description": "Situação agrupada: liberada, pedido de exame, negada, cancelada, aguardando, auditoria"
+        },
+        {
+          "name": "regime",
+          "type": "text",
+          "description": "Eletiva ou urgência"
+        },
+        {
+          "name": "natureza",
+          "type": "text",
+          "description": "Ambulatorial, tipos de internação ou saúde ocupacional"
+        },
+        {
+          "name": "canal_emissao",
+          "type": "text",
+          "description": "Por onde a guia foi emitida (web prestador, integração, PTU, token…)"
+        },
+        {
+          "name": "liberacao",
+          "type": "text",
+          "description": "Forma de liberação (com/sem biometria, call center, token, justificado)"
+        },
+        {
+          "name": "tipo_atendimento",
+          "type": "text"
+        },
+        {
+          "name": "especialidade",
+          "type": "text",
+          "description": "Especialidade da guia"
+        },
+        {
+          "name": "cooperativa_origem",
+          "type": "text",
+          "description": "Cooperativa de origem do beneficiário"
+        },
+        {
+          "name": "auditoria",
+          "type": "boolean",
+          "description": "A guia passou por auditoria"
+        },
+        {
+          "name": "auditoria_concluida",
+          "type": "boolean",
+          "description": "A auditoria da guia terminou (todas as etapas com data final)"
+        },
+        {
+          "name": "auditoria_no_prazo",
+          "type": "boolean",
+          "description": "A auditoria terminou até a data prevista"
+        },
+        {
+          "name": "auditoria_horas",
+          "type": "decimal",
+          "required": false,
+          "description": "Horas do início ao fim da auditoria (vazio quando não houve ou não terminou)"
+        },
+        {
+          "name": "faturada",
+          "type": "boolean",
+          "description": "A guia já foi faturada"
+        },
+        {
+          "name": "pronto_socorro",
+          "type": "boolean",
+          "description": "Guia de pronto-socorro"
+        },
+        {
+          "name": "consulta",
+          "type": "boolean",
+          "description": "A guia tem um serviço de consulta (TUSS 10101012 ou 10101039)"
+        },
+        {
+          "name": "beneficiario",
+          "type": "integer",
+          "required": false,
+          "description": "Código pseudonimizado do beneficiário, um número sem relação com a carteirinha (vazio quando a guia não informa)"
+        },
+        {
+          "name": "beneficiario_origem",
+          "type": "text",
+          "description": "Local (carteira da própria cooperativa), Intercâmbio ou Não informado"
+        },
+        {
+          "name": "faixa_etaria",
+          "type": "text",
+          "description": "Faixa de idade do beneficiário na emissão"
+        },
+        {
+          "name": "prestador",
+          "type": "text",
+          "description": "Código do prestador executante"
+        },
+        {
+          "name": "solicitante",
+          "type": "text",
+          "description": "Código do profissional solicitante"
+        },
+        {
+          "name": "local_atendimento",
+          "type": "text",
+          "description": "Código do local de atendimento"
+        },
+        {
+          "name": "vlr_servico",
+          "type": "decimal",
+          "description": "Soma do valor dos serviços da guia"
+        },
+        {
+          "name": "vlr_coparticipacao",
+          "type": "decimal",
+          "description": "Soma do valor a recuperar dos serviços da guia: coparticipação do beneficiário e, no intercâmbio, o valor cobrado da cooperativa de origem"
+        },
+        {
+          "name": "qtd_servicos",
+          "type": "integer",
+          "description": "Quantidade de serviços da guia"
+        }
+      ]
+    },
+    {
+      "name": "prestadores",
+      "kind": "dimension",
+      "description": "Cadastro dos prestadores executantes. Uma linha por prestador.",
+      "key": "prestador",
+      "columns": [
+        {
+          "name": "prestador",
+          "type": "text"
+        },
+        {
+          "name": "prestador_nome",
+          "type": "text"
+        },
+        {
+          "name": "prestador_cidade",
+          "type": "text"
+        },
+        {
+          "name": "prestador_uf",
+          "type": "text"
+        },
+        {
+          "name": "prestador_classificacao",
+          "type": "text",
+          "description": "Cooperado, não cooperado, clínica, Unimed fora da UF…"
+        },
+        {
+          "name": "prestador_especialidade",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "name": "solicitantes",
+      "kind": "dimension",
+      "description": "Cadastro dos profissionais solicitantes. Uma linha por solicitante.",
+      "key": "solicitante",
+      "columns": [
+        {
+          "name": "solicitante",
+          "type": "text"
+        },
+        {
+          "name": "solicitante_nome",
+          "type": "text"
+        },
+        {
+          "name": "solicitante_cidade",
+          "type": "text"
+        },
+        {
+          "name": "solicitante_uf",
+          "type": "text"
+        },
+        {
+          "name": "solicitante_classificacao",
+          "type": "text"
+        },
+        {
+          "name": "solicitante_especialidade",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "name": "locais_atendimento",
+      "kind": "dimension",
+      "description": "Cadastro dos locais de atendimento. Uma linha por local.",
+      "key": "local_atendimento",
+      "columns": [
+        {
+          "name": "local_atendimento",
+          "type": "text"
+        },
+        {
+          "name": "local_atendimento_nome",
+          "type": "text"
+        },
+        {
+          "name": "local_atendimento_cidade",
+          "type": "text"
+        },
+        {
+          "name": "local_atendimento_uf",
+          "type": "text"
+        },
+        {
+          "name": "local_atendimento_classificacao",
+          "type": "text"
+        },
+        {
+          "name": "local_atendimento_especialidade",
+          "type": "text"
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "from": {
+        "table": "guias",
+        "column": "prestador"
+      },
+      "to": {
+        "table": "prestadores",
+        "column": "prestador"
+      }
+    },
+    {
+      "from": {
+        "table": "guias",
+        "column": "solicitante"
+      },
+      "to": {
+        "table": "solicitantes",
+        "column": "solicitante"
+      }
+    },
+    {
+      "from": {
+        "table": "guias",
+        "column": "local_atendimento"
+      },
+      "to": {
+        "table": "locais_atendimento",
+        "column": "local_atendimento"
+      }
+    }
+  ],
+  "fields": [
+    {
+      "id": "ano",
+      "label": "Exercício (ano)",
+      "sql": "CAST(year(guias.data_emissao) AS VARCHAR)"
+    },
+    {
+      "id": "mes",
+      "label": "Competência",
+      "sql": "strftime(guias.data_emissao, '%Y-%m')"
+    },
+    {
+      "id": "status",
+      "label": "Situação da guia",
+      "sql": "guias.status"
+    },
+    {
+      "id": "regime",
+      "label": "Caráter de atendimento",
+      "sql": "guias.regime"
+    },
+    {
+      "id": "liberacao",
+      "label": "Liberação",
+      "sql": "guias.liberacao"
+    },
+    {
+      "id": "tipo_atendimento",
+      "label": "Tipo de atendimento",
+      "sql": "guias.tipo_atendimento"
+    },
+    {
+      "id": "prestador_nome",
+      "label": "Prestador",
+      "sql": "concat(prestadores.prestador_nome, ' - ', prestadores.prestador)"
+    },
+    {
+      "id": "prestador_classificacao",
+      "label": "Classificação do prestador",
+      "sql": "prestadores.prestador_classificacao"
+    },
+    {
+      "id": "prestador_uf",
+      "label": "UF",
+      "sql": "prestadores.prestador_uf"
+    }
+  ],
+  "measures": [
+    {
+      "id": "guias",
+      "label": "Solicitadas",
+      "sql": "COUNT(*)",
+      "format": "integer"
+    },
+    {
+      "id": "guias_liberadas",
+      "label": "Autorizadas",
+      "sql": "COUNT(CASE WHEN guias.status = 'LIBERADA' THEN 1 END)",
+      "format": "integer"
+    },
+    {
+      "id": "taxa_liberacao",
+      "label": "Taxa de aprovação",
+      "sql": "COUNT(CASE WHEN guias.status = 'LIBERADA' THEN 1 END) / NULLIF(COUNT(*), 0)",
+      "format": "percent"
+    },
+    {
+      "id": "guias_negadas",
+      "label": "Negadas",
+      "sql": "COUNT(CASE WHEN guias.status_grupo = 'NEGADA' THEN 1 END)",
+      "format": "integer"
+    },
+    {
+      "id": "taxa_negativa",
+      "label": "Taxa de negativa",
+      "sql": "COUNT(CASE WHEN guias.status_grupo = 'NEGADA' THEN 1 END) / NULLIF(COUNT(*), 0)",
+      "format": "percent"
+    },
+    {
+      "id": "beneficiarios_locais",
+      "label": "Clientes locais",
+      "sql": "COUNT(DISTINCT CASE WHEN guias.beneficiario_origem = 'Local' THEN guias.beneficiario END)",
+      "format": "integer"
+    },
+    {
+      "id": "beneficiarios_intercambio",
+      "label": "Clientes intercâmbio",
+      "sql": "COUNT(DISTINCT CASE WHEN guias.beneficiario_origem = 'Intercâmbio' THEN guias.beneficiario END)",
+      "format": "integer"
+    },
+    {
+      "id": "valor_autorizado",
+      "label": "R$ autorizado",
+      "sql": "SUM(CASE WHEN guias.status = 'LIBERADA' THEN guias.vlr_servico ELSE 0 END)",
+      "format": "currency"
+    },
+    {
+      "id": "valor_coparticipacao",
+      "label": "R$ a recuperar",
+      "sql": "SUM(CASE WHEN guias.status = 'LIBERADA' AND guias.beneficiario_origem = 'Intercâmbio' THEN guias.vlr_coparticipacao ELSE 0 END)",
+      "format": "currency"
+    },
+    {
+      "id": "guias_em_analise",
+      "label": "Em análise",
+      "sql": "COUNT(CASE WHEN guias.status_grupo IN ('AGUARDANDO', 'AUDITORIA') THEN 1 END)",
+      "format": "integer"
+    },
+    {
+      "id": "valor_evitado",
+      "label": "Valor evitado",
+      "sql": "SUM(CASE WHEN guias.status_grupo = 'NEGADA' THEN guias.vlr_servico ELSE 0 END)",
+      "format": "currency"
+    },
+    {
+      "id": "auditoria_no_prazo_pct",
+      "label": "Auditoria no prazo",
+      "sql": "COUNT(CASE WHEN guias.auditoria_no_prazo THEN 1 END) / NULLIF(COUNT(CASE WHEN guias.auditoria_concluida THEN 1 END), 0)",
+      "format": "percent"
+    },
+    {
+      "id": "auditoria_horas_media",
+      "label": "Horas de auditoria (média)",
+      "sql": "AVG(CASE WHEN guias.auditoria_concluida THEN guias.auditoria_horas END)",
+      "format": "number"
+    }
+  ],
+  "filters": [
+    "ano",
+    "mes",
+    "regime",
+    "tipo_atendimento",
+    "status"
+  ],
+  "visuals": [
+    {
+      "id": "k_solicitadas",
+      "type": "kpi",
+      "title": "Solicitadas",
+      "measure": "guias",
+      "detail": {
+        "measure": "guias_em_analise",
+        "text": "em análise"
+      },
+      "span": 2
+    },
+    {
+      "id": "k_taxa_aprovacao",
+      "type": "kpi",
+      "title": "Taxa de aprovação",
+      "measure": "taxa_liberacao",
+      "detail": {
+        "measure": "guias_liberadas",
+        "text": "guias"
+      },
+      "span": 2
+    },
+    {
+      "id": "k_taxa_negativa",
+      "type": "kpi",
+      "title": "Taxa de negativa",
+      "measure": "taxa_negativa",
+      "detail": {
+        "measure": "guias_negadas",
+        "text": "guias"
+      },
+      "span": 2
+    },
+    {
+      "id": "k_auditoria_prazo",
+      "type": "kpi",
+      "title": "Auditoria no prazo",
+      "measure": "auditoria_no_prazo_pct",
+      "detail": {
+        "measure": "auditoria_horas_media",
+        "text": "h em média"
+      },
+      "span": 2
+    },
+    {
+      "id": "k_valor_autorizado",
+      "type": "kpi",
+      "title": "Valor autorizado",
+      "measure": "valor_autorizado",
+      "detail": {
+        "text": "Custo assistencial"
+      },
+      "span": 2
+    },
+    {
+      "id": "k_valor_evitado",
+      "type": "kpi",
+      "title": "Valor evitado",
+      "measure": "valor_evitado",
+      "detail": {
+        "text": "Economia da regulação"
+      },
+      "span": 2
+    },
+    {
+      "id": "b_evolucao_mes",
+      "type": "bar",
+      "title": "Evolução mensal: autorizadas × negadas",
+      "field": "mes",
+      "measures": [
+        "guias_liberadas",
+        "guias_negadas"
+      ],
+      "sort": "field",
+      "span": 8
+    },
+    {
+      "id": "b_tipo_atendimento",
+      "type": "bar",
+      "title": "Guias por tipo de atendimento",
+      "field": "tipo_atendimento",
+      "measures": [
+        "guias"
+      ],
+      "sort": "measure_desc",
+      "limit": 10,
+      "horizontal": true,
+      "labels": true,
+      "where": "guias.tipo_atendimento NOT IN ('Não informado', 'NÃO INFORMADO NA GUIA')",
+      "span": 4
+    },
+    {
+      "id": "l_taxa_aprovacao",
+      "type": "line",
+      "title": "Taxa de aprovação por mês",
+      "field": "mes",
+      "measures": [
+        "taxa_liberacao"
+      ],
+      "sort": "field",
+      "span": 4
+    },
+    {
+      "id": "d_liberacao",
+      "type": "donut",
+      "title": "Guias por forma de liberação",
+      "field": "liberacao",
+      "measure": "guias",
+      "span": 4
+    },
+    {
+      "id": "b_situacao",
+      "type": "bar",
+      "title": "Guias por situação",
+      "field": "status",
+      "measures": [
+        "guias"
+      ],
+      "sort": "measure_desc",
+      "limit": 15,
+      "horizontal": true,
+      "labels": true,
+      "span": 4
+    },
+    {
+      "id": "t_prestadores",
+      "type": "table",
+      "title": "Prestadores com maior volume de guias",
+      "fields": [
+        "prestador_nome",
+        "prestador_classificacao",
+        "prestador_uf"
+      ],
+      "measures": [
+        "guias",
+        "guias_liberadas",
+        "taxa_liberacao",
+        "valor_autorizado"
+      ],
+      "where": "prestadores.prestador_nome <> 'Não informado na guia'",
+      "limit": 50,
+      "span": 12
+    },
+    {
+      "id": "k_emissao_guias",
+      "type": "kpi",
+      "title": "Guias",
+      "measure": "guias",
+      "detail": {
+        "text": "emitidas no período"
+      },
+      "span": 2
+    },
+    {
+      "id": "k_clientes",
+      "type": "kpi",
+      "title": "Clientes",
+      "measure": "beneficiarios_locais",
+      "detail": {
+        "text": "da carteira local"
+      },
+      "span": 2
+    },
+    {
+      "id": "k_clientes_intercambio",
+      "type": "kpi",
+      "title": "Clientes intercâmbio",
+      "measure": "beneficiarios_intercambio",
+      "detail": {
+        "text": "de outras cooperativas"
+      },
+      "span": 2
+    },
+    {
+      "id": "k_emissao_autorizado",
+      "type": "kpi",
+      "title": "R$ autorizado (status: liberado)",
+      "measure": "valor_autorizado",
+      "span": 3
+    },
+    {
+      "id": "k_emissao_recuperar",
+      "type": "kpi",
+      "title": "R$ a recuperar (status: liberado)",
+      "measure": "valor_coparticipacao",
+      "span": 3
+    },
+    {
+      "id": "b_emissao_mes",
+      "type": "bar",
+      "title": "Evolução de emissão de guias",
+      "field": "mes",
+      "measures": [
+        "guias"
+      ],
+      "sort": "field",
+      "labels": true,
+      "span": 7
+    },
+    {
+      "id": "d_regime",
+      "type": "donut",
+      "title": "Guias por caráter de atendimento",
+      "field": "regime",
+      "measure": "guias",
+      "span": 5
+    },
+    {
+      "id": "t_status",
+      "type": "table",
+      "title": "Detalhamento de processamento: guia por situação",
+      "fields": [
+        "status"
+      ],
+      "measures": [
+        "guias",
+        "beneficiarios_locais",
+        "beneficiarios_intercambio",
+        "valor_autorizado",
+        "valor_coparticipacao"
+      ],
+      "limit": 20,
+      "total": true,
+      "span": 12
+    }
+  ],
+  "analyses": [
+    {
+      "id": "indicadores",
+      "title": "Indicadores estratégicos",
+      "description": "Regulação das guias: solicitadas, aprovação, negativas, prazo da auditoria e valores. Taxa de aprovação: guias liberadas ÷ solicitadas. Auditoria no prazo: das auditorias concluídas, as que terminaram até a data prevista (não é o prazo regulatório da ANS). Valor evitado: valor dos serviços das guias negadas. A tabela de prestadores deixa de fora as guias sem executante informado.",
+      "visuals": [
+        "k_solicitadas",
+        "k_taxa_aprovacao",
+        "k_taxa_negativa",
+        "k_auditoria_prazo",
+        "k_valor_autorizado",
+        "k_valor_evitado",
+        "b_evolucao_mes",
+        "b_tipo_atendimento",
+        "l_taxa_aprovacao",
+        "d_liberacao",
+        "b_situacao",
+        "t_prestadores"
+      ]
+    },
+    {
+      "id": "emissao",
+      "title": "Emissão de guias",
+      "description": "Volume de emissão, clientes atendidos e valores. Cliente local é da carteira da própria cooperativa; de intercâmbio, de outra cooperativa. R$ autorizado soma os serviços das guias liberadas; R$ a recuperar é o valor cobrado da cooperativa de origem nas guias liberadas de intercâmbio.",
+      "visuals": [
+        "k_emissao_guias",
+        "k_clientes",
+        "k_clientes_intercambio",
+        "k_emissao_autorizado",
+        "k_emissao_recuperar",
+        "b_emissao_mes",
+        "d_regime",
+        "t_status"
+      ]
+    }
+  ],
+  "summary": [
+    {
+      "title": "Gerenciamento de guias",
+      "analyses": [
+        "indicadores",
+        "emissao"
+      ]
+    }
+  ],
+  "filterLayout": "inline",
+  "filterDefaults": {
+    "ano": "mais recente"
+  }
+}

@@ -33,7 +33,7 @@ O motor trabalha com um **esquema em estrela**:
 
 - **Uma tabela fato:** a de grão mais fino, que alimenta as medidas.
 - **Dimensões:** cadastros que descrevem a fato (cliente, produto, filial, conta). Cada uma tem uma chave única e sem vazios.
-- **Relacionamentos:** sempre da fato para a dimensão, por uma coluna de cada lado. Dimensão ligada a outra dimensão não existe: junte as duas num arquivo só.
+- **Relacionamentos:** da fato para a dimensão, por uma coluna de cada lado. Uma dimensão pode ligar outra já ligada antes (fato → `d_candidato` → `d_partido`), na ordem dos relacionamentos.
 
 Regras do contrato:
 
@@ -49,7 +49,7 @@ Regras do contrato:
 
 Se os dados não estão nesse formato, **prepare-os** e guarde o que fez: junte tabelas, limpe grafias, crie a coluna rateada, derive a chave. Faça isso com um script na pasta de trabalho, gerando um Parquet por tabela com o nome da tabela (`vendas.parquet`, `clientes.parquet`). Quem for carregar os próximos períodos precisa conseguir repetir o preparo: descreva-o no dicionário.
 
-Duas fatos (por exemplo vendas e metas) viram dois dashboards, ou então a segunda é somada antes e entra como colunas da primeira, se o grão permitir.
+Um molde pode ter mais de uma fato (cada visual escolhe a sua com `fact`; veja "Mais de uma fato" em `visuais.md`). Mas uma medida lê uma fato só: se a conta mistura as duas (realizado ÷ meta), some a segunda antes e leve-a como colunas da primeira, se o grão permitir.
 
 ## 3. Escrever o dicionário
 

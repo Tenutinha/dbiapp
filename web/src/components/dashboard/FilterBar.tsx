@@ -13,6 +13,41 @@ export interface FilterBarProps {
   filters: Filter[];
   /** Items picked in the visuals (cross-filtering), shown as removable chips. */
   cross?: { visualId: string; fieldId: string; label: string; visualTitle: string; values: string[] }[];
+  /** "inline": drop-down boxes in a row at the top of the page (template `filterLayout`); default: the floating panel. */
+  layout?: "floating" | "inline";
+}
+
+/** Value of an inline box when the URL holds several values for its filter (set elsewhere, e.g. an old link). */
+const MANY = " several";
+
+/** Columns of the row of inline boxes, by how many filters there are (static classes for Tailwind). */
+function inlineColumns(n: number): string {
+  if (n <= 1) return "";
+  if (n === 2) return "sm:grid-cols-2";
+  if (n === 3) return "sm:grid-cols-3";
+  if (n === 4) return "sm:grid-cols-2 lg:grid-cols-4";
+  return "sm:grid-cols-3 xl:grid-cols-5";
+}
+
+/** One filter as a labelled drop-down box: one value or all of them ("Todos"). */
+function InlineSelect({ filter, onChange }: { filter: Filter; onChange: (values: string[]) => void }) {
+  const id = `filtro-${filter.fieldId}`;
+  const value = filter.selected.length === 1 ? filter.selected[0] : filter.selected.length > 1 ? MANY : "";
+  return (
+    <div className="min-w-0">
+      <label htmlFor={id} className="mb-1 block truncate text-[11px] font-bold uppercase tracking-wide text-muted">{filter.label}</label>
+      <select
+        id={id}
+        value={value}
+        onChange={(e) => onChange(e.target.value ? [e.target.value] : [])}
+        className="w-full rounded-lg border border-line bg-card px-3 py-2 text-sm text-text outline-none focus:border-brand"
+      >
+        {!filter.single && <option value="">Todos</option>}
+        {filter.selected.length > 1 && <option value={MANY} disabled>{filter.selected.length} selecionados</option>}
+        {filter.values.map((v) => <option key={v} value={v}>{v}</option>)}
+      </select>
+    </div>
+  );
 }
 
 /** Options drawn per filter; the search box reaches the rest. */
@@ -126,7 +161,8 @@ interface Place {
  * not block the page, so the visuals can be watched — and clicked — while filtering. On the page itself
  * there is only what is in use (chosen filters and the items picked in the visuals, each removable).
  */
-export function FilterBar({ filters, cross = [] }: FilterBarProps) {
+export function FilterBar({ filters, cross = [], layout = "floating" }: FilterBarProps) {
+  const inline = layout === "inline";
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -145,9 +181,10 @@ export function FilterBar({ filters, cross = [] }: FilterBarProps) {
   const badgeCount = filters.filter((f) => !f.single && f.selected.length > 0).length + cross.length;
   const [place, setPlace] = useState<Place>({ left: EDGE, host: null });
 
+  // Filters already on the page (inline) leave the header without the icon: it would open nothing.
   useEffect(() => {
-    filterDock.publish({ available: !hidden, count: badgeCount, pending });
-  }, [hidden, badgeCount, pending]);
+    filterDock.publish({ available: !hidden && !inline, count: badgeCount, pending });
+  }, [hidden, inline, badgeCount, pending]);
   // Another dashboard (or none) takes the screen: nothing to open any more.
   useEffect(() => () => {
     filterDock.publish({ available: false, count: 0, pending: false });
@@ -158,7 +195,7 @@ export function FilterBar({ filters, cross = [] }: FilterBarProps) {
   // window's left edge belongs to the summary sidebar, which would cover it.
   useEffect(() => {
     const target = anchor.current;
-    if (hidden || !target) return;
+    if (hidden || inline || !target) return;
     const measure = (): void => {
       const content = Math.round(target.getBoundingClientRect().left);
       // The empty strip beside the dashboard starts after the summary sidebar, when it is on screen.
@@ -180,7 +217,7 @@ export function FilterBar({ filters, cross = [] }: FilterBarProps) {
       window.removeEventListener("scroll", measure);
     };
     // Measured again once the button exists (host) and when its badge changes its width.
-  }, [hidden, place.host, badgeCount]);
+  }, [hidden, inline, place.host, badgeCount]);
 
   useEffect(() => {
     if (!open) return;
@@ -229,6 +266,36 @@ export function FilterBar({ filters, cross = [] }: FilterBarProps) {
       onRemove={() => removePick(c.visualId, c.fieldId)}
     />
   ));
+
+  if (inline) {
+    return (
+      <div className={`mb-6 space-y-3 transition-opacity ${pending ? "opacity-60" : ""}`}>
+        {/* What is selected, always in sight; empty, it says so. */}
+        <div className="card flex flex-wrap items-center gap-2 border-l-4 border-l-brand px-4 py-2.5 text-brand">
+          <FunnelIcon />
+          {activeCount === 0 ? (
+            <span className="text-sm italic text-muted">Nenhuma seleção aplicada</span>
+          ) : (
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 text-text">
+              {chosen.map((f) => (
+                <Chip key={f.fieldId} label={f.label} value={summarize(f.selected)} title={f.selected.join(", ")} onRemove={() => apply(f.fieldId, [])} />
+              ))}
+              {picks}
+            </div>
+          )}
+          {pending && <span className="text-xs text-muted">atualizando…</span>}
+          {activeCount > 0 && (
+            <button type="button" onClick={clearAll} className="ml-auto text-sm text-brand-2 hover:underline">
+              Limpar tudo
+            </button>
+          )}
+        </div>
+        <div className={`grid gap-3 ${inlineColumns(filters.length)}`}>
+          {filters.map((f) => <InlineSelect key={f.fieldId} filter={f} onChange={(values) => apply(f.fieldId, values)} />)}
+        </div>
+      </div>
+    );
+  }
 
   // Outside any animated wrapper when possible: a transform on an ancestor would pin "fixed" to it, not to the screen.
   const floating = place.host ? createPortal(renderFloating(), place.host) : renderFloating();

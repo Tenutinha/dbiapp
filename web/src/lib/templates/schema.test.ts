@@ -41,6 +41,31 @@ describe("templateSchema", () => {
     const tables = sales.tables.map((t) => (t.kind === "dimension" ? { ...t, key: undefined } : t));
     expect(templateSchema.safeParse({ ...sales, tables }).success).toBe(false);
   });
+
+  describe("optional display features", () => {
+    const m = sales.measures[0].id;
+    const withVisual = (v: Record<string, unknown>) => ({ ...sales, visuals: [...sales.visuals, { id: "extra", title: "X", ...v }] });
+
+    it("accepts a KPI detail line with a measure, a text or both", () => {
+      for (const detail of [{ measure: m }, { text: "no mês" }, { measure: m, text: "guias" }]) {
+        expect(templateSchema.safeParse(withVisual({ type: "kpi", measure: m, detail })).success).toBe(true);
+      }
+    });
+
+    it("rejects an empty KPI detail and one that points to an unknown measure", () => {
+      expect(templateSchema.safeParse(withVisual({ type: "kpi", measure: m, detail: {} })).success).toBe(false);
+      const r = templateSchema.safeParse(withVisual({ type: "kpi", measure: m, detail: { measure: "nao_existe" } }));
+      expect(r.success).toBe(false);
+      expect(JSON.stringify(r.error?.issues)).toContain("nao_existe");
+    });
+
+    it("accepts value labels on bars and the inline filter layout", () => {
+      const field = sales.fields[0].id;
+      expect(templateSchema.safeParse(withVisual({ type: "bar", field, measures: [m], labels: true })).success).toBe(true);
+      expect(templateSchema.safeParse({ ...sales, filterLayout: "inline" }).success).toBe(true);
+      expect(templateSchema.safeParse({ ...sales, filterLayout: "sidebar" }).success).toBe(false);
+    });
+  });
 });
 
 describe("statement visual", () => {

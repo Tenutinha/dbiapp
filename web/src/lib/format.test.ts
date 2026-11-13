@@ -18,6 +18,16 @@ describe("formatValue", () => {
     expect(formatValue(250_780_080.08, "currency_exact", true)).toBe("250.780.080,08");
   });
 
+  it("shortens counts only from a million up, and only when the short form of counts is asked", () => {
+    expect(formatValue(2_842_551, "integer")).toBe("2.842.551");
+    // The plain short form stays for money only: cards and axes of the other dashboards do not change.
+    expect(formatValue(2_842_551, "integer", true)).toBe("2.842.551");
+    expect(plain(formatValue(2_842_551, "integer", "counts"))).toBe("2,84 mi");
+    expect(formatValue(842_339, "integer", "counts")).toBe("842.339");
+    expect(plain(formatValue(1_500_000.5, "number", "counts"))).toBe("1,5 mi");
+    expect(plain(formatValue(2_870_000, "currency", "counts"))).toBe("R$ 2,87 mi");
+  });
+
   it("shows a dash for a missing value and leaves text as it is", () => {
     expect(formatValue(null, "currency_exact")).toBe("—");
     expect(formatValue("Tributada", "text")).toBe("Tributada");
