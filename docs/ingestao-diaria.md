@@ -4,7 +4,7 @@ Status: proposta, 2026-11-13. Nada implementado ainda.
 
 ## Objetivo
 
-Cada cliente manda todo dia o Parquet das **tabelas oficiais** do sistema dele. Os arquivos passam pelo nosso tratamento e os dashboards do espaço dele (Vendas, Financeiro, Estoque…) amanhecem atualizados, sem ninguém da DBI subir arquivo à mão.
+Todo dia a **Odeon** exporta, para cada cliente dela, o Parquet das **tabelas oficiais** do ERP. Os arquivos passam pelo nosso tratamento e os dashboards do espaço dele (Vendas, Financeiro, Estoque…) amanhecem atualizados, sem ninguém da DBI subir arquivo à mão.
 
 Hoje o caminho é manual:
 
@@ -17,7 +17,7 @@ O tratamento que o Power BI fazia (Power Query e colunas calculadas) está docum
 ## Visão geral
 
 ```
-ERP do cliente ──(exportação diária, Parquet por tabela)──▶ caixa de entrada do espaço
+ERP (servidor da Odeon) ──(exportação diária, Parquet por tabela, um lote por cliente)──▶ caixa de entrada do espaço
    orgs/<org>/clientes/<cliente>/entrada/<AAAA-MM-DD>/<tabela>.parquet
                                    │  lote fechado (manifesto)
                                    ▼
@@ -58,23 +58,26 @@ Isto substitui os scripts soltos de `dbi-importacoes` por código revisado em PR
 
 ### 3. Caixa de entrada e credencial de envio
 
-O envio é de máquina para máquina, e por isso não muda a regra de que usuário de cliente não sobe dados. A credencial não é um usuário: é uma **chave de envio** que a equipe da organização gera para um espaço.
+Decidido (2026-11-13): **quem exporta é a Odeon**, por todos os clientes dela. O envio é de máquina para máquina e continua valendo a regra de que usuário de cliente não sobe dados. A credencial não é um usuário: é uma **chave de envio da organização**, que o admin da Odeon (ou o admin master) gera na administração.
 
 - **Tabela `feed_keys`.**
-  - Colunas: organização, cliente, pacote, hash da chave (só o hash fica guardado), quem criou, criada em, revogada em e último uso.
+  - Colunas: organização, pacote, clientes permitidos (todos ou uma lista), hash da chave (só o hash fica guardado), quem criou, criada em, revogada em e último uso.
   - A chave aparece uma vez, na criação.
-  - Uma chave só escreve na caixa de entrada do seu espaço. Ela não lê nada.
+  - Uma chave só escreve nas caixas de entrada dos espaços da sua organização. Ela não lê nada.
+- **O cliente vai no lote.** Cada lote nomeia o cliente pelo endereço do espaço (`org_clients.slug`). A API recusa um cliente que não é da organização da chave, que não está na lista permitida ou que não tem dashboard alimentado pelo pacote.
+- **Um lote por cliente.** Os lotes de clientes diferentes são independentes: a falha de um não segura os outros.
 - **API.**
 
   | Chamada | O que faz |
   |---|---|
-  | `POST /api/feed/lotes` | Abre o lote do dia e devolve, para cada tabela, uma URL assinada de envio direto ao GCS. O arquivo não passa pela Vercel, que tem limite de corpo de requisição. |
+  | `POST /api/feed/lotes` | Recebe o cliente e a data, abre o lote e devolve, para cada tabela, uma URL assinada de envio direto ao GCS. O arquivo não passa pela Vercel, que tem limite de corpo de requisição. |
   | `POST /api/feed/lotes/<id>/fechar` | Recebe o manifesto (tabelas e linhas de cada uma) e dispara o processamento. |
   | `GET /api/feed/lotes/<id>` | Devolve o estado e o relatório do lote. |
 
 - **Na prática, para o cliente.**
-  - A Odeon (ou o próprio cliente) agenda no servidor dele um script de exportação: `bcp` ou consulta SQL, depois Parquet e depois as três chamadas acima.
-  - Nós entregamos esse script pronto, em PowerShell e em Python, com a chave lida de variável de ambiente.
+  - A Odeon agenda no servidor dela um script de exportação. Para cada cliente, ele roda a consulta SQL de cada tabela oficial, grava o Parquet e faz as chamadas acima.
+  - Nós entregamos esse script pronto, em PowerShell e em Python, com a chave lida de variável de ambiente. A lista de clientes e a conexão com o banco ficam num arquivo de configuração dela.
+  - Um cliente novo da Odeon entra só com uma linha nessa configuração e o dashboard ativado no espaço dele.
   - Para quem já tem o Parquet na mão, também há um envio pela tela da administração do espaço, só para a equipe da organização.
 - **Proteções.**
   - Limite de tamanho por arquivo e por lote.
@@ -112,7 +115,7 @@ O autor da publicação fica como "envio automático". Hoje fica gravado o usuá
 
 ### 6. Acompanhamento
 
-- **Na administração da organização,** em cada espaço: o último lote, o estado, a data dos dados e o relatório, mais um botão "reprocessar".
+- **Na administração da Odeon,** uma visão de todos os clientes no dia (quem mandou, quem falhou, quem falta) e, em cada espaço: o último lote, o estado, a data dos dados e o relatório, mais um botão "reprocessar".
 - **Aviso por e-mail (Resend) para a equipe de dados da organização quando:**
   - um lote é recusado;
   - um espaço não manda nada até o horário combinado.
@@ -141,7 +144,7 @@ O autor da publicação fica como "envio automático". Hoje fica gravado o usuá
 
 ## Decisões em aberto
 
-1. **Quem exporta:** a Odeon, pelos clientes dela, ou cada cliente? Isso muda se a chave é por espaço (proposta) ou por organização.
+1. ~~**Quem exporta**~~: decidido, a Odeon exporta por todos os clientes. A chave é por organização e o cliente vai no lote.
 2. **Formato do envio:** Parquet obrigatório, ou aceitamos CSV também? A ingestão já lê os dois.
 3. **Horário:** até que hora o lote do dia precisa chegar para o aviso de "não mandou"?
 4. **Tabelas de metas** (`Planejamento_*`): vêm do ERP ou de planilha mantida à parte?
