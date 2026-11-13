@@ -96,15 +96,12 @@ export async function SpaceHome({ org, client, membership, user, searchParams }:
   const anchorsKey = template ? buildOutline(template).map((i) => i.anchor).join("|") : "";
   const next = nextItem(space.toc, access.instanceId);
   const previous = previousItem(space.toc, access.instanceId);
-  const shareLink = access.actions.has("share")
-    ? [{ href: `/${org.slug}/d/${access.instanceId}/compartilhar`, label: "Compartilhar" }]
-    : [];
+  // No "Compartilhar" here: sharing is done by the organization's admins, in the administration.
   const header = (
     <MainHeader
       kicker={client ? `${org.name} · ${client.name}` : org.name}
       meta={`Atualizado em ${formatDateLong(access.publishedAt)}`}
       title={access.name}
-      links={shareLink}
     />
   );
 
