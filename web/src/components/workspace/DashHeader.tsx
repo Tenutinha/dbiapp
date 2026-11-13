@@ -2,6 +2,9 @@
 
 import { useActiveAnchor } from "./active-anchor";
 import { PageScrollbar } from "./PageScrollbar";
+import { useHostSidebarToggle, useSidebar } from "./sidebar-context";
+import { HamburgerIcon } from "./SidebarShell";
+import { SpaceLogo } from "./ThemeScope";
 import { useComing } from "./switching";
 
 export interface HeaderTopic {
@@ -28,9 +31,29 @@ export function DashHeader({ title, topics, updated }: DashHeaderProps) {
   const active = useActiveAnchor(topics.map((t) => t.anchor).join("|"));
   const coming = useComing();
   const topic = coming === null ? (topics.find((t) => t.anchor === active) ?? topics[0]) : undefined;
+  const sidebar = useSidebar();
+  useHostSidebarToggle(sidebar);
+  const collapsed = sidebar?.collapsed === true;
   return (
-    <header className="sticky top-14 z-20 -mx-4 mb-5 bg-header text-on-header shadow-sm sm:-mx-8 lg:top-0 lg:-mx-14">
-      <div className="mx-auto max-w-[1180px] box-content px-4 sm:px-8 lg:px-14">
+    <header className="sticky top-14 z-20 -mx-4 mb-5 flex bg-header text-on-header shadow-sm sm:-mx-8 lg:top-0 lg:-mx-14">
+      {/* Panel collapsed (wide screens): the button that opens it and the space's logo, where the panel had them. */}
+      {collapsed && (
+        <div className="hidden shrink-0 items-center gap-3 self-start py-2.5 pl-4 lg:flex">
+          <button
+            type="button"
+            onClick={sidebar?.expand}
+            aria-expanded={false}
+            aria-controls="space-sidebar"
+            aria-label="Abrir sumário"
+            title="Abrir sumário"
+            className="grid size-8 place-items-center rounded-lg transition hover:bg-on-header/15"
+          >
+            <HamburgerIcon />
+          </button>
+          {sidebar?.logoUrl && <SpaceLogo url={sidebar.logoUrl} className="block max-h-8 max-w-[160px]" />}
+        </div>
+      )}
+      <div className="mx-auto min-w-0 max-w-[1180px] flex-1 box-content px-4 sm:px-8 lg:px-14">
       <div className="flex min-h-12 items-center justify-between gap-4 py-2.5">
         <h1 className="min-w-0 truncate text-[15px] font-semibold leading-snug" aria-busy={coming !== null || undefined}>
           {coming ?? title}
