@@ -10,6 +10,7 @@ import { readParquet } from "../duck/engine";
 import { joinParts, splitParts } from "../storage-parts";
 import type { CrossSelection } from "./cross";
 import { factFilterSql, type FactFilter } from "./fact-filter";
+import { MISSING_LABEL, STATEMENT_LINE } from "./labels";
 
 /** Selected values per filter field id. Empty / missing = no filter. */
 export type FilterSelection = Readonly<Record<string, readonly string[]>>;
@@ -25,6 +26,8 @@ export type TableFiles = Readonly<Record<string, string>>;
 const MAX_FILTER_VALUES = 200;
 /** Enough rows for every Brazilian municipality (5 570) plus the "Exterior" pseudo-area. */
 const MAX_MAP_AREAS = 6000;
+/** A chart of accounts of a few thousand accounts, over a few years of months. */
+export const MAX_STATEMENT_ROWS = 50000;
 
 /** Visuals that run a query (static text does not). */
 export type QueryVisual = Exclude<Visual, { type: "text" }>;
@@ -172,8 +175,7 @@ export function buildWhere(
   return { sql: clauses.length ? `WHERE ${clauses.join(" AND ")}` : "", params };
 }
 
-/** Label shown for facts whose dimension row is missing (orphan keys / NULLs). */
-export const MISSING_LABEL = "(sem cadastro)";
+export { MISSING_LABEL, STATEMENT_LINE };
 
 /** Same expression for charts, filter WHERE and filter options, so every shown value is filterable. */
 function fieldValue(f: Field): string {
@@ -239,6 +241,17 @@ function selectFor(t: Template, visual: QueryVisual, filters: FilterSelection): 
         groupBy: [],
         tail: `${visual.orderBy ? `ORDER BY ${visual.orderBy} ASC ` : ""}LIMIT ${rowsLimit(visual, filters)}`,
       };
+    case "statement": {
+      // One row per line × opening path × column: the page builds the tree, the subtotals and the shares.
+      const fs = [...new Set([...visual.levels, visual.column])].map(field);
+      const groups = visual.lines.filter((l) => l.where !== undefined);
+      const line = `CASE ${groups.map((l) => `WHEN (${l.where}) THEN '${l.id}'`).join(" ")} END AS ${STATEMENT_LINE}`;
+      return {
+        select: [line, ...fs.map(fieldCol), measureCol(measure(visual.measure))],
+        groupBy: ["1", ...fs.map((_, i) => String(i + 2))],
+        tail: `ORDER BY ${fs.map((f) => f.id).join(", ")} LIMIT ${MAX_STATEMENT_ROWS}`,
+      };
+    }
     case "map": {
       const fs = [field(visual.field), ...(visual.labelField ? [field(visual.labelField)] : [])];
       return {

@@ -197,3 +197,22 @@ describe("more than one fact", () => {
     expect(bad({})).toBe(true);
   });
 });
+
+describe("statement query", () => {
+  const statement = templateSchema.parse({ ...t, visuals: [{
+  id: "dre", type: "statement", title: "DRE", measure: "lucro", column: "mes", yearly: true, levels: ["categoria", "produto"], base: "liquida",
+  lines: [
+    { id: "bruta", label: "Bruta", icon: "receita", where: "dim_produto.categoria = 'A'" },
+    { id: "custos", label: "Custos", where: "dim_produto.categoria = 'B'" },
+    { id: "liquida", label: "Líquida", sum: ["bruta", "custos"] },
+  ],
+}] }).visuals[0] as QueryVisual;
+
+  it("names each row's line by the first group line it matches and groups by levels and column", () => {
+    const q = buildVisualQuery(t, files, statement, {});
+    expect(q.sql).toContain("CASE WHEN (dim_produto.categoria = 'A') THEN 'bruta' WHEN (dim_produto.categoria = 'B') THEN 'custos' END AS statement_line");
+    expect(q.sql).not.toContain("'liquida'");
+    expect(q.sql).toMatch(/AS categoria, .* AS produto, .* AS mes, .* AS lucro/);
+    expect(q.sql).toContain("GROUP BY 1, 2, 3, 4");
+  });
+});

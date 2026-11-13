@@ -266,6 +266,12 @@ function ancestorAt(accounts: ReadonlyMap<string, Account>, start: Account, leve
   return null;
 }
 
+/** The account right above (COD_CTA_SUP) as "code - name", or null at the top of the chart. */
+function syntheticOf(accounts: ReadonlyMap<string, Account>, account: Account): string | null {
+  const sup = account.sup ? accounts.get(account.sup) : undefined;
+  return sup ? `${sup.cod} - ${sup.nome}` : null;
+}
+
 /** Reads one file record by record: `push` gives the fact row, `dimensions` what the file said about them. */
 export class SpedReader {
   private readonly id: SpedIdentity & { uf: string | null };
@@ -408,6 +414,7 @@ export class SpedReader {
         grupo_1: ancestorAt(this.accounts, a, 1),
         grupo_2: ancestorAt(this.accounts, a, 2),
         grupo_3: ancestorAt(this.accounts, a, 3),
+        conta_sintetica: syntheticOf(this.accounts, a),
         cod_cta_ref: a.ref,
       }));
       return { empresas: this.establishments, plano_contas: plano };

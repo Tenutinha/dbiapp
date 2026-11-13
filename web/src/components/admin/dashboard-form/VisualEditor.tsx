@@ -13,6 +13,7 @@ export const VISUAL_TYPE_LABEL: Record<VisualType, string> = {
   map: "Mapa",
   rows: "Listagem (dados originais)",
   text: "Texto explicativo",
+  statement: "Demonstrativo (DRE)",
 };
 const TYPE_OPTIONS = (Object.keys(VISUAL_TYPE_LABEL) as VisualType[]).map((v) => ({ value: v, label: VISUAL_TYPE_LABEL[v] }));
 const SPAN_OPTIONS = [
@@ -150,6 +151,13 @@ function TypeSettings({ visual: v, onChange, fields, measures }: TypeSettingsPro
             <NumberInput value={v.limit} min={1} max={1000} onChange={(limit) => onChange({ ...v, limit })} />
           </Field>
         </div>
+      );
+    case "statement":
+      return (
+        <p className="text-xs text-muted">
+          Demonstrativo com {v.lines.length} linha(s) e abertura por {v.levels.length} nível(is). As linhas, as somas e os ícones
+          são definidos no JSON do dashboard.
+        </p>
       );
     case "text":
       return (

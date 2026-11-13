@@ -117,6 +117,25 @@ const base = {
   hideEmpty: z.boolean().optional(),
 };
 
+/** Icons a statement line can carry (drawn by the dashboard, see StatementIcon). */
+export const STATEMENT_ICONS = [
+  "receita", "deducao", "custo", "lucro", "despesa", "operacional", "financeiro", "outros", "participacao", "imposto", "resultado",
+] as const;
+
+/**
+ * A line of a statement: a group of rows (`where`, which a row matches when no earlier group line took it)
+ * or a subtotal (`sum` of earlier lines). Exactly one of the two.
+ */
+const statementLineSchema = z.object({
+  id: ident,
+  label: z.string().min(1).max(80),
+  icon: z.enum(STATEMENT_ICONS).optional(),
+  where: sqlExpr.optional(),
+  sum: z.array(ident).min(1).optional(),
+  /** Left out while no row falls in it (e.g. a catch-all for what no other line took). */
+  optional: z.boolean().optional(),
+});
+
 const visualSchema = z.discriminatedUnion("type", [
   z.object({ ...base, type: z.literal("kpi"), measure: ident }),
   z.object({
@@ -216,6 +235,26 @@ const visualSchema = z.discriminatedUnion("type", [
     ...base,
     type: z.literal("text"),
     body: z.string().min(1).max(4000),
+  }),
+  /**
+   * A financial statement (e.g. an income statement): fixed lines in order, each either a group of rows
+   * (its `where`) the reader opens down the `levels`, or the sum of other lines (a subtotal). Periods go
+   * in columns, each value with its share of the `base` line.
+   */
+  z.object({
+    ...base,
+    type: z.literal("statement"),
+    /** Additive measure, positive for what adds to the result (revenues) and negative for what takes from it. */
+    measure: ident,
+    /** Field whose values are the columns (e.g. the month "2026-03"); sorted ascending. */
+    column: ident,
+    /** The column values start with the year ("2026-03"): the reader can add them up by year. */
+    yearly: z.boolean().optional(),
+    /** Fields the group lines open into, in order (e.g. group → synthetic account → account). */
+    levels: z.array(ident).min(1).max(5),
+    lines: z.array(statementLineSchema).min(1).max(40),
+    /** Line every value is shown as a share of (e.g. net revenue). */
+    base: ident.optional(),
   }),
 ]);
 
@@ -376,9 +415,29 @@ export const templateSchema = z
         }
         v.tooltip.forEach((m) => needMeasure(m, where));
       }
+      if (v.type === "statement") {
+        needMeasure(v.measure, where);
+        needField(v.column, where);
+        v.levels.forEach((f) => needField(f, `${where} levels`));
+        checkStatementLines(v.lines, v.base, (m) => issue(`${where}: ${m}`));
+      }
     }
     checkAnalyses(t, issue);
   });
+
+/** Each line is a group or a subtotal; a subtotal adds up earlier lines only; the base is a line. */
+function checkStatementLines(
+  lines: readonly z.infer<typeof statementLineSchema>[], base: string | undefined, issue: (message: string) => void,
+): void {
+  const seen = new Set<string>();
+  for (const line of lines) {
+    if (seen.has(line.id)) issue(`line "${line.id}" is repeated`);
+    if ((line.where === undefined) === (line.sum === undefined)) issue(`line "${line.id}" needs either where or sum`);
+    for (const id of line.sum ?? []) if (!seen.has(id)) issue(`line "${line.id}" sums "${id}", which is not an earlier line`);
+    seen.add(line.id);
+  }
+  if (base !== undefined && !seen.has(base)) issue(`base "${base}" is not one of its lines`);
+}
 
 type AnalysesInput = {
   visuals: { id: string }[];
@@ -440,5 +499,8 @@ export type Measure = Template["measures"][number];
 export type Field = Template["fields"][number];
 export type ValueFormat = Measure["format"];
 export type MapVisual = Extract<Visual, { type: "map" }>;
+export type StatementVisual = Extract<Visual, { type: "statement" }>;
+export type StatementLine = StatementVisual["lines"][number];
+export type StatementIcon = (typeof STATEMENT_ICONS)[number];
 export type Analysis = Template["analyses"][number];
 export type SummaryGroup = Template["summary"][number];

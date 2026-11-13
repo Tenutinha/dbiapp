@@ -111,8 +111,10 @@ describe("ECD", () => {
     const { dimensions } = readSpedFile(k, ECD);
     expect(dimensions.plano_contas.find((c) => c.cod_cta === "1.1.01")).toMatchObject({
       natureza: "01", nivel: "3", grupo_1: "ATIVO", grupo_2: "ATIVO CIRCULANTE", grupo_3: "CAIXA", cod_cta_ref: "1.01.01.01.01",
+      conta_sintetica: "1.1 - ATIVO CIRCULANTE",
     });
-    expect(dimensions.plano_contas.find((c) => c.cod_cta === "3.01")).toMatchObject({ grupo_1: "RESULTADO", grupo_2: "RECEITA DE VENDAS", grupo_3: null });
+    expect(dimensions.plano_contas.find((c) => c.cod_cta === "3.01")).toMatchObject({ grupo_1: "RESULTADO", grupo_2: "RECEITA DE VENDAS", grupo_3: null, conta_sintetica: "3 - RESULTADO" });
+    expect(dimensions.plano_contas.find((c) => c.cod_cta === "1")).toMatchObject({ conta_sintetica: null });
   });
 });
 
