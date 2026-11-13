@@ -80,7 +80,11 @@ const relationshipSchema = z.object({
 
 /** "text" is for measures that return a label (e.g. the winning candidate), shown as-is. */
 /** "currency_exact" keeps the cents and leaves the symbol out (65.769,15), for values checked against a document. */
-const formatSchema = z.enum(["currency", "currency_exact", "number", "integer", "percent", "text"]);
+/** "date": a day the measure gives as text "AAAA-MM-DD" (it then sorts right), shown as 31/12/2026. */
+const formatSchema = z.enum(["currency", "currency_exact", "number", "integer", "percent", "text", "date"]);
+
+/** Colour of a text value in a table: "ok" (green), "warn" (amber), "danger" (red). */
+export const TONES = ["ok", "warn", "danger"] as const;
 
 export const TEMPLATE_ORIGINS = ["powerbi", "qlikview", "web"] as const;
 export type TemplateOrigin = (typeof TEMPLATE_ORIGINS)[number];
@@ -94,6 +98,8 @@ const measureSchema = z.object({
   label: z.string(),
   sql: sqlExpr,
   format: formatSchema,
+  /** Text measures: the colour of some of their values in tables (e.g. { "Ruptura": "danger" }). */
+  tones: z.record(z.string().min(1).max(80), z.enum(TONES)).optional(),
 });
 
 const span = z.number().int().min(1).max(12).default(12);
@@ -154,6 +160,13 @@ const visualSchema = z.discriminatedUnion("type", [
      * grouped on (e.g. a document's key, written only on its header record while its items are added up).
      */
     leading: z.array(ident).optional(),
+    /**
+     * Fields the reader can put in the first column instead of the first of `fields` (which must be one of
+     * them), like a Power BI field parameter: a picker on the card swaps the dimension the table groups by.
+     */
+    fieldChoices: z.array(ident).min(2).max(12).optional(),
+    /** Measures that only make sense by some fields (e.g. a classification by product): left out by the others. */
+    onlyWith: z.record(ident, z.array(ident).min(1)).optional(),
   }),
   z.object({
     ...base,
@@ -341,6 +354,17 @@ export const templateSchema = z
         v.fields.forEach((f) => needField(f, where));
         if (v.orderBy && !v.measures.includes(v.orderBy)) issue(`${where}: orderBy must be one of its measures`);
         for (const m of v.leading ?? []) if (!v.measures.includes(m)) issue(`${where}: leading "${m}" must be one of its measures`);
+        if (v.fieldChoices) {
+          v.fieldChoices.forEach((f) => needField(f, `${where} fieldChoices`));
+          if (!v.fieldChoices.includes(v.fields[0])) issue(`${where}: fieldChoices must include its first field "${v.fields[0]}"`);
+          if (new Set(v.fieldChoices).size !== v.fieldChoices.length) issue(`${where}: fieldChoices repeats a field`);
+          const rest = v.fields.slice(1).filter((f) => v.fieldChoices?.includes(f));
+          if (rest.length > 0) issue(`${where}: fieldChoices cannot include its other fields (${rest.join(", ")})`);
+        }
+        for (const [m, fs] of Object.entries(v.onlyWith ?? {})) {
+          if (!v.measures.includes(m)) issue(`${where}: onlyWith "${m}" must be one of its measures`);
+          fs.forEach((f) => needField(f, `${where} onlyWith`));
+        }
       }
       if (v.type === "map") {
         needField(v.field, where);

@@ -11,6 +11,8 @@ export interface ScrollColumn {
   cellClass: string;
   /** Show the full value on hover (cells that truncate). */
   hint?: boolean;
+  /** Extra class of a cell by its text (e.g. the colour of "Ruptura" in a classification). */
+  tones?: Readonly<Record<string, string>>;
 }
 
 /** Raw value of a cell, used to sort (numbers sort as numbers, not as their formatted text). */
@@ -172,7 +174,7 @@ export function ScrollTable({ columns, rows, sortValues, dense = false, note, se
                 }`}
               >
                 {columns.map((c, j) => (
-                  <td key={j} className={`${pad} ${c.cellClass}`} title={c.hint ? r[j] : undefined}>{r[j]}</td>
+                  <td key={j} className={`${pad} ${c.cellClass} ${c.tones?.[r[j]] ?? ""}`} title={c.hint ? r[j] : undefined}>{r[j]}</td>
                 ))}
               </tr>
             );
