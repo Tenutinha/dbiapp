@@ -27,7 +27,8 @@ const MAX_QUERY = 80;
 
 /** Only recreated Power BI / QlikView dashboards go to the showcase; bespoke web ones stay private. */
 export function isVitrineTemplate(t: Template): t is Template & { origin: VitrineOrigin } {
-  return (VITRINE_ORIGINS as readonly string[]).includes(t.origin);
+  // Internal dashboards (restricted to the platform administrator) never go to the public showcase.
+  return (VITRINE_ORIGINS as readonly string[]).includes(t.origin) && t.access === undefined;
 }
 
 export function toVitrineItem(t: Template & { origin: VitrineOrigin }): VitrineItem {

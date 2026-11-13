@@ -11,6 +11,7 @@
  * restricted to a conservative character set as defence in depth.
  */
 import { z } from "zod";
+import { DASHBOARD_ACCESS } from "../permissions";
 
 const IDENT = /^[a-z_][a-z0-9_]*$/;
 const ident = z.string().regex(IDENT, "use snake_case identifiers");
@@ -312,6 +313,11 @@ export const templateSchema = z
      * (tabs above, the summary or a swipe), like the pages of a report. Default: one below the other.
      */
     paging: z.enum(["vertical", "horizontal"]).optional(),
+    /**
+     * Extra restriction on every dashboard built on this template. "platformAdmin": only the platform
+     * administrator sees it (internal dashboards); it never shows in the showcase nor opens through links.
+     */
+    access: z.enum(DASHBOARD_ACCESS).optional(),
   })
   .superRefine((t, ctx) => {
     const issue = (message: string): void => ctx.addIssue({ code: "custom", message });

@@ -1,6 +1,7 @@
 import "server-only";
 import type { TransactionSql } from "postgres";
 import { sql } from "../db";
+import { restrictedInstance } from "./restricted";
 import { supersededParts } from "../storage-parts";
 
 export interface DatasetFile {
@@ -220,6 +221,6 @@ export async function resolveShareToken(token: string): Promise<SharedInstance |
     JOIN organizations o ON o.id = i.organization_id
     LEFT JOIN dataset_versions v ON v.id = i.active_version_id
     WHERE s.token = ${token} AND s.revoked_at IS NULL AND (s.expires_at IS NULL OR s.expires_at > now())
-      AND i.archived_at IS NULL`;
+      AND i.archived_at IS NULL AND NOT ${restrictedInstance()}`;
   return row ?? null;
 }

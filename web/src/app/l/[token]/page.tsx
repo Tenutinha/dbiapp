@@ -53,7 +53,8 @@ export default async function PublicSpacePage({ params, searchParams }: Props) {
   const filters = Object.fromEntries(Object.entries(query).filter(([k]) => k !== DASHBOARD_PARAM));
 
   const [layout, branding] = await Promise.all([
-    getSpaceLayout({ orgId: link.orgId, clientId: link.clientId }),
+    // Guests of a link never see dashboards restricted to the platform administrator.
+    getSpaceLayout({ orgId: link.orgId, clientId: link.clientId }, { platformAdmin: false }),
     getEffectiveBranding(link.orgId, link.clientId),
   ]);
   // The panel of fiscal data shows the space's files and actions: never through a public link.

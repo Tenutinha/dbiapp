@@ -1,5 +1,6 @@
 import "server-only";
 import { sql } from "../db";
+import { restrictedInstance } from "./restricted";
 import type { SpaceLinkRow } from "../space-link";
 
 /**
@@ -145,6 +146,6 @@ export async function getPublishedDashboard(orgId: string, clientId: string | nu
     FROM dashboard_instances i
     JOIN dataset_versions v ON v.id = i.active_version_id
     WHERE i.id = ${instanceId} AND i.organization_id = ${orgId}
-      AND i.client_id IS NOT DISTINCT FROM ${clientId} AND i.archived_at IS NULL`;
+      AND i.client_id IS NOT DISTINCT FROM ${clientId} AND i.archived_at IS NULL AND NOT ${restrictedInstance()}`;
   return row ?? null;
 }

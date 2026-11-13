@@ -19,20 +19,24 @@ export async function saveLayoutAction(orgSlug: string, clientSlug: string | nul
   try {
     const org = slug.parse(orgSlug);
     let space: { orgId: string; clientId: string | null };
+    let platformAdmin: boolean;
     if (clientSlug) {
       const ctx = await getClientContext(org, slug.parse(clientSlug));
       requireAction(ctx.actions, "admin");
       space = { orgId: ctx.org.id, clientId: ctx.client.id };
+      platformAdmin = ctx.membership.platformAdmin === true;
     } else {
       const ctx = await getOrgContext(org);
       requireAction(orgActions(ctx), "admin");
       space = { orgId: ctx.org.id, clientId: null };
+      platformAdmin = ctx.membership.platformAdmin === true;
     }
 
     const parsed = layoutDraftSchema.safeParse(draft);
     if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? "Dados inválidos." };
 
-    const current = await getSpaceLayout(space);
+    // Dashboards this admin cannot see stay where they are (planLayout keeps the ones left out).
+    const current = await getSpaceLayout(space, { platformAdmin });
     const plan = planLayout(parsed.data, {
       sectionIds: current.sections.map((s) => s.id),
       dashboardIds: current.dashboards.map((d) => d.id),
