@@ -7,8 +7,12 @@ export interface StripPage {
   title: string;
 }
 
-/** Classes of a section that is one page of the strip (pb: room for the cards' shadow, which the strip clips). */
-export const PAGE_CLASS = "w-full shrink-0 snap-start snap-always scroll-mt-24 px-px pb-2";
+/**
+ * Classes of a section that is one page of the strip (pb: room for the cards' shadow, which the strip clips).
+ * At least a screen tall (less the dashboard header): a page with few visuals does not leave the next
+ * dashboard in sight before the reader scrolls.
+ */
+export const PAGE_CLASS = "w-full shrink-0 snap-start snap-always scroll-mt-24 px-px pb-2 min-h-[calc(100dvh-6rem)]";
 
 /** Marks the strip, so the sidebar can tell which page is in it (DashboardOutline). */
 export const STRIP_ATTR = "data-page-strip";

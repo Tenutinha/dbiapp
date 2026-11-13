@@ -52,8 +52,11 @@ export async function DashboardBody({
   return (
     <>
       <DashboardLanding anchorsKey={anchorsKey} />
-      {before}
-      <DashboardView template={dashboard.template} data={dashboard.data} totalRows={dashboard.totalRows} later={later} notesInSummary />
+      {/* At least a screen tall (less the header): the next dashboard only shows once the reader scrolls. */}
+      <div className="min-h-[calc(100dvh-6rem)]">
+        {before}
+        <DashboardView template={dashboard.template} data={dashboard.data} totalRows={dashboard.totalRows} later={later} notesInSummary />
+      </div>
       {after}
     </>
   );
