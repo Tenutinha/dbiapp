@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import type { SummaryItem } from "@/lib/templates/sections";
+import { useActiveAnchor } from "./active-anchor";
 import { HoverNote } from "./HoverNote";
 import { rememberJump } from "./jump";
 import { LinkSwitchSignal, useOpenDashboard } from "./switching";
@@ -18,50 +19,6 @@ interface DashboardOutlineProps {
   href?: string;
 }
 
-/** Section whose top already passed this line (px from the viewport top) counts as the current one. */
-const CURRENT_LINE = 140;
-
-/**
- * The analysis on screen: the last section whose top has scrolled above the current line. Sections turned
- * sideways (pages of a strip, see PageStrip) count only while on screen, i.e. with their middle inside the strip.
- */
-function currentAnchor(anchors: readonly string[]): string | null {
-  let current: string | null = null;
-  for (const anchor of anchors) {
-    const el = document.getElementById(anchor);
-    if (!el) continue;
-    const box = el.getBoundingClientRect();
-    const strip = el.parentElement?.hasAttribute("data-page-strip") ? el.parentElement.getBoundingClientRect() : null;
-    const middle = (box.left + box.right) / 2;
-    const inside = strip === null || (middle >= strip.left && middle <= strip.right);
-    if (box.top <= CURRENT_LINE && inside) current = anchor;
-  }
-  return current;
-}
-
-/** Follows the page scroll while this is the open dashboard; null otherwise. */
-function useActiveAnchor(key: string, enabled: boolean): string | null {
-  const [active, setActive] = useState<string | null>(null);
-  useEffect(() => {
-    if (!enabled) return;
-    const list = key.split("|");
-    let frame = 0;
-    const update = (): void => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => setActive(currentAnchor(list)));
-    };
-    update();
-    // Captured: a strip of pages scrolls by itself, sideways, and its scroll does not bubble.
-    window.addEventListener("scroll", update, { passive: true, capture: true });
-    window.addEventListener("resize", update);
-    return () => {
-      cancelAnimationFrame(frame);
-      window.removeEventListener("scroll", update, { capture: true });
-      window.removeEventListener("resize", update);
-    };
-  }, [key, enabled]);
-  return enabled ? active : null;
-}
 
 const ROW = "relative flex w-full items-baseline justify-between gap-3 py-[3px] pl-7 pr-1 text-left text-[13px] leading-snug transition-colors";
 const tone = (on: boolean): string => (on ? "font-medium text-ink" : "text-ink-muted hover:text-ink");

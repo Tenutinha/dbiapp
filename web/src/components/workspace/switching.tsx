@@ -4,6 +4,7 @@ import { useLinkStatus } from "next/link";
 import { useRouter } from "next/navigation";
 import { startTransition, useEffect, useState, useTransition } from "react";
 import { DashboardSkeleton } from "@/components/dashboard/DashboardSkeleton";
+import { DASH_HEADER_CLASS } from "./DashHeader";
 import { selectDashboardAction } from "./view-actions";
 
 /**
@@ -136,8 +137,8 @@ export function DashboardSwitch({ children }: { children: React.ReactNode }) {
     <>
       {name !== null && (
         <div className="dash-enter">
-          <header className="pt-5 lg:pt-6">
-            <h1 className="sr-only">{name}</h1>
+          <header className={DASH_HEADER_CLASS}>
+            <h1 className="min-w-0 truncate text-[15px] font-semibold leading-snug">{name}</h1>
           </header>
           <DashboardSkeleton />
         </div>
