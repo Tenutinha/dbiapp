@@ -242,6 +242,20 @@ body {
 }
 .dbi-nav-progress { width: 0; animation: dbi-nav-progress 8s cubic-bezier(0.1, 0.7, 0.2, 1) forwards; box-shadow: 0 0 10px var(--color-brand); }
 
+/* Thin bar along the top edge of a dashboard card while its numbers load (CardProgress): a short stretch sliding across. */
+@keyframes dbi-card-progress {
+  from { transform: translateX(-110%); }
+  to { transform: translateX(310%); }
+}
+.dbi-card-progress {
+  background: color-mix(in srgb, var(--color-brand) 55%, transparent);
+  animation: dbi-card-progress 1.5s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  /* No movement: the whole edge stays faintly lit instead. */
+  .dbi-card-progress { animation: none; width: 100%; opacity: 0.5; }
+}
+
 /* Small spinner (loading states inside buttons and rows). */
 @keyframes dbi-spin { to { transform: rotate(360deg); } }
 .dbi-spin { animation: dbi-spin 0.7s linear infinite; }
