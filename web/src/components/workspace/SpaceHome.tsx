@@ -97,10 +97,16 @@ export async function SpaceHome({ org, client, membership, user, searchParams }:
   if (isFiscalPanel(access.templateId)) {
     const { outlines, notes } = await loadOutlines(space.toc);
     return (
-      <Workspace space={space} currentId={access.instanceId} userName={user.name} outlines={outlines} notes={notes}>
+      <Workspace
+        space={space}
+        currentId={access.instanceId}
+        userName={user.name}
+        outlines={outlines}
+        notes={notes}
+        top={<DashHeader title={access.name} topics={[]} />}
+      >
         <DashboardArrival dashboardId={access.instanceId} />
         <div key={access.instanceId} className="dash-enter">
-          <ScreenTitle title={access.name} />
           <Suspense fallback={<FiscalPanelFallback />}>
             <FiscalPanelBody org={org} client={client} canManage={access.actions.has("manageData")} />
           </Suspense>
