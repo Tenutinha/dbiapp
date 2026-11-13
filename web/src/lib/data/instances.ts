@@ -140,3 +140,25 @@ export async function setDataFilter(instanceId: string, filter: readonly unknown
     throw err;
   }
 }
+
+/** A dashboard of one space, built on one of the given models (the panel of fiscal data lists the fiscal ones). */
+export interface SpaceDashboardRow {
+  id: string;
+  name: string;
+  templateId: string;
+  activeVersionId: string | null;
+  publishedAt: Date | null;
+  draftId: string | null;
+}
+
+export async function listSpaceDashboards(orgId: string, clientId: string | null, templateIds: readonly string[]): Promise<SpaceDashboardRow[]> {
+  if (templateIds.length === 0) return [];
+  const space = clientId === null ? sql`i.client_id IS NULL` : sql`i.client_id = ${clientId}`;
+  return sql<SpaceDashboardRow[]>`
+    SELECT i.id, i.name, i.template_id AS "templateId", i.active_version_id AS "activeVersionId", v.published_at AS "publishedAt",
+           (SELECT d.id FROM dataset_versions d WHERE d.instance_id = i.id AND d.status = 'draft' LIMIT 1) AS "draftId"
+    FROM dashboard_instances i
+    LEFT JOIN dataset_versions v ON v.id = i.active_version_id
+    WHERE i.organization_id = ${orgId} AND ${space} AND i.archived_at IS NULL AND i.template_id = ANY(${templateIds as string[]}::text[])
+    ORDER BY i.position, i.created_at`;
+}

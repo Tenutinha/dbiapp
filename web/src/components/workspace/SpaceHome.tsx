@@ -1,4 +1,6 @@
 import { Suspense } from "react";
+import { FiscalPanelBody, FiscalPanelFallback } from "@/components/fiscal-panel/FiscalPanelBody";
+import { isFiscalPanel } from "@/lib/fiscal/panel";
 import { requireInstance, type ClientRef, type InstanceAccess, type OrgRef } from "@/lib/access";
 import { AccessError, type CurrentUser } from "@/lib/auth";
 import { firstItem, nextItem, previousItem, type TocGroup } from "@/lib/layout/toc";
@@ -89,6 +91,28 @@ export async function SpaceHome({ org, client, membership, user, searchParams }:
   const access = chosen ?? (first ? await openable(first.id, org, client) : null);
   if (!access?.activeVersionId) {
     return <Workspace space={space} currentId={null} userName={user.name}>{null}</Workspace>;
+  }
+
+  // The panel of fiscal data has no visuals: it draws the space's fiscal files and tables itself.
+  if (isFiscalPanel(access.templateId)) {
+    const { outlines, notes } = await loadOutlines(space.toc);
+    return (
+      <Workspace
+        space={space}
+        currentId={access.instanceId}
+        userName={user.name}
+        outlines={outlines}
+        notes={notes}
+        top={<DashHeader title={access.name} topics={[]} />}
+      >
+        <DashboardArrival dashboardId={access.instanceId} />
+        <div key={access.instanceId} className="dash-enter">
+          <Suspense fallback={<FiscalPanelFallback />}>
+            <FiscalPanelBody org={org} client={client} canManage={access.actions.has("manageData")} />
+          </Suspense>
+        </div>
+      </Workspace>
+    );
   }
 
   // Only what the frame of the page needs is awaited here; the data arrives inside the Suspense below.

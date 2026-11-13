@@ -43,8 +43,10 @@ vi.mock("./datasets", async () => {
 });
 
 const { fiscalImporterFor } = await import("../fiscal/importers");
+const { partsFolderId } = await import("../fiscal/parts-plan");
+const { SPED_READER_VERSION } = await import("../fiscal/sped-kinds");
 const { templateSchema } = await import("../templates/schema");
-const { rebuildSpedFromParts } = await import("./fiscal-parts");
+const { assembleSpedFromParts, readSpedFile, rebuildSpedFromParts, spedFilesOverview, spedPartsState } = await import("./fiscal-parts");
 
 const template = templateSchema.parse(JSON.parse(await readFile(path.join(process.cwd(), "fiscal-templates", "efd-contribuicoes.json"), "utf8")));
 const importer = fiscalImporterFor("efd-contribuicoes");
@@ -55,6 +57,7 @@ const access = {
 } as never;
 const CNPJ = "11222333000181";
 const raw = (periodo: string): string => `orgs/acme/clientes/cliente/fiscal/efd-contribuicoes/${CNPJ}/${periodo}/PISCOFINS.txt`;
+const partsRoot = path.join(root, "orgs/acme/clientes/cliente/dashboards/efd-contribuicoes-3f9a2c1b/partes");
 const partsOf = (periodo: string): string[] => {
   try {
     return readdirSync(path.join(root, "orgs/acme/clientes/cliente/dashboards/efd-contribuicoes-3f9a2c1b/partes", CNPJ, periodo));
@@ -145,6 +148,52 @@ describe("rebuildSpedFromParts", () => {
     const result = await rebuildSpedFromParts(access, importer, template, [jan, broken]);
     expect(result).toMatchObject({ ok: true, files: 1, read: 1 });
     expect(result.skipped).toHaveLength(1);
-    expect(partsOf("2025-03")).toEqual([]);
+    // Only the failure record stays in its folder, so the panel can say why until the file changes.
+    expect(partsOf("2025-03")).toHaveLength(1);
+    expect(readdirSync(path.join(partsRoot, CNPJ, "2025-03", partsOf("2025-03")[0]))).toEqual(["erro.json"]);
+    const overview = await spedFilesOverview(access, [jan, broken]);
+    expect([...overview.ready]).toEqual([jan.key]);
+    expect(overview.failures.get(broken.key)?.error).toBeTruthy();
+  }, 120_000);
+});
+
+describe("one file at a time (the panel)", () => {
+  it("reads file by file, resumes after an interruption, then puts the tables together without reading", async () => {
+    const jan = await put("2025-01", monthOf("01"), "2026-11-10T10:00:00.000Z");
+    const feb = await put("2025-02", monthOf("02"), "2026-11-10T10:00:00.000Z");
+
+    expect(await readSpedFile(access, importer, template, jan)).toEqual({ ok: true, rows: 20 });
+    // Nothing to put together while February is missing.
+    await expect(assembleSpedFromParts(access, importer, template, [jan, feb])).rejects.toThrow(/1 arquivo/);
+
+    // February's read was interrupted: parts without the marker. Reading it again starts from an empty folder.
+    const id = partsOf("2025-01")[0];
+    const febFolder = path.join(partsRoot, CNPJ, "2025-02", partsFolderId(feb, SPED_READER_VERSION));
+    await mkdir(febFolder, { recursive: true });
+    await writeFile(path.join(febFolder, "registros.parquet"), "partial");
+    // And a leftover of a file that is gone.
+    await mkdir(path.join(partsRoot, CNPJ, "2025-02", "0000000000000000"), { recursive: true });
+    await writeFile(path.join(partsRoot, CNPJ, "2025-02", "0000000000000000", "registros.parquet"), "old");
+    expect((await spedPartsState(access, importer, template, [jan, feb])).plan.read).toEqual([feb]);
+    expect((await spedFilesOverview(access, [jan, feb])).ready).toEqual(new Set([jan.key]));
+    expect(await readSpedFile(access, importer, template, feb)).toEqual({ ok: true, rows: 20 });
+
+    const built = await assembleSpedFromParts(access, importer, template, [jan, feb]);
+    expect(built).toMatchObject({ ok: true, files: 2, read: 0, reused: 2, skipped: [] });
+    expect([rows("bloco_a_servicos"), rows("registros"), rows("participantes")]).toEqual([12, 20, 1]);
+    // The interrupted folder that matched no file went; each month keeps one folder.
+    expect(partsOf("2025-01")).toEqual([id]);
+    expect(partsOf("2025-02")).toEqual([partsFolderId(feb, SPED_READER_VERSION)]);
+    expect(built.lineage?.tables.find((t) => t.table === "participantes")?.sources).toHaveLength(2);
+  }, 120_000);
+
+  it("puts the tables together leaving out the files that failed", async () => {
+    const jan = await put("2025-01", monthOf("01"), "2026-11-10T10:00:00.000Z");
+    const broken = await put("2025-03", Buffer.from("isto não é um SPED\n"), "2026-11-10T10:00:00.000Z");
+    await readSpedFile(access, importer, template, jan);
+    expect(await readSpedFile(access, importer, template, broken)).toMatchObject({ ok: false });
+    const built = await assembleSpedFromParts(access, importer, template, [jan, broken]);
+    expect(built).toMatchObject({ ok: true, files: 1 });
+    expect(built.skipped.map((s) => s.path)).toEqual(["clientes/cliente/fiscal/efd-contribuicoes/11222333000181/2025-03/PISCOFINS.txt"]);
   }, 120_000);
 });

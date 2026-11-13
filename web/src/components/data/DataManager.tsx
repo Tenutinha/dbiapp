@@ -1,5 +1,6 @@
 import type { InstanceAccess } from "@/lib/access";
 import { getDraft, listFiles, type DatasetFile } from "@/lib/data/repository";
+import { isFiscalPanel } from "@/lib/fiscal/panel";
 import { formatBytes } from "@/lib/format";
 import { requireTemplate } from "@/lib/services/datasets";
 import { fiscalImporter, listFiscalPeriods, type FiscalPeriod } from "@/lib/services/fiscal";
@@ -41,6 +42,14 @@ function statusFor(table: string, draft: DatasetFile[], active: DatasetFile[]): 
  * Uploads and imports call router.refresh(), so whichever page hosts it re-renders with the new status.
  */
 export async function DataManager({ access }: { access: InstanceAccess }) {
+  if (isFiscalPanel(access.templateId)) {
+    return (
+      <p className="card p-5 text-sm text-muted">
+        O painel de dados fiscais não recebe arquivos: ele mostra os arquivos e as tabelas dos dashboards fiscais deste espaço.{" "}
+        <a href={`/${access.org.slug}/d/${access.instanceId}`} className="font-semibold text-brand-2 hover:underline">Abrir o painel</a>.
+      </p>
+    );
+  }
   const canUpload = access.actions.has("manageData");
   const fiscal = fiscalImporter(access);
   // Everything at once (database and storage), not one after the other: this is what the modal waits for.
