@@ -18,7 +18,7 @@ export interface FilterBarProps {
 /** Options drawn per filter; the search box reaches the rest. */
 const MAX_OPTIONS = 200;
 
-/** One filter of the side panel: its values as a searchable list, always in sight (no dropdown). */
+/** One filter of the side panel: closed at first (its name and what is chosen), opening into a searchable list. */
 function FilterSection({ filter, onChange }: { filter: Filter; onChange: (values: string[]) => void }) {
   const [query, setQuery] = useState("");
   const visible = filter.values.filter((v) => v.toLowerCase().includes(query.toLowerCase())).slice(0, MAX_OPTIONS);
@@ -29,7 +29,7 @@ function FilterSection({ filter, onChange }: { filter: Filter; onChange: (values
   const active = !filter.single && filter.selected.length > 0;
 
   return (
-    <details open className="group border-b border-line last:border-0">
+    <details className="group border-b border-line last:border-0">
       <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-medium hover:bg-text/5 [&::-webkit-details-marker]:hidden">
         <span aria-hidden className="text-[10px] text-muted transition-transform group-open:rotate-90">▶</span>
         <span className="min-w-0 flex-1 truncate">{filter.label}</span>
