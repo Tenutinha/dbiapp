@@ -118,7 +118,19 @@ const base = {
 };
 
 const visualSchema = z.discriminatedUnion("type", [
-  z.object({ ...base, type: z.literal("kpi"), measure: ident }),
+  z.object({
+    ...base,
+    type: z.literal("kpi"),
+    measure: ident,
+    /**
+     * A line under the value that gives it context: another measure ("20.953" + "guias liberadas"), a text
+     * alone ("Economia da regulação"), or both.
+     */
+    detail: z
+      .object({ measure: ident.optional(), text: z.string().min(1).max(80).optional() })
+      .refine((d) => d.measure !== undefined || d.text !== undefined, { message: "detail needs a measure or a text" })
+      .optional(),
+  }),
   z.object({
     ...base,
     type: z.enum(["bar", "line"]),
@@ -127,6 +139,8 @@ const visualSchema = z.discriminatedUnion("type", [
     sort: z.enum(["field", "measure_desc"]).default("field"),
     limit: z.number().int().min(1).max(1000).default(100),
     horizontal: z.boolean().default(false),
+    /** Writes each value next to its bar or point (short form: "10,5 mil"). */
+    labels: z.boolean().optional(),
   }),
   z.object({
     ...base,
@@ -273,6 +287,11 @@ export const templateSchema = z
      * (tabs above, the summary or a swipe), like the pages of a report. Default: one below the other.
      */
     paging: z.enum(["vertical", "horizontal"]).optional(),
+    /**
+     * "inline": the filters are drop-down boxes in a row at the top of the page, one value each (or all), under
+     * a bar with what is selected. Default ("floating"): the "Filtros" button in the corner, with many values per filter.
+     */
+    filterLayout: z.enum(["floating", "inline"]).optional(),
   })
   .superRefine((t, ctx) => {
     const issue = (message: string): void => ctx.addIssue({ code: "custom", message });
@@ -348,6 +367,7 @@ export const templateSchema = z
       const where = `visual ${v.id}`;
       if (v.fact !== undefined && tables.get(v.fact)?.kind !== "fact") issue(`${where}: "${v.fact}" is not a fact table`);
       if (v.type === "kpi" || v.type === "donut") needMeasure(v.measure, where);
+      if (v.type === "kpi" && v.detail?.measure !== undefined) needMeasure(v.detail.measure, `${where} detail`);
       if (v.type === "bar" || v.type === "line" || v.type === "donut") needField(v.field, where);
       if (v.type === "bar" || v.type === "line" || v.type === "table") v.measures.forEach((m) => needMeasure(m, where));
       if (v.type === "table") {

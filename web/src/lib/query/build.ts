@@ -202,8 +202,11 @@ function selectFor(t: Template, visual: QueryVisual, filters: FilterSelection): 
   const measure = (id: string): Measure => lookup(t.measures, id, "measure");
 
   switch (visual.type) {
-    case "kpi":
-      return { select: [measureCol(measure(visual.measure))], groupBy: [], tail: "" };
+    case "kpi": {
+      // The detail measure comes in the same query (one scan), unless it is the main one.
+      const ids = [visual.measure, ...(visual.detail?.measure && visual.detail.measure !== visual.measure ? [visual.detail.measure] : [])];
+      return { select: ids.map((id) => measureCol(measure(id))), groupBy: [], tail: "" };
+    }
     case "bar":
     case "line": {
       const f = field(visual.field);

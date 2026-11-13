@@ -8,6 +8,8 @@ const currencyCompact = new Intl.NumberFormat("pt-BR", {
 });
 const number = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 });
 const integer = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 0 });
+/** "2,84 mi": counts of millions and up where space is short (cards, chart axes). */
+const numberCompact = new Intl.NumberFormat("pt-BR", { notation: "compact", maximumFractionDigits: 2 });
 const percent = new Intl.NumberFormat("pt-BR", { style: "percent", maximumFractionDigits: 1 });
 
 export function formatValue(value: unknown, format: ValueFormat, compact = false): string {
@@ -25,9 +27,9 @@ export function formatValue(value: unknown, format: ValueFormat, compact = false
     case "percent":
       return percent.format(n);
     case "integer":
-      return integer.format(n);
+      return compact && Math.abs(n) >= 1_000_000 ? numberCompact.format(n) : integer.format(n);
     default:
-      return number.format(n);
+      return compact && Math.abs(n) >= 1_000_000 ? numberCompact.format(n) : number.format(n);
   }
 }
 

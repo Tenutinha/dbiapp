@@ -36,6 +36,13 @@ describe("buildVisualQuery", () => {
     expect(filtered.params).toEqual(["Sul"]);
   });
 
+  it("computes the measure of a KPI's detail line in the same query", () => {
+    const other = t.measures.find((m) => m.id !== "receita")!;
+    const kpi = buildVisualQuery(t, files, { ...visual("k_receita"), detail: { measure: other.id, text: "x" } } as QueryVisual, {});
+    expect(kpi.sql).toContain(`${other.sql} AS ${other.id}`);
+    expect(kpi.sql).not.toContain("GROUP BY");
+  });
+
   it("adds the visual's own condition to the screen filters, and can skip some of them", () => {
     const own = { ...visual("k_receita"), where: "fato_vendas.quantidade > 1" };
     expect(buildVisualQuery(t, files, own, {}).sql).toContain("WHERE (fato_vendas.quantidade > 1)");

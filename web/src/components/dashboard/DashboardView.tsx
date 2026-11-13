@@ -64,16 +64,26 @@ function VisualBody({ template, result }: { template: Template; result: VisualRe
       const value = rows[0]?.[m.id];
       // Millions and up use the short form ("R$ 2,87 bi") so the card never overflows.
       const compact = Math.abs(Number(value ?? 0)) >= 1_000_000;
+      const detail = visual.detail;
+      const dm = detail?.measure ? measure(detail.measure) : null;
+      const detailText = [dm ? formatValue(rows[0]?.[dm.id], dm.format) : "", detail?.text ?? ""].filter(Boolean).join(" ");
       return (
-        <p className="mt-1 truncate text-3xl font-extrabold tracking-tight" title={formatValue(value, m.format)}>
-          {formatValue(value, m.format, compact)}
-        </p>
+        // The number shrinks with a narrow card (six in a row) instead of being cut off.
+        <div className="@container">
+          <p className="mt-1 truncate text-[clamp(1.125rem,13cqw,1.875rem)] font-extrabold tracking-tight" title={formatValue(value, m.format)}>
+            {formatValue(value, m.format, compact)}
+          </p>
+          {detailText && <p className="mt-1 truncate text-xs text-muted" title={detailText}>{detailText}</p>}
+        </div>
       );
     }
     case "bar":
     case "line":
       return (
-        <Chart visualId={visual.id} type={visual.type} fieldId={visual.field} measures={visual.measures.map(measure)} rows={rows} horizontal={visual.horizontal} />
+        <Chart
+          visualId={visual.id} type={visual.type} fieldId={visual.field} measures={visual.measures.map(measure)} rows={rows}
+          horizontal={visual.horizontal} labels={visual.labels}
+        />
       );
     case "map": {
       const all: Record<string, MapMeasure> = Object.fromEntries(template.measures.map((m) => [m.id, measure(m.id)]));
@@ -251,7 +261,7 @@ export function DashboardView({ template, data, totalRows, later, notesInSummary
   });
   return (
     <>
-      <FilterBar filters={data.filters} cross={data.cross} />
+      <FilterBar filters={data.filters} cross={data.cross} layout={template.filterLayout} />
       <VisualGrid template={template} results={loose} />
       {sideways ? <PageStrip pages={shown.map((s) => ({ anchor: s.anchor, title: s.analysis.title }))} tabs={!notesInSummary}>{body}</PageStrip> : body}
       <p className="mt-6 text-right font-mono text-xs text-muted">

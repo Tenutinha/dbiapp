@@ -18,6 +18,13 @@ describe("formatValue", () => {
     expect(formatValue(250_780_080.08, "currency_exact", true)).toBe("250.780.080,08");
   });
 
+  it("shortens counts only from a million up, and only when asked", () => {
+    expect(formatValue(2_842_551, "integer")).toBe("2.842.551");
+    expect(plain(formatValue(2_842_551, "integer", true))).toBe("2,84 mi");
+    expect(formatValue(842_339, "integer", true)).toBe("842.339");
+    expect(plain(formatValue(1_500_000.5, "number", true))).toBe("1,5 mi");
+  });
+
   it("shows a dash for a missing value and leaves text as it is", () => {
     expect(formatValue(null, "currency_exact")).toBe("—");
     expect(formatValue("Tributada", "text")).toBe("Tributada");

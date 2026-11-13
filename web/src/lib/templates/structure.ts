@@ -33,7 +33,7 @@ export function visualRefs(v: Visual): { fields: string[]; measures: string[]; s
   const where = v.where ? [v.where] : [];
   switch (v.type) {
     case "kpi":
-      return { fields: [], measures: [v.measure], sql: where };
+      return { fields: [], measures: [v.measure, ...(v.detail?.measure ? [v.detail.measure] : [])], sql: where };
     case "bar":
     case "line":
       return { fields: [v.field], measures: v.measures, sql: where };
