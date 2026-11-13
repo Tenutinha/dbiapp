@@ -11,11 +11,14 @@ describe("resolveTheme", () => {
   });
 
   it("client overrides only what it sets; the rest comes from the organization", () => {
-    const org = { primaryColor: "#0055ff", secondaryColor: "#ff9900", sidebarColor: null, appearance: "light" as const, backgroundColor: "#eef2ff" };
-    const client = { primaryColor: "#cc0000", secondaryColor: null, sidebarColor: null, appearance: null, backgroundColor: null };
+    const org = {
+      primaryColor: "#0055ff", secondaryColor: "#ff9900", sidebarColor: null, appearance: "light" as const, backgroundColor: "#eef2ff",
+      headerColor: "#3f4ad8",
+    };
+    const client = { primaryColor: "#cc0000", secondaryColor: null, sidebarColor: null, appearance: null, backgroundColor: null, headerColor: null };
     expect(resolveTheme(client, org)).toEqual({
       primaryColor: "#cc0000", secondaryColor: "#ff9900", sidebarColor: DEFAULT_THEME.sidebarColor, appearance: "light",
-      backgroundColor: "#eef2ff",
+      backgroundColor: "#eef2ff", headerColor: "#3f4ad8",
     });
   });
 });
@@ -73,6 +76,25 @@ describe("dashboard background colour", () => {
   it("is validated like the other colours", () => {
     expect(brandingInputSchema.safeParse({ ...EMPTY_BRANDING, backgroundColor: "url(x)" }).success).toBe(false);
     expect(brandingInputSchema.parse({ ...EMPTY_BRANDING, backgroundColor: "#ABCDEF" }).backgroundColor).toBe("#abcdef");
+  });
+});
+
+describe("dashboard header colour", () => {
+  it("takes the colour of the cards and their text by default", () => {
+    const v = themeCssVars(DEFAULT_THEME);
+    expect(v["--color-header"]).toBe(v["--color-card"]);
+    expect(v["--color-on-header"]).toBe(v["--color-text"]);
+  });
+
+  it.each(["#3f4ad8", "#ffffff", "#ffd400", "#111827"])("keeps its text readable on %s", (header) => {
+    const v = themeCssVars({ ...DEFAULT_THEME, headerColor: header });
+    expect(v["--color-header"]).toBe(header);
+    expect(contrastRatio(header, v["--color-on-header"])).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("is validated like the other colours", () => {
+    expect(brandingInputSchema.safeParse({ ...EMPTY_BRANDING, headerColor: "blue" }).success).toBe(false);
+    expect(brandingInputSchema.parse({ ...EMPTY_BRANDING, headerColor: "#3F4AD8" }).headerColor).toBe("#3f4ad8");
   });
 });
 

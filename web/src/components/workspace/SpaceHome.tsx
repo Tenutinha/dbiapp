@@ -14,7 +14,8 @@ import { DashboardBody, DashboardFallback } from "./DashboardBody";
 import { NextDashboard } from "./NextDashboard";
 import { DashboardOpener, DashboardSwitch } from "./switching";
 import type { Notes, Outlines } from "./SidebarNav";
-import { ScreenTitle, Workspace } from "./Workspace";
+import { DashHeader } from "./DashHeader";
+import { Workspace } from "./Workspace";
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
@@ -110,12 +111,13 @@ export async function SpaceHome({ org, client, membership, user, searchParams }:
 
   // Only what the frame of the page needs is awaited here; the data arrives inside the Suspense below.
   const [template, { outlines, notes }] = await Promise.all([getTemplate(access.templateId), loadOutlines(space.toc)]);
-  const anchorsKey = template ? buildOutline(template).map((i) => i.anchor).join("|") : "";
+  const topics = template ? buildOutline(template) : [];
+  const anchorsKey = topics.map((i) => i.anchor).join("|");
   const next = nextItem(space.toc, access.instanceId);
   const previous = previousItem(space.toc, access.instanceId);
   // Only the visuals on screen: the sidebar names the space, the open dashboard and when it was updated;
   // sharing is done by the organization's admins, in the administration.
-  const header = <ScreenTitle title={access.name} />;
+  const header = <DashHeader title={access.name} topics={topics} />;
 
   return (
     <Workspace
@@ -124,6 +126,7 @@ export async function SpaceHome({ org, client, membership, user, searchParams }:
       userName={user.name}
       outlines={outlines}
       notes={notes}
+      top={header}
     >
       <DashboardArrival dashboardId={access.instanceId} />
       <DashboardSwitch>
@@ -131,7 +134,7 @@ export async function SpaceHome({ org, client, membership, user, searchParams }:
       <div key={access.instanceId} className="dash-enter">
         <DashboardOpener />
         {/* A new dashboard opens at once as a skeleton; a filter change keeps the page and only its cards wait. */}
-        <Suspense fallback={<DashboardFallback header={header} hasPrevious={previous !== null} />}>
+        <Suspense fallback={<DashboardFallback />}>
           <DashboardBody
             instanceId={access.instanceId}
             templateId={access.templateId}
@@ -141,7 +144,6 @@ export async function SpaceHome({ org, client, membership, user, searchParams }:
             before={
               <>
                 {previous && <NextDashboard direction="previous" id={previous.id} name={previous.name} number={previous.number} />}
-                {header}
               </>
             }
             after={next && <NextDashboard id={next.id} name={next.name} number={next.number} />}

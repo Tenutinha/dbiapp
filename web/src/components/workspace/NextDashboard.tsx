@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
-import { PUSH_START, pushOnWheel, pushProgress, type PushState } from "@/lib/layout/overscroll";
+import { PUSH_IDLE_MS, PUSH_START, pushOnWheel, pushProgress, type PushState } from "@/lib/layout/overscroll";
 import { rememberLandAtEnd } from "./jump";
 import { useSwitchSignal } from "./switching";
 import { selectDashboardAction } from "./view-actions";
@@ -65,6 +65,7 @@ export function NextDashboard({ id, name, number, href, direction = "next" }: Ne
   }, [pending]);
 
   useEffect(() => {
+    let idle: ReturnType<typeof setTimeout> | undefined;
     const onWheel = (e: WheelEvent): void => {
       // Going back is the same push, mirrored: at the top of the page, wheel upwards.
       const input = back ? { atEnd: atPageStart(), deltaY: -e.deltaY } : { atEnd: atPageEnd(), deltaY: e.deltaY };
@@ -72,6 +73,13 @@ export function NextDashboard({ id, name, number, href, direction = "next" }: Ne
       push.current = r.state;
       setProgress(pushProgress(r.state));
       if (r.open) openRef.current();
+      // A pause starts the push over (pushOnWheel): show it, so the line (and the popup above) goes away.
+      clearTimeout(idle);
+      idle = setTimeout(() => {
+        if (opened.current) return;
+        push.current = { ...push.current, pushed: 0 };
+        setProgress(0);
+      }, PUSH_IDLE_MS);
     };
     let startY: number | null = null;
     // On touch screens pulling down at the top belongs to the browser (reload): going back is by tap only.
@@ -94,6 +102,7 @@ export function NextDashboard({ id, name, number, href, direction = "next" }: Ne
     window.addEventListener("touchmove", onTouchMove, { passive: true });
     window.addEventListener("touchend", onTouchEnd, { passive: true });
     return () => {
+      clearTimeout(idle);
       window.removeEventListener("wheel", onWheel);
       window.removeEventListener("touchstart", onTouchStart);
       window.removeEventListener("touchmove", onTouchMove);
@@ -103,21 +112,33 @@ export function NextDashboard({ id, name, number, href, direction = "next" }: Ne
 
   const shown = pending ? 1 : progress;
   if (back) {
+    // A popup centred under the dashboard header, shown only while the reader pushes upwards at the top of
+    // the page (or the keyboard focus reaches it): it takes no room on the page.
+    const visible = shown > 0;
     return (
-      <button type="button" onClick={open} aria-busy={pending || undefined} className="group mb-8 block w-full pt-4 text-left">
-        <span className="flex items-baseline justify-between gap-4">
-          <span className="min-w-0 truncate font-mono text-xs text-muted transition-colors group-hover:text-text">
-            {pending ? "Abrindo…" : "↑ Anterior · continue rolando para cima"} · <span className="text-text/80">{name}</span>
+      <div className="relative h-0">
+        <button
+          type="button"
+          onClick={open}
+          aria-busy={pending || undefined}
+          className={`group absolute left-1/2 top-0 z-30 w-max max-w-[min(90vw,32rem)] -translate-x-1/2 rounded-full border border-line bg-card px-4 py-2 text-left shadow-lg transition-opacity duration-150 focus-visible:opacity-100 ${
+            visible ? "opacity-100" : "pointer-events-none opacity-0"
+          }`}
+        >
+          <span className="flex items-baseline gap-3">
+            <span className="min-w-0 truncate font-mono text-xs text-muted transition-colors group-hover:text-text">
+              {pending ? "Abrindo…" : "↑ Anterior · continue rolando para cima"} · <span className="text-text">{name}</span>
+            </span>
+            <span className="shrink-0 font-mono text-xs tabular-nums text-muted">{String(number).padStart(2, "0")}</span>
           </span>
-          <span className="shrink-0 font-mono text-xs tabular-nums text-muted">{String(number).padStart(2, "0")}</span>
-        </span>
-        <span className="mt-3 block h-px w-full bg-line" aria-hidden>
-          <span
-            className={`block h-px origin-left bg-text transition-transform duration-150 ease-out ${pending ? "animate-pulse" : ""}`}
-            style={{ transform: `scaleX(${shown})` }}
-          />
-        </span>
-      </button>
+          <span className="mt-1.5 block h-0.5 w-full overflow-hidden rounded-full bg-line" aria-hidden>
+            <span
+              className={`block h-full origin-left bg-brand transition-transform duration-150 ease-out ${pending ? "animate-pulse" : ""}`}
+              style={{ transform: `scaleX(${shown})` }}
+            />
+          </span>
+        </button>
+      </div>
     );
   }
   return (

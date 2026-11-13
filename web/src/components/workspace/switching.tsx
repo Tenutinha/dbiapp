@@ -99,7 +99,7 @@ export function useOpenDashboard(name: string, announce = true): { pending: bool
  * dropping it is not: it goes as a transition, so it lands together with the navigation that brings the
  * new dashboard instead of cutting in front of it and leaving the screen empty in between.
  */
-function useComing(): string | null {
+export function useComing(): string | null {
   const [name, setName] = useState<string | null>(null);
   useEffect(() => {
     const sync = (): void => {
@@ -136,9 +136,6 @@ export function DashboardSwitch({ children }: { children: React.ReactNode }) {
     <>
       {name !== null && (
         <div className="dash-enter">
-          <header className="pt-5 lg:pt-6">
-            <h1 className="sr-only">{name}</h1>
-          </header>
           <DashboardSkeleton />
         </div>
       )}
