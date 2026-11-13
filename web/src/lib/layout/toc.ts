@@ -2,6 +2,7 @@
  * Sidebar table of contents and the admin "organizar" draft. Pure — no I/O.
  */
 import { z } from "zod";
+import { formatDateShort } from "../format";
 
 export interface SectionRow {
   id: string;
@@ -172,4 +173,10 @@ export function planLayout(
     placements,
     renames,
   };
+}
+
+/** "Atualizado em …" of the dashboard open in the space, for the top of the sidebar; null when none. */
+export function updatedLine(toc: readonly TocGroup[], currentId: string | null): string | null {
+  const item = toc.flatMap((g) => g.items).find((i) => i.id === currentId);
+  return item?.publishedAt ? `Atualizado em ${formatDateShort(item.publishedAt)}` : null;
 }
