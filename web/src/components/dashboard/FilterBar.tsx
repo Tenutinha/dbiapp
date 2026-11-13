@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { CROSS_PREFIX, crossKey } from "@/lib/query/cross";
 import { useBusySignal } from "./busy";
+import { filterDock, useFilterDock } from "./filter-dock";
 
 type Filter = { fieldId: string; label: string; values: string[]; selected: string[]; single: boolean };
 
@@ -98,7 +99,7 @@ function summarize(values: readonly string[]): string {
   return values.length > 3 ? `${head} +${values.length - 3}` : head;
 }
 
-function FunnelIcon() {
+export function FunnelIcon() {
   return (
     <svg aria-hidden viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
       <path d="M2 3h12l-4.5 5.5V13l-3-1.5V8.5L2 3z" />
@@ -131,12 +132,27 @@ export function FilterBar({ filters, cross = [] }: FilterBarProps) {
   const params = useSearchParams();
   const [pending, start] = useTransition();
   useBusySignal(pending);
-  const [open, setOpen] = useState(false);
+  // Open or closed lives in the dock, so the dashboard header's icon can open the panel too.
+  const dock = useFilterDock();
+  const open = dock.open;
+  const setOpen = (next: boolean | ((was: boolean) => boolean)): void =>
+    filterDock.setOpen(typeof next === "function" ? next(filterDock.get().open) : next);
+  // A dashboard header hosts the icon: no floating button, and the panel opens under the icon.
+  const docked = dock.docks > 0;
   const hidden = filters.length === 0 && cross.length === 0;
   const anchor = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLDivElement>(null);
   const badgeCount = filters.filter((f) => !f.single && f.selected.length > 0).length + cross.length;
   const [place, setPlace] = useState<Place>({ left: EDGE, host: null });
+
+  useEffect(() => {
+    filterDock.publish({ available: !hidden, count: badgeCount, pending });
+  }, [hidden, badgeCount, pending]);
+  // Another dashboard (or none) takes the screen: nothing to open any more.
+  useEffect(() => () => {
+    filterDock.publish({ available: false, count: 0, pending: false });
+    filterDock.setOpen(false);
+  }, []);
 
   // The button floats at the left edge of the dashboard itself, not of the window: in a space, the
   // window's left edge belongs to the summary sidebar, which would cover it.
@@ -247,6 +263,7 @@ export function FilterBar({ filters, cross = [] }: FilterBarProps) {
     return (
     <>
       {/* Always on screen, like the "Inspecionar" button of the opposite corner (same box, mirrored). */}
+      {!docked && (
       <div
         ref={box}
         style={{ left }}
@@ -269,14 +286,21 @@ export function FilterBar({ filters, cross = [] }: FilterBarProps) {
         </button>
         {pending && <span className="pr-1 text-muted">atualizando…</span>}
       </div>
+      )}
 
       {open && (
         <aside
           id="painel-filtros"
           aria-label="Filtros"
           // A floating card right above its button: clear of the top and the bottom of the page, as tall as its filters need.
-          style={{ left }}
-          className="card fixed bottom-28 z-50 flex max-h-[calc(100vh-9rem)] w-80 max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden shadow-2xl"
+          style={
+            docked && dock.anchor
+              ? { top: dock.anchor.bottom + 8, right: Math.max(dock.anchor.right, 12), maxHeight: `calc(100vh - ${Math.round(dock.anchor.bottom) + 24}px)` }
+              : { left }
+          }
+          className={`card fixed z-50 flex w-80 max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden shadow-2xl ${
+            docked && dock.anchor ? "" : "bottom-28 max-h-[calc(100vh-9rem)]"
+          }`}
         >
           <header className="flex items-center gap-2 border-b border-line px-4 py-3">
             <FunnelIcon />
