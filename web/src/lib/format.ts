@@ -48,6 +48,12 @@ export function formatDateLong(d: Date | string | null): string {
   return new Intl.DateTimeFormat("pt-BR", { dateStyle: "long" }).format(new Date(d));
 }
 
+/** "12/11/2026" */
+export function formatDateShort(d: Date | string | null): string {
+  if (!d) return "—";
+  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short" }).format(new Date(d));
+}
+
 export function formatDateTime(d: Date | string | null): string {
   if (!d) return "—";
   return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(d));

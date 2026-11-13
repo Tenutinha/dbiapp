@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { formatDateLong } from "@/lib/format";
 import type { TocGroup } from "@/lib/layout/toc";
 import type { SummaryItem } from "@/lib/templates/sections";
 import { DashboardNavItem } from "./DashboardNavItem";
@@ -66,9 +65,6 @@ export function SidebarNav({ toc, currentId, outlines, notes = {}, hrefFor }: Si
                     <DashboardNavItem id={item.id} name={item.name} number={item.number} active={item.id === currentId} />
                   )}
                 </HoverNote>
-                {item.id === currentId && item.publishedAt && (
-                  <p className="pb-1 pl-3 text-[12px] text-ink-muted">Atualizado em {formatDateLong(item.publishedAt)}</p>
-                )}
                 <DashboardOutline
                   dashboardId={item.id}
                   dashboardName={item.name}

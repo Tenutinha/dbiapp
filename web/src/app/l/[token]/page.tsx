@@ -18,7 +18,7 @@ import { getEffectiveBranding } from "@/lib/data/branding";
 import { getSpaceLayout } from "@/lib/data/layout";
 import { getPublishedDashboard, resolveSpaceLink } from "@/lib/data/space-links";
 import { formatDateTime } from "@/lib/format";
-import { buildToc, nextItem, previousItem } from "@/lib/layout/toc";
+import { buildToc, nextItem, previousItem, updatedLine } from "@/lib/layout/toc";
 import { chooseDashboard, DASHBOARD_PARAM, spaceLinkPath } from "@/lib/space-link";
 import { getTemplate } from "@/lib/templates/registry";
 import { buildOutline } from "@/lib/templates/sections";
@@ -92,6 +92,7 @@ export default async function PublicSpacePage({ params, searchParams }: Props) {
         orgSlug={link.orgSlug}
         clientSlug={link.clientSlug}
         homeHref={home}
+        updated={updatedLine(toc, chosen?.instanceId ?? null)}
         footer={footer}
         content={
           <div className="mx-auto max-w-[1180px]">
