@@ -114,7 +114,7 @@ export function UserMenu({
           role="menu"
           className={`absolute right-0 top-full z-50 pt-2 transition duration-150 ${open ? "visible translate-y-0 opacity-100" : "invisible -translate-y-1 opacity-0"}`}
         >
-          <div className="w-72 rounded-2xl border border-line bg-card-2 p-2 shadow-2xl shadow-black/30">
+          <div className="w-72 rounded-2xl border border-line bg-card-2 p-2 text-text shadow-2xl shadow-black/30">
             <div className="flex items-center gap-3 px-3 py-2">
               <Avatar
                 name={name}

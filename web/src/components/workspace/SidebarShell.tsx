@@ -22,6 +22,8 @@ interface SidebarShellProps {
   /** Where the space's name leads (default: the space's own address; a public link keeps its own). */
   homeHref?: string;
   footer: React.ReactNode;
+  /** The signed-in person's avatar and menu, handed to the dashboard header through the context. */
+  account?: React.ReactNode;
   /** The page itself, shown to the right of the panel (full width when the panel is collapsed). */
   content: React.ReactNode;
   children: React.ReactNode;
@@ -71,7 +73,7 @@ export const ICON_BUTTON = "grid size-9 place-items-center rounded-lg border bor
  * mobile. The summary is organized in the admin (/<org>/admin?sumario=…), not here.
  */
 export function SidebarShell({
-  title, org, spaces, logoUrl, orgSlug, clientSlug, homeHref, footer, content, children,
+  title, org, spaces, logoUrl, orgSlug, clientSlug, homeHref, footer, account = null, content, children,
 }: SidebarShellProps) {
   const [open, setOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
@@ -103,7 +105,10 @@ export function SidebarShell({
     setCollapsed(false);
     saveCollapsed(false);
   }, []);
-  const sidebar = useMemo<SidebarState>(() => ({ collapsed, expand, logoUrl, hostToggle }), [collapsed, expand, logoUrl, hostToggle]);
+  const sidebar = useMemo<SidebarState>(
+    () => ({ collapsed, expand, logoUrl, account, hostToggle }),
+    [collapsed, expand, logoUrl, account, hostToggle],
+  );
   const hosted = hosts > 0;
 
   return (
