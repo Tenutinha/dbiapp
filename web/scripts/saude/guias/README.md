@@ -6,12 +6,29 @@ gerenciador de guias (`F_GERENCIADOR_*` / `D_GERENCIADOR_*`) usa o mesmo molde, 
 
 | Arquivo | O que é |
 |---|---|
+| `atualizar.ts` | Fluxo pelo armazenamento da DBI: baixa a extração da pasta do cliente, roda `preparar.py`, grava as tabelas em `<origem>/preparado/` e (com `--carregar`) o painel importa essa pasta e publica |
 | `preparar.py` | Lê a extração e grava as 4 tabelas do contrato em `<pasta>/dados/` |
 | `template.json` | O molde (contrato, medidas, visuais e seções). **Não** fica em `web/templates/`, porque lá ele entraria publicado no catálogo de todas as organizações; ele é carregado como rascunho por `scripts/pbix/carregar-dashboard.ts` |
 
-## Preparar os dados
+## Atualizar pelo armazenamento (fluxo normal)
 
-Os dados ficam **fora do repositório** (ex.: `%USERPROFILE%\dbi-importacoes\autorizacao-guias\`).
+A extração é enviada pelo "Arquivos" do admin para uma pasta do cliente (ex.: *Araguaia › provimento › guias*,
+no bucket `orgs/unimed/clientes/araguaia/provimento/guias/`). Lá ela aparece como "Precisa de tratamento": não
+bate com o contrato de nenhum molde até passar pela preparação. Em `web/`, com o `.env` do ambiente:
+
+```bash
+node --env-file=<.env> --conditions=react-server --import tsx scripts/saude/guias/atualizar.ts \
+  --org unimed --cliente araguaia --origem provimento/guias --cooperativa 056 --sal-arquivo <arquivo .sal> --carregar
+```
+
+Na primeira vez, cria o molde (rascunho) e o painel no espaço do cliente; nas seguintes, substitui as tabelas
+de `preparado/` e publica de novo. A extração baixada é só cache e a pasta de preparação é temporária: nada
+fica na máquina. Precisa de `uv` (Python 3.11 + DuckDB). Os nomes sem acento que o armazenamento grava
+(`D_GERENCIADOR_BENEFICIARIO.parquet`) são aceitos.
+
+## Preparar os dados à mão
+
+Para conferir uma extração local. Os dados ficam **fora do repositório** (ex.: `%USERPROFILE%\dbi-importacoes\autorizacao-guias\`).
 
 ```bash
 GUIAS_ORIGEM=<pasta da extração> GUIAS_PASTA=<pasta de trabalho> GUIAS_COOPERATIVA=<código, ex.: 056> GUIAS_SAL=<segredo> \

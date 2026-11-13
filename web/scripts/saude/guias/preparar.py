@@ -26,6 +26,7 @@ Uso: GUIAS_ORIGEM=... GUIAS_COOPERATIVA=056 GUIAS_SAL=... \
 """
 import os
 import sys
+import unicodedata
 from pathlib import Path
 
 import duckdb
@@ -50,8 +51,16 @@ COOPERATIVA = env("GUIAS_COOPERATIVA")
 SAL = env("GUIAS_SAL")
 
 
+def sem_acento(nome: str) -> str:
+    return "".join(c for c in unicodedata.normalize("NFKD", nome) if not unicodedata.combining(c))
+
+
 def tabela(nome: str) -> str:
-    return f"read_parquet('{ORIGEM}/{nome}.parquet')"
+    # A cópia no armazenamento da DBI guarda os nomes sem acento (D_GERENCIADOR_BENEFICIARIO.parquet).
+    for candidato in (nome, sem_acento(nome)):
+        if Path(f"{ORIGEM}/{candidato}.parquet").exists():
+            return f"read_parquet('{ORIGEM}/{candidato}.parquet')"
+    sys.exit(f"Arquivo {nome}.parquet (ou {sem_acento(nome)}.parquet) não encontrado em {ORIGEM}.")
 
 
 def sql_str(valor: str) -> str:
