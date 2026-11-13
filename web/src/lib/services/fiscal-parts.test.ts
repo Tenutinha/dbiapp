@@ -44,7 +44,7 @@ vi.mock("./datasets", async () => {
 
 const { fiscalImporterFor } = await import("../fiscal/importers");
 const { templateSchema } = await import("../templates/schema");
-const { rebuildSpedFromParts } = await import("./fiscal-parts");
+const { readConcurrency, rebuildSpedFromParts } = await import("./fiscal-parts");
 
 const template = templateSchema.parse(JSON.parse(await readFile(path.join(process.cwd(), "fiscal-templates", "efd-contribuicoes.json"), "utf8")));
 const importer = fiscalImporterFor("efd-contribuicoes");
@@ -147,4 +147,27 @@ describe("rebuildSpedFromParts", () => {
     expect(result.skipped).toHaveLength(1);
     expect(partsOf("2025-03")).toEqual([]);
   }, 120_000);
+
+  it("reads several files at a time with the same result, telling how far it is", async () => {
+    const months = ["01", "02", "03", "04"];
+    const files = await Promise.all(months.map((m) => put(`2025-${m}`, monthOf(m), "2026-11-10T10:00:00.000Z")));
+    const progress: number[] = [];
+    process.env.DBI_FISCAL_READ_CONCURRENCY = "3";
+    try {
+      const result = await rebuildSpedFromParts(access, importer, template, files, { onProgress: (done) => progress.push(done) });
+      expect(result).toMatchObject({ ok: true, files: 4, read: 4, skipped: [] });
+    } finally {
+      delete process.env.DBI_FISCAL_READ_CONCURRENCY;
+    }
+    expect(progress).toEqual([1, 2, 3, 4]);
+    expect(rows("bloco_a_servicos")).toBe(24);
+    expect(months.map((m) => partsOf(`2025-${m}`).length)).toEqual([1, 1, 1, 1]);
+  }, 120_000);
+});
+
+describe("readConcurrency", () => {
+  it("is one file at a time unless a sensible number is set", () => {
+    expect([readConcurrency(undefined), readConcurrency("0"), readConcurrency("x"), readConcurrency("2.5")]).toEqual([1, 1, 1, 1]);
+    expect([readConcurrency("6"), readConcurrency("99")]).toEqual([6, 16]);
+  });
 });

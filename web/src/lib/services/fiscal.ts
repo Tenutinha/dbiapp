@@ -260,6 +260,8 @@ export interface RebuildOptions {
   only?: "blocks";
   /** SPED: reads every file again, also the ones already read. */
   rereadAll?: boolean;
+  /** SPED: called after each file read (files done, files to read). */
+  onProgress?: (done: number, total: number) => void;
 }
 
 /** NF-e and other documents: every stored file is parsed whole and the tables are gathered in memory. */

@@ -41,6 +41,14 @@ const MARKER = "pronto.json";
 const LINEAGE = "linhagem.json";
 /** Raw bytes one serverless request can read (disk and time are limited there); files already read do not count. */
 const MAX_HOSTED_READ_BYTES = 250 * 1024 ** 2;
+/**
+ * Raw files read at the same time. Reading a file is mostly waiting on the bucket (download, one upload per
+ * table), so a script loading thousands of files sets DBI_FISCAL_READ_CONCURRENCY (e.g. 6); a request reads one at a time.
+ */
+export function readConcurrency(value = process.env.DBI_FISCAL_READ_CONCURRENCY): number {
+  const n = Number(value);
+  return Number.isInteger(n) && n >= 1 ? Math.min(n, 16) : 1;
+}
 
 export interface PartsRebuildResult {
   ok: boolean;
@@ -61,6 +69,8 @@ export interface PartsOptions {
   only?: "blocks";
   /** Reads every file again, even the ones already read. */
   rereadAll?: boolean;
+  /** Called after each file read (or skipped): files done, files to read. */
+  onProgress?: (done: number, total: number) => void;
 }
 
 /** The facts this kind of SPED writes for the template: its main fact and the block facts it declares. */
@@ -238,7 +248,7 @@ export async function rebuildSpedFromParts(
   const skipped: PartsRebuildResult["skipped"] = [];
   const justRead: { file: RawFile; marker: PartsMarker }[] = [];
   try {
-    for (const file of plan.read) {
+    const readOne = async (file: RawFile): Promise<void> => {
       const folder = `${root}${file.cnpj}/${file.periodo}/${partsFolderId(file, SPED_READER_VERSION)}/`;
       const dir = path.join(work, partsFolderId(file, SPED_READER_VERSION));
       await mkdir(dir, { recursive: true });
@@ -251,7 +261,17 @@ export async function rebuildSpedFromParts(
       } finally {
         await rm(dir, { recursive: true, force: true });
       }
-    }
+    };
+    // A few files at a time (see readConcurrency); the order they end in does not matter, `ready` is sorted below.
+    const queue = [...plan.read];
+    let done = 0;
+    await Promise.all(Array.from({ length: Math.min(readConcurrency(), queue.length) }, async () => {
+      for (let file = queue.shift(); file; file = queue.shift()) {
+        await readOne(file);
+        done += 1;
+        if (options.onProgress) options.onProgress(done, plan.read.length);
+      }
+    }));
     // Only now: what was read again replaces its old parts, and deleted files' parts go.
     for (const f of plan.obsolete) await storage.removeFolder(`${root}${f.cnpj}/${f.periodo}/${f.id}/`).catch(() => undefined);
 
