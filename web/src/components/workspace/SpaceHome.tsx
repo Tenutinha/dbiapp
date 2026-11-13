@@ -106,11 +106,15 @@ export async function SpaceHome({ org, client, membership, user, searchParams }:
         top={<DashHeader title={access.name} topics={[]} />}
       >
         <DashboardArrival dashboardId={access.instanceId} />
-        <div key={access.instanceId} className="dash-enter">
-          <Suspense fallback={<FiscalPanelFallback />}>
-            <FiscalPanelBody org={org} client={client} canManage={access.actions.has("manageData")} />
-          </Suspense>
-        </div>
+        {/* Same frame as a dashboard: the summary opens the others through DashboardOpener. */}
+        <DashboardSwitch>
+          <div key={access.instanceId} className="dash-enter">
+            <DashboardOpener />
+            <Suspense fallback={<FiscalPanelFallback />}>
+              <FiscalPanelBody org={org} client={client} canManage={access.actions.has("manageData")} />
+            </Suspense>
+          </div>
+        </DashboardSwitch>
       </Workspace>
     );
   }
