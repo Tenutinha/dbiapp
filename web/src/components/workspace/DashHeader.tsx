@@ -1,6 +1,7 @@
 "use client";
 
 import { useActiveAnchor } from "./active-anchor";
+import { PageScrollbar } from "./PageScrollbar";
 import { useComing } from "./switching";
 
 export interface HeaderTopic {
@@ -29,7 +30,8 @@ export function DashHeader({ title, topics, updated }: DashHeaderProps) {
   const topic = coming === null ? (topics.find((t) => t.anchor === active) ?? topics[0]) : undefined;
   return (
     <header className="sticky top-14 z-20 -mx-4 mb-5 bg-header text-on-header shadow-sm sm:-mx-8 lg:top-0 lg:-mx-14">
-      <div className="mx-auto flex min-h-12 max-w-[1180px] box-content items-center justify-between gap-4 px-4 py-2.5 sm:px-8 lg:px-14">
+      <div className="mx-auto max-w-[1180px] box-content px-4 sm:px-8 lg:px-14">
+      <div className="flex min-h-12 items-center justify-between gap-4 py-2.5">
         <h1 className="min-w-0 truncate text-[15px] font-semibold leading-snug" aria-busy={coming !== null || undefined}>
           {coming ?? title}
           {topic && (
@@ -40,6 +42,9 @@ export function DashHeader({ title, topics, updated }: DashHeaderProps) {
         </h1>
         {/* The date belongs to the open dashboard: left out while another one is on its way. */}
         {updated && coming === null && <p className="shrink-0 text-[12px] opacity-80">{updated}</p>}
+      </div>
+      {/* Pages side by side: their scrollbar lives here, always in sight. */}
+      {coming === null && <PageScrollbar />}
       </div>
     </header>
   );
