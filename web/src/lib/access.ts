@@ -6,7 +6,7 @@ import "server-only";
 import { cache } from "react";
 import { AccessError, getCurrentUser, type CurrentUser } from "./auth";
 import { sql } from "./db";
-import { allowedActions, isMember, type Action, type ClientRole, type Membership, type Role } from "./permissions";
+import { allowedActions, canSeeDashboard, isMember, type Action, type ClientRole, type Membership, type Role } from "./permissions";
 
 export interface OrgRef {
   id: string;
@@ -133,6 +133,8 @@ interface InstanceRow {
   clientId: string | null;
   clientSlug: string | null;
   clientName: string | null;
+  /** The template's extra restriction (template field `access`), if any. */
+  access: string | null;
 }
 
 /**
@@ -146,7 +148,8 @@ export async function requireInstance(instanceId: string, action: Action, orgSlu
     SELECT i.id AS "instanceId", i.template_id AS "templateId", i.name, i.active_version_id AS "activeVersionId",
            i.description, v.published_at AS "publishedAt",
            o.id AS "orgId", o.slug AS "orgSlug", o.name AS "orgName",
-           c.id AS "clientId", c.slug AS "clientSlug", c.name AS "clientName"
+           c.id AS "clientId", c.slug AS "clientSlug", c.name AS "clientName",
+           (SELECT t.definition ->> 'access' FROM dashboard_templates t WHERE t.id = i.template_id) AS access
     FROM dashboard_instances i
     JOIN organizations o ON o.id = i.organization_id
     LEFT JOIN org_clients c ON c.id = i.client_id
@@ -155,6 +158,8 @@ export async function requireInstance(instanceId: string, action: Action, orgSlu
   if (!row || (orgSlug !== undefined && row.orgSlug !== orgSlug)) throw notFound();
 
   const membership = await loadMembership(user.id, row.orgId, user.isPlatformAdmin);
+  // A dashboard restricted to the platform administrator does not exist for anyone else.
+  if (!canSeeDashboard(membership, row.access)) throw notFound();
   const actions = allowedActions(membership, { clientId: row.clientId });
   requireAction(actions, action);
 

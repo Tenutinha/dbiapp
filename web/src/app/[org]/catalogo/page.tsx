@@ -5,6 +5,7 @@ import { Catalog, type ActiveDashboard } from "@/components/DashboardLists";
 import { getClientContext, getOrgContext, orgActions, requireAction } from "@/lib/access";
 import { getSpaceLayout } from "@/lib/data/layout";
 import { guard } from "@/lib/guard";
+import { canSeeDashboard } from "@/lib/permissions";
 import { listTemplates } from "@/lib/templates/registry";
 
 export const dynamic = "force-dynamic";
@@ -36,10 +37,11 @@ export default async function CatalogPage({ params, searchParams }: Props) {
   const { ctx, client } = loaded;
   const backHref = `/${ctx.org.slug}${client ? `/${client.slug}` : ""}`;
   const target = client?.name ?? ctx.org.name;
-  const [templates, layout] = await Promise.all([
+  const [allTemplates, layout] = await Promise.all([
     listTemplates(),
-    getSpaceLayout({ orgId: ctx.org.id, clientId: client?.id ?? null }),
+    getSpaceLayout({ orgId: ctx.org.id, clientId: client?.id ?? null }, { platformAdmin: ctx.membership.platformAdmin === true }),
   ]);
+  const templates = allTemplates.filter((t) => canSeeDashboard(ctx.membership, t.access));
   const active: Record<string, ActiveDashboard> = {};
   for (const d of layout.dashboards) active[d.templateId] ??= { id: d.id, published: d.published };
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { filterVitrine, orgsThatCanAdd, parseVitrineQuery, vitrineAreas, type VitrineItem } from "./vitrine";
+import { filterVitrine, isVitrineTemplate, orgsThatCanAdd, parseVitrineQuery, vitrineAreas, type VitrineItem } from "./vitrine";
+import type { Template } from "./templates/schema";
 
 const items: VitrineItem[] = [
   { id: "vendas", name: "Visão Executiva de Vendas", area: "Comercial", origin: "powerbi", description: "Receita e margem", tables: ["fato_vendas"] },
@@ -62,5 +63,15 @@ describe("orgsThatCanAdd", () => {
 
   it("lets the platform admin add to any organization", () => {
     expect(orgsThatCanAdd(orgs, true)).toHaveLength(4);
+  });
+});
+
+describe("isVitrineTemplate", () => {
+  const base = { origin: "powerbi" } as Template;
+  it("shows catalog templates", () => {
+    expect(isVitrineTemplate(base)).toBe(true);
+  });
+  it("never shows templates restricted to the platform administrator", () => {
+    expect(isVitrineTemplate({ ...base, access: "platformAdmin" })).toBe(false);
   });
 });

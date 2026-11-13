@@ -108,7 +108,7 @@ async function pool<T, R>(items: readonly T[], work: (item: T) => Promise<R>, pa
 
 /** The dashboards of every space of the organization ("" = its own, "clientes/<slug>" = a client's). */
 async function spaceDashboards(ctx: OrgContext): Promise<Map<string, SpaceDashboard[]>> {
-  const [dashboards, clients] = await Promise.all([listOrgDashboards(ctx.org.id), listClients(ctx.org.id)]);
+  const [dashboards, clients] = await Promise.all([listOrgDashboards(ctx.org.id, { platformAdmin: ctx.membership.platformAdmin === true }), listClients(ctx.org.id)]);
   const slugOf = new Map(clients.map((c) => [c.id, c.slug]));
   const templates = new Map(
     await Promise.all([...new Set(dashboards.map((d) => d.templateId))].map(async (id) => [id, (await getCatalogEntry(id))?.template] as const)),

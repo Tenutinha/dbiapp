@@ -81,6 +81,21 @@ export function can(m: Membership, scope: Scope, action: Action): boolean {
   return allowedActions(m, scope).has(action);
 }
 
+/**
+ * Extra restriction a template can put on its dashboards, on top of the space's rules.
+ * "platformAdmin": only the platform administrator (admin master) sees it — not the organization's
+ * staff, not its clients, not guests of a share link, not the public showcase.
+ */
+export const DASHBOARD_ACCESS = ["platformAdmin"] as const;
+export type DashboardAccess = (typeof DASHBOARD_ACCESS)[number];
+
+/** Whether the template's restriction lets this user see its dashboards (no restriction → the space decides). */
+export function canSeeDashboard(m: Pick<Membership, "platformAdmin">, access: DashboardAccess | string | null | undefined): boolean {
+  if (access === null || access === undefined) return true;
+  // An unknown restriction (newer template, older app) closes the dashboard rather than opening it.
+  return access === "platformAdmin" && m.platformAdmin === true;
+}
+
 /** Whether the user belongs to the organization at all (staff or any client). */
 export function isMember(m: Membership): boolean {
   return m.platformAdmin === true || m.orgRole !== null || Object.keys(m.clientRoles).length > 0;

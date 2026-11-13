@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import { canSeeDashboard } from "@/lib/permissions";
 import { getClientContext, getOrgContext, orgActions, requireAction, requireInstance } from "@/lib/access";
 import { AccessError, DEV_USER_COOKIE, devAuthEnabled } from "@/lib/auth";
 import { linkDashboard } from "@/lib/data/instances";
@@ -51,11 +52,13 @@ export async function activateTemplate(formData: FormData): Promise<void> {
   if (input.client) {
     const ctx = await getClientContext(input.org, input.client);
     requireAction(ctx.actions, "manageData");
+    if (!canSeeDashboard(ctx.membership, template.access)) throw new UserFacingError("Este dashboard não está disponível no catálogo.");
     orgId = ctx.org.id;
     clientId = ctx.client.id;
   } else {
     const ctx = await getOrgContext(input.org);
     requireAction(orgActions(ctx), "manageData");
+    if (!canSeeDashboard(ctx.membership, template.access)) throw new UserFacingError("Este dashboard não está disponível no catálogo.");
     orgId = ctx.org.id;
   }
 

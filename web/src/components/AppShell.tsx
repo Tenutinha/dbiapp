@@ -1,18 +1,33 @@
 import Link from "next/link";
 import { getCurrentUser, supabaseAuthEnabled, type CurrentUser } from "@/lib/auth";
 import { avatarUrl } from "@/lib/data/users";
+import { DbiMark } from "./brand/DbiMark";
 import { ThemeToggle } from "./ThemeToggle";
 import { UserMenu, type UserMenuLink } from "./user-menu/UserMenu";
 
-export function Logo() {
-  return (
-    <span className="flex items-center gap-2 text-lg font-extrabold tracking-tight">
-      <span className="grid size-7 place-items-center rounded-lg bg-gradient-to-br from-brand to-brand-2" aria-hidden>
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.8" strokeLinecap="round">
-          <path d="M5 20V10M12 20V4M19 20v-7" />
-        </svg>
+interface LogoProps {
+  /** Shows "Relatórios inteligentes" under the name (entry screens, where there is room). */
+  tagline?: boolean;
+}
+
+export function Logo({ tagline = false }: LogoProps) {
+  if (!tagline) {
+    return (
+      <span className="flex items-center gap-2 text-lg font-extrabold tracking-tight">
+        <DbiMark />
+        DBI
       </span>
-      DBI
+    );
+  }
+  return (
+    <span className="flex items-center gap-3">
+      <DbiMark className="size-11" />
+      <span className="flex flex-col">
+        <span className="text-2xl font-extrabold leading-none tracking-tight">DBI</span>
+        <span className="mt-1 text-[0.625rem] font-medium uppercase leading-none tracking-[0.22em] text-muted">
+          Relatórios inteligentes
+        </span>
+      </span>
     </span>
   );
 }

@@ -23,7 +23,10 @@ export async function SummaryModal({ orgSlug, orgName, space, spaces }: SummaryM
   let loaded;
   try {
     const access = await requireSpaceAction(orgSlug, clientSlug, "admin");
-    const layout = await getSpaceLayout({ orgId: access.space.orgId, clientId: access.space.clientId });
+    const layout = await getSpaceLayout(
+      { orgId: access.space.orgId, clientId: access.space.clientId },
+      { platformAdmin: access.ctx.membership.platformAdmin === true },
+    );
     loaded = { access, toc: buildToc(layout.sections, layout.dashboards, { includeUnpublished: true, includeEmptySections: true }) };
   } catch (err) {
     if (err instanceof AccessError) return null;

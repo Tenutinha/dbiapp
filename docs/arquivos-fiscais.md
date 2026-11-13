@@ -77,6 +77,34 @@ Quem lê o quê: cada visual do molde diz de qual fato lê (`fact`). Sem `fact`,
 Uma fato com `sameAs: "registros"` tem as mesmas colunas e é lida com esse nome, então medidas e filtros
 servem para todas.
 
+### ECD
+
+Uma ECD por empresa e por ano. A `registros` guarda o arquivo inteiro (quase tudo I250, as partidas dos
+lançamentos). As dimensões são `empresas` (0000) e `plano_contas` (I050 com a conta referencial do I051): os
+grupos de nível 1 a 3, a `conta_sintetica` (a conta logo acima, "código - nome") e a `cod_cta_ref`.
+
+**DRE** (seção "Demonstração do resultado"): um visual `statement`, ou seja, um demonstrativo com linhas fixas,
+subtotais, períodos em colunas e abertura até a conta.
+- **O valor de cada conta de resultado num mês** é a variação do saldo no I155. No mês do encerramento, o saldo
+  final já está zerado, então entra o saldo antes do encerramento (I355).
+- **A linha de cada conta** é dada pela conta referencial (I051, plano da Receita, igual para toda empresa):
+  - `3.01.01.01.01`: receita bruta;
+  - `.01.02`: deduções;
+  - `3.01.01.03`: custos;
+  - `.07`: despesas operacionais;
+  - `.09`: outras despesas operacionais;
+  - `.05`: outras receitas operacionais;
+  - `.11`: outras receitas e despesas;
+  - `3.01.05`: participações;
+  - `3.02`: IR e CSLL.
+- **O resultado financeiro** é reconhecido pela referencial (`3.01.01.05.01.05` e `3.01.01.09.01.08`) **ou** pelo
+  nome do grupo no plano da empresa (contém "FINANCEIR"). Isso porque uma empresa pode ligar os juros a outra
+  referencial.
+- **Uma linha "sem classificação"** recolhe o que sobrar, de modo que o lucro líquido sempre bate com o J150. O
+  cartão "Diferença para o J150" compara o resultado com as linhas de detalhe do J150 e deve dar zero.
+- **Linhas e somas** ficam em `dreLines()`, no gerador. O visual (`StatementTable`) monta a árvore em
+  `web/src/lib/statement/tree.ts`.
+
 ### Declarar uma tabela nova
 
 Em `sped-kinds.ts`, `blockFacts`:

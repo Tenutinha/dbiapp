@@ -243,7 +243,8 @@ const DIM_TABLES: Record<string, Json> = {
   plano_contas: { name: "plano_contas", kind: "dimension", description: "Plano de contas (I050) com a conta referencial (I051) e os grupos de nível 1 a 3.", key: "id_cta", columns: [
     { name: "id_cta", type: "text" }, { name: "cod_cta", type: "text" }, { name: "nome", type: "text" }, { name: "natureza", type: "text" },
     { name: "nivel", type: "integer", required: false }, { name: "grupo_1", type: "text", required: false }, { name: "grupo_2", type: "text", required: false },
-    { name: "grupo_3", type: "text", required: false }, { name: "cod_cta_ref", type: "text", required: false }] },
+    { name: "grupo_3", type: "text", required: false }, { name: "conta_sintetica", type: "text", required: false },
+    { name: "cod_cta_ref", type: "text", required: false }] },
 };
 const DIM_LINK: Record<string, string> = { estabelecimentos: "cnpj", participantes: "id_part", itens: "id_item", empresas: "cnpj", plano_contas: "id_cta" };
 
@@ -767,6 +768,39 @@ function efdContrib(): Json {
 
 // ------------------------------------------------------------------ ECD
 
+/**
+ * The income statement (DRE) of the ECD: the result accounts classified by their referential account (I051,
+ * the Receita's chart, the same for every company), the financial ones also by the name of their group in the
+ * company's own chart (a company may tie its interest to another referential account). Each group line takes
+ * what no earlier line took; "outras" catches the rest, so the net result always matches the J150.
+ */
+function dreLines(): { id: string; label: string; icon: string; where?: string; sum?: string[]; optional?: boolean }[] {
+  const ref = "COALESCE(plano_contas.cod_cta_ref, '')";
+  const refIs = (...prefixes: string[]): string => `(${prefixes.map((p) => `${ref} LIKE '${p}%'`).join(" OR ")})`;
+  const named = (word: string): string =>
+    `(${["grupo_2", "grupo_3", "conta_sintetica"].map((c) => `upper(COALESCE(plano_contas.${c}, '')) LIKE '%${word}%'`).join(" OR ")})`;
+  const financial = `((${refIs("3.01.01.05.01.05", "3.01.01.09.01.08")} OR ${named("FINANCEIR")}) AND NOT ${refIs("3.01.05", "3.02")})`;
+  const notFinancial = (cond: string): string => `${cond} AND NOT ${financial}`;
+  return [
+    { id: "receita_bruta", label: "Receita bruta", icon: "receita", where: notFinancial(refIs("3.01.01.01.01")) },
+    { id: "deducoes", label: "(-) Deduções da receita", icon: "deducao", where: notFinancial(refIs("3.01.01.01.02")) },
+    { id: "receita_liquida", label: "Receita líquida", icon: "resultado", sum: ["receita_bruta", "deducoes"] },
+    { id: "custos", label: "(-) Custos das vendas e serviços", icon: "custo", where: notFinancial(refIs("3.01.01.03")) },
+    { id: "lucro_bruto", label: "Lucro bruto", icon: "lucro", sum: ["receita_liquida", "custos"] },
+    { id: "despesas_operacionais", label: "(-) Despesas operacionais", icon: "despesa", where: notFinancial(refIs("3.01.01.07")) },
+    { id: "outras_despesas_operacionais", label: "(-) Outras despesas operacionais", icon: "despesa", where: notFinancial(refIs("3.01.01.09")) },
+    { id: "outras_receitas_operacionais", label: "(+) Outras receitas operacionais", icon: "receita", where: notFinancial(refIs("3.01.01.05")) },
+    { id: "resultado_operacional", label: "Resultado operacional", icon: "operacional", sum: ["lucro_bruto", "despesas_operacionais", "outras_despesas_operacionais", "outras_receitas_operacionais"] },
+    { id: "resultado_financeiro", label: "(±) Resultado financeiro", icon: "financeiro", where: financial },
+    { id: "outros_resultados", label: "(±) Outras receitas e despesas", icon: "outros", where: refIs("3.01.01.11") },
+    { id: "participacoes", label: "(-) Participações", icon: "participacao", where: refIs("3.01.05") },
+    { id: "outras_contas", label: "(±) Contas de resultado sem classificação", icon: "outros", where: `plano_contas.natureza = '04' AND NOT ${refIs("3.02")}`, optional: true },
+    { id: "resultado_antes_ir", label: "Resultado antes do IR e da CSLL", icon: "resultado", sum: ["resultado_operacional", "resultado_financeiro", "outros_resultados", "participacoes", "outras_contas"] },
+    { id: "ir_csll", label: "(-) IR e CSLL", icon: "imposto", where: refIs("3.02") },
+    { id: "lucro_liquido", label: "Lucro líquido", icon: "lucro", sum: ["resultado_antes_ir", "ir_csll"] },
+  ];
+}
+
 function ecd(): Json {
   const k = kindOf("ecd");
   const i155 = isReg("I155");
@@ -785,11 +819,13 @@ function ecd(): Json {
 
   const fields: Field[] = [
     { id: "mes", label: "Mês", sql: `strftime(${F}.periodo, '%Y-%m')` },
+    { id: "ano", label: "Ano", sql: `CAST(year(${F}.periodo) AS VARCHAR)` },
     { id: "empresa", label: "Empresa", sql: "empresas.nome" },
     { id: "natureza", label: "Natureza", sql: "CASE plano_contas.natureza WHEN '01' THEN '1 - Ativo' WHEN '02' THEN '2 - Passivo' WHEN '03' THEN '3 - Patrimônio líquido' WHEN '04' THEN '4 - Resultado' WHEN '05' THEN '5 - Compensação' WHEN '09' THEN '9 - Outras' END" },
     { id: "grupo_1", label: "Grupo (nível 1)", sql: "plano_contas.grupo_1" },
     { id: "grupo_2", label: "Grupo (nível 2)", sql: "plano_contas.grupo_2" },
     { id: "grupo_3", label: "Grupo (nível 3)", sql: "plano_contas.grupo_3" },
+    { id: "conta_sintetica", label: "Conta sintética", sql: "plano_contas.conta_sintetica" },
     { id: "conta", label: "Conta", sql: "concat(plano_contas.cod_cta, ' - ', plano_contas.nome)" },
     { id: "conta_referencial", label: "Conta referencial", sql: "plano_contas.cod_cta_ref" },
     { id: "dia", label: "Dia", sql: `strftime(${F}.dt_doc, '%Y-%m-%d')` },
@@ -815,6 +851,46 @@ function ecd(): Json {
     { id: "partidas_debito", label: "Débitos das partidas", sql: sumWhen(`${i250} AND ${dc} = 'D'`, vlDc), format: "currency" },
     { id: "partidas_credito", label: "Créditos das partidas", sql: sumWhen(`${i250} AND ${dc} = 'C'`, vlDc), format: "currency" },
   ];
+  // DRE: what each result account added to the result in the month, revenues positive. A month's movement is
+  // its change in balance (I155); in the month the accounts are closed their final balance is already zero,
+  // so the balance before closing (I355) stands in for it.
+  const lines = dreLines();
+  const result = "plano_contas.natureza = '04'";
+  const dreValue = (cond?: string): string => {
+    const c = cond ? ` AND (${cond})` : "";
+    return `ROUND(COALESCE(SUM(CASE WHEN ${i155} AND ${result}${c} THEN (${ini}) - (${fin}) END), 0) - `
+      + `COALESCE(SUM(CASE WHEN ${i355} AND ${result}${c} THEN ${signed("I355", "VL_CTA", "IND_DC")} END), 0), 2)`;
+  };
+  const linesOf = (...ids: string[]): string => ids.map((id) => `(${lines.find((l) => l.id === id)?.where ?? "FALSE"})`).join(" OR ");
+  const j150 = isReg("J150");
+  // The J150's own net result: its detail lines (IND_COD_AGL = D) added up, revenues positive.
+  const j150Value = `CASE WHEN ${col(k, "J150", "IND_DC_CTA_FIN")} = 'C' THEN ${num(col(k, "J150", "VL_CTA_FIN"))} ELSE 0 - ${num(col(k, "J150", "VL_CTA_FIN"))} END`;
+  const j150Result = `ROUND(COALESCE(${sumWhen(`${j150} AND ${col(k, "J150", "IND_COD_AGL")} = 'D'`, j150Value)}, 0), 2)`;
+  const dreMeasures: Measure[] = [
+    { id: "valor_dre", label: "Valor", sql: dreValue(), format: "currency" },
+    { id: "receita_liquida_dre", label: "Receita líquida", sql: dreValue(linesOf("receita_bruta", "deducoes")), format: "currency" },
+    { id: "lucro_bruto_dre", label: "Lucro bruto", sql: dreValue(linesOf("receita_bruta", "deducoes", "custos")), format: "currency" },
+    { id: "lucro_liquido_j150", label: "Lucro líquido no J150", sql: j150Result, format: "currency" },
+    { id: "diferenca_j150", label: "Diferença para o J150", sql: `${dreValue()} - ${j150Result}`, format: "currency" },
+  ];
+  const dreRegs = isReg("I155", "I355");
+  const annual = { skipFilters: ["mes", "natureza"] };
+  const dreSection: Section = {
+    id: "dre", title: "Demonstração do resultado (DRE)",
+    description: "Receitas, custos e despesas do período, mês a mês. Cada conta de resultado entra na linha da sua conta referencial (I051); "
+      + "as financeiras também pelo nome do seu grupo no plano de contas. Abra uma linha para descer até o grupo, a conta sintética e a conta analítica. "
+      + "O lucro líquido é conferido com o J150 do arquivo.",
+    visuals: [
+      { ...kpi("k_dre_receita_liquida", "Receita líquida", "receita_liquida_dre", 3, dreRegs), ...annual },
+      { ...kpi("k_dre_lucro_bruto", "Lucro bruto", "lucro_bruto_dre", 3, dreRegs), ...annual },
+      { ...kpi("k_dre_lucro_liquido", "Lucro líquido", "valor_dre", 3, dreRegs), ...annual },
+      { ...kpi("k_dre_diferenca_j150", "Diferença para o J150", "diferenca_j150", 3, isReg("I155", "I355", "J150")), ...annual },
+      {
+        id: "s_dre", type: "statement", title: "DRE gerencial", span: 12, where: `${dreRegs} AND ${result}`, ...annual,
+        measure: "valor_dre", column: "mes", yearly: true, levels: ["grupo_3", "conta_sintetica", "conta"], base: "receita_liquida", lines,
+      },
+    ],
+  };
   const demo = (id: string, reg: string, title: string, names: string[]): Json => ({
     id, type: "rows", title, span: 12, where: isReg(reg), hideEmpty: true, skipFilters: ["mes", "natureza"],
     orderBy: `${F}.arquivo, ${F}.linha`, limit: 500,
@@ -833,6 +909,7 @@ function ecd(): Json {
         { id: "d_passivo", type: "donut", title: "Composição do passivo e do patrimônio líquido", field: "grupo_2", measure: "saldo_credor", span: 6, where: `${i155} AND plano_contas.natureza IN ('02', '03')` },
       ],
     },
+    dreSection,
     {
       id: "balancete", title: "Balancete", description: "",
       visuals: [
@@ -871,12 +948,13 @@ function ecd(): Json {
     },
   ];
   measures.push({ id: "saldo_credor", label: "Saldo", sql: `0 - ${sumWhen(i155, fin)}`, format: "currency" });
+  measures.push(...dreMeasures);
   /** Records that carry a month of their own follow the month filter; the others always show. */
   const monthly = new Set(["I150", "I155", "I200", "I250", "I300", "I310", "I350", "I355", "C150", "C155"]);
   return build(k, {
     name: "ECD", area: "Contábil",
     description: "Escrituração contábil digital completa: balancete, lançamentos e demonstrações em painéis, e todos os registros do arquivo com todos os campos para consulta.",
-    fields, measures, filters: ["mes", "empresa", "natureza"], filterDefaults: { mes: "mais recente" }, panels, panelGroup: "Painéis",
+    fields, measures, filters: ["ano", "mes", "empresa", "natureza"], filterDefaults: { mes: "mais recente" }, panels, panelGroup: "Painéis",
     skipFilters: (reg) => (monthly.has(reg) ? ["natureza"] : ["mes", "natureza"]),
   });
 }

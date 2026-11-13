@@ -60,6 +60,8 @@ Escreva `template.json` na pasta de trabalho. As regras que mais dão problema:
 - **A fato repete valores** (um título com várias linhas, por exemplo): gere nos dados uma coluna `<valor>_rateado` = valor ÷ número de linhas da chave, some essa coluna e explique na descrição da tabela.
 - **Consulta do dado original**: o visual `rows` lista linhas sem somar, com colunas próprias (`columns: [{label, sql}]`), e aceita `where`, `orderBy`, `limit` e `expand`.
 
+- **Dashboard interno** (documentação, auditoria da própria DBI): `"access": "platformAdmin"` no molde faz os dashboards dele existirem só para o administrador da plataforma. A equipe e os clientes da organização não o veem na barra lateral, na administração nem pelo endereço; links de compartilhamento não o abrem e ele nunca entra na vitrine.
+
 Opções que todo visual aceita: `where` (condição só dele), `skipFilters` (filtros de tela que ele ignora) e `hideEmpty` (some da página quando não tem linhas).
 
 Os visuais, as seções (`analyses`), o sumário (`summary`) e os filtros seguem `visuais.md`.

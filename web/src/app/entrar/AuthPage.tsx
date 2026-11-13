@@ -13,7 +13,7 @@ export function AuthPage({ title, subtitle, children }: AuthPageProps) {
   return (
     <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-8 px-4">
       <Link href="/" aria-label="Início" className="w-fit">
-        <Logo />
+        <Logo tagline />
       </Link>
       <div>
         <h1 className="font-serif text-4xl">{title}</h1>

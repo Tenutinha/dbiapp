@@ -2,8 +2,10 @@
 
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { cssSelector, type InspectableElement } from "@/lib/dev-inspector/describe";
 import { copyText, describeLiveElement, elementAt, INSPECTOR_ATTR } from "./inspector-dom";
+import { useAlwaysInFront, useFrontHost } from "./useTopLayer";
 
 /** Events swallowed while inspecting, so clicking a link or button only selects it. */
 const BLOCKED_EVENTS = ["pointerdown", "mousedown", "pointerup", "mouseup", "click", "dblclick", "auxclick", "contextmenu"];
@@ -56,8 +58,11 @@ function useInspectorAccess(): boolean {
 }
 
 /**
- * Platform-admin tool: "Inspecionar" turns the pointer into a picker; clicking an element copies
- * a markdown brief (page, selector, React components, text, HTML) to paste to a dev agent.
+ * Platform-admin tool: "Inspecionar" turns the pointer into a picker; clicking an element copies its
+ * id (the short selector shown in the tag) to paste to a dev agent. Shift+click copies the full
+ * markdown brief (page, selector, React components, text, HTML) instead.
+ *
+ * Its UI stays in front of everything — open modals and popovers included (see useTopLayer).
  */
 export function ElementInspector() {
   const enabled = useInspectorAccess();
@@ -67,6 +72,9 @@ export function ElementInspector() {
   const [toast, setToast] = useState<string | null>(null);
   const targetRef = useRef<Element | null>(null);
   const childTrail = useRef<Element[]>([]);
+  const host = useFrontHost();
+  const [layer, setLayer] = useState<HTMLDivElement | null>(null);
+  useAlwaysInFront(layer);
 
   const select = useCallback((el: Element | null) => {
     targetRef.current = el;
@@ -80,11 +88,13 @@ export function ElementInspector() {
     childTrail.current = [];
   }, [select]);
 
-  const copyCurrent = useCallback(async () => {
+  const copyCurrent = useCallback(async (full: boolean) => {
     const el = targetRef.current;
     if (!el) return;
-    const ok = await copyText(describeLiveElement(el));
-    setToast(ok ? "Elemento copiado — cole no chat do agente." : "Não foi possível copiar.");
+    const id = cssSelector(el as unknown as InspectableElement);
+    const ok = await copyText(full ? describeLiveElement(el) : id);
+    const copied = full ? "Descrição completa copiada." : `Id copiado: ${id}`;
+    setToast(ok ? copied : "Não foi possível copiar.");
     stop();
   }, [stop]);
 
@@ -109,12 +119,12 @@ export function ElementInspector() {
       e.preventDefault();
       e.stopPropagation();
       e.stopImmediatePropagation();
-      if (e.type === "click") void copyCurrent();
+      if (e.type === "click") void copyCurrent((e as MouseEvent).shiftKey);
     };
     const onKey = (e: KeyboardEvent) => {
       const el = targetRef.current;
       if (e.key === "Escape") stop();
-      else if (e.key === "Enter") void copyCurrent();
+      else if (e.key === "Enter") void copyCurrent(e.shiftKey);
       else if (e.key === "ArrowUp" && el && el !== document.body && el.parentElement && el.parentElement !== document.body) {
         childTrail.current = [...childTrail.current, el];
         select(el.parentElement);
@@ -148,13 +158,19 @@ export function ElementInspector() {
     };
   }, [active, copyCurrent, select, stop]);
 
-  if (!enabled) return null;
+  if (!enabled || !host) return null;
 
   const label = target ? cssSelector(target as unknown as InspectableElement).split(" > ").pop() : null;
   const labelPlacement = labelPosition(box);
 
-  return (
-    <div {...{ [INSPECTOR_ATTR]: "" }}>
+  return createPortal(
+    <div
+      ref={setLayer}
+      popover="manual"
+      className="m-0 size-0 overflow-visible border-0 bg-transparent p-0"
+      style={{ inset: "0 auto auto 0", color: "inherit" }}
+      {...{ [INSPECTOR_ATTR]: "" }}
+    >
       {active && box && (
         <div
           aria-hidden="true"
@@ -202,23 +218,24 @@ export function ElementInspector() {
           type="button"
           onClick={() => (active ? stop() : setActive(true))}
           aria-pressed={active}
-          title="Destaca o elemento sob o mouse; clique nele para copiar a descrição para um agente de desenvolvimento."
+          title="Destaca o elemento sob o mouse; clique nele para copiar o id para um agente de desenvolvimento (Shift+clique copia a descrição completa)."
           className={`rounded-lg px-2 py-1 font-semibold transition ${active ? "bg-brand text-on-brand" : "text-brand hover:bg-brand/15"}`}
         >
           {active ? "Inspecionando…" : "Inspecionar"}
         </button>
-        {active && <span className="text-muted">clique copia · ↑ pai · ↓ volta · Enter copia · Esc sai</span>}
+        {active && <span className="text-muted">clique copia o id · Shift+clique copia tudo · ↑ pai · ↓ volta · Esc sai</span>}
       </div>
 
       {toast && (
         <div
           role="status"
-          className="fixed bottom-28 right-3 rounded-lg border border-brand/40 bg-card-2 px-3 py-2 text-xs shadow-2xl"
+          className="fixed bottom-28 right-3 max-w-[min(32rem,calc(100vw-1.5rem))] break-all rounded-lg border border-brand/40 bg-card-2 px-3 py-2 font-mono text-xs shadow-2xl"
           style={{ zIndex: LAYER + 1 }}
         >
           {toast}
         </div>
       )}
-    </div>
+    </div>,
+    host,
   );
 }

@@ -32,7 +32,7 @@ export async function loadSpace(org: OrgRef, client: ClientRef | null, membershi
 
   const clientId = client?.id ?? null;
   const [layout, clients, branding] = await Promise.all([
-    getSpaceLayout({ orgId: org.id, clientId }),
+    getSpaceLayout({ orgId: org.id, clientId }, { platformAdmin: membership.platformAdmin === true }),
     listClients(org.id),
     getEffectiveBranding(org.id, clientId),
   ]);

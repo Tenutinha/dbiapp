@@ -7,6 +7,7 @@ import { FilesModal } from "@/components/admin/FilesModal";
 import { SummaryModal } from "@/components/admin/SummaryModal";
 import { ThemeModal } from "@/components/admin/ThemeModal";
 import { DataManager } from "@/components/data/DataManager";
+import { canSeeDashboard } from "@/lib/permissions";
 import { getOrgContext, orgActions, requireAction, requireInstance, type InstanceAccess } from "@/lib/access";
 import { AccessError } from "@/lib/auth";
 import { buildSpaceGroups } from "@/lib/admin-setup";
@@ -37,14 +38,15 @@ async function loadDataModal(orgSlug: string, instanceId: string | undefined): P
 async function loadAdmin(orgSlug: string) {
   const ctx = await getOrgContext(orgSlug);
   requireAction(orgActions(ctx), "admin");
-  const [clients, people, dashboards, templates, files, links] = await Promise.all([
+  const [clients, people, dashboards, allTemplates, files, links] = await Promise.all([
     listClients(ctx.org.id),
     listOrgPeople(ctx.org.id),
-    listOrgDashboards(ctx.org.id),
+    listOrgDashboards(ctx.org.id, { platformAdmin: ctx.membership.platformAdmin === true }),
     listTemplates(),
     listFilesInUse(ctx.org.id),
     listSpaceLinks(ctx.org.id),
   ]);
+  const templates = allTemplates.filter((t) => canSeeDashboard(ctx.membership, t.access));
   const catalog = templates.map((t) => ({
     id: t.id,
     name: t.name,

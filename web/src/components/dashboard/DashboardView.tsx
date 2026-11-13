@@ -10,6 +10,7 @@ import { PAGE_CLASS, PageStrip } from "./PageStrip";
 import { CrossTable } from "./CrossTable";
 import { ScrollTable, type ScrollColumn, type SortValue } from "./ScrollTable";
 import { FieldPicker } from "./FieldPicker";
+import { StatementTable } from "./StatementTable";
 import { VisualCard } from "./VisualCard";
 
 /** Classes of the tones a text measure gives its values (template `tones`). */
@@ -91,6 +92,10 @@ function VisualBody({ template, result }: { template: Template; result: VisualRe
     }
     case "donut":
       return <Chart visualId={visual.id} type="donut" fieldId={visual.field} measures={[measure(visual.measure)]} rows={rows} />;
+    case "statement": {
+      const base = visual.lines.find((l) => l.id === visual.base)?.label;
+      return <StatementTable visual={visual} rows={rows} format={measure(visual.measure).format} baseLabel={base} />;
+    }
     case "rows": {
       const columns: ScrollColumn[] = visual.columns.map((c) => ({
         label: c.label, headClass: "", cellClass: "max-w-64 truncate whitespace-nowrap font-mono", hint: true,

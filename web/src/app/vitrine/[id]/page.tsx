@@ -19,7 +19,7 @@ interface Props {
 const VALID_ID = /^[a-z0-9-]{1,80}$/;
 
 const VISUAL_LABEL = {
-  kpi: "Indicador", bar: "Barras", line: "Linha", donut: "Rosca", table: "Tabela", map: "Mapa", rows: "Listagem", text: "Texto",
+  kpi: "Indicador", bar: "Barras", line: "Linha", donut: "Rosca", table: "Tabela", map: "Mapa", rows: "Listagem", text: "Texto", statement: "Demonstrativo",
 } as const;
 const TYPE_LABEL = { integer: "inteiro", decimal: "decimal", text: "texto", date: "data", timestamp: "data e hora", boolean: "sim/não" } as const;
 

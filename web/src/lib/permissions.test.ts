@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { allowedActions, can, isMember, isValidSlug, slugify, visibleClientIds, type Membership } from "./permissions";
+import { allowedActions, can, canSeeDashboard, isMember, isValidSlug, slugify, visibleClientIds, type Membership } from "./permissions";
 
 const ORG = { clientId: null };
 const C1 = { clientId: "c1" };
@@ -104,4 +104,27 @@ describe("slugs", () => {
   it.each(["", "-x", "x-", "Odeon", "a_b", "admin", "api", "s", "d", "x".repeat(41)])("rejects %s", (s) =>
     expect(isValidSlug(s)).toBe(false),
   );
+});
+
+describe("dashboards restricted to the platform administrator", () => {
+  const admin: Membership = { orgRole: null, clientRoles: {}, platformAdmin: true };
+  const orgAdmin: Membership = { orgRole: "admin", clientRoles: {} };
+  const clientViewer: Membership = { orgRole: null, clientRoles: { c1: "viewer" } };
+
+  it("only the platform administrator sees them", () => {
+    expect(canSeeDashboard(admin, "platformAdmin")).toBe(true);
+    expect(canSeeDashboard(orgAdmin, "platformAdmin")).toBe(false);
+    expect(canSeeDashboard(clientViewer, "platformAdmin")).toBe(false);
+    expect(canSeeDashboard({ platformAdmin: false }, "platformAdmin")).toBe(false);
+  });
+
+  it("without a restriction the space decides", () => {
+    expect(canSeeDashboard(orgAdmin, undefined)).toBe(true);
+    expect(canSeeDashboard(clientViewer, null)).toBe(true);
+  });
+
+  it("an unknown restriction closes the dashboard to everyone", () => {
+    expect(canSeeDashboard(orgAdmin, "outra-coisa")).toBe(false);
+    expect(canSeeDashboard(admin, "outra-coisa")).toBe(false);
+  });
 });
