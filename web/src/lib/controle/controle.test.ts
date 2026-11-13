@@ -113,6 +113,14 @@ describe("leitura do comprovante → rascunho", () => {
     expect(draft.supplier).toBeNull();
     expect(draft.items).toEqual([{ description: "Granulado", quantity: 1, unit: null, unitPriceCents: null, totalCents: 990 }]);
   });
+
+  it("valor zerado ao lado de um unitário é leitura errada: usa quantidade × unitário", () => {
+    const draft = toDraft(
+      reading({ itens: [{ descricao: "CAFE 250G", quantidade: 2, unidade: "un", valor_unitario: 8.99, valor_total: 0 }] }),
+      TODAY,
+    );
+    expect(draft.items).toEqual([{ description: "CAFE 250G", quantity: 2, unit: "un", unitPriceCents: 899, totalCents: 1798 }]);
+  });
 });
 
 describe("o que chega da tela", () => {

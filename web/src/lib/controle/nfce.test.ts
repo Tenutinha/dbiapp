@@ -55,5 +55,6 @@ describe("texto da página da SEFAZ", () => {
     expect(text).toContain("CHOC PO 200G");
     expect(text).toContain("Valor a pagar R$: 57,48");
     expect(pageText("<p>a</p>".repeat(10), 5)).toHaveLength(5);
+    expect(pageText("P&Atilde;O FRANC&Ecirc;S &ccedil;&eacute; N&ordm; &AMP;")).toBe("PÃO FRANCÊS çé Nº &");
   });
 });
