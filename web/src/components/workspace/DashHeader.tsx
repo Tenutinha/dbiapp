@@ -1,6 +1,7 @@
 "use client";
 
 import { useActiveAnchor } from "./active-anchor";
+import { useComing } from "./switching";
 
 export interface HeaderTopic {
   anchor: string;
@@ -14,27 +15,28 @@ interface DashHeaderProps {
   topics: readonly HeaderTopic[];
 }
 
-/** Classes of the bar, shared with the skeleton shown while another dashboard is on its way. */
-export const DASH_HEADER_CLASS =
-  "sticky top-14 z-20 -mx-4 mb-5 flex min-h-12 items-center bg-header px-4 py-2.5 text-on-header shadow-sm lg:top-0";
-
 /**
- * Fixed bar on top of the dashboard area: "Dashboard · Tópico", the topic following the page or section on
- * screen. The visuals scroll under it. Its colour is the space's "Cabeçalho do dashboard" (Aparência).
+ * Fixed bar on top of the dashboard area, from the sidebar to the right edge of the window: "Dashboard ·
+ * Tópico", the topic following the page or section on screen; the visuals scroll under it. While another
+ * dashboard is on its way it already names that one. Its colour is the space's "Cabeçalho do dashboard".
+ * The negative margins cancel the content area's padding (SidebarShell's <main>).
  */
 export function DashHeader({ title, topics }: DashHeaderProps) {
   const active = useActiveAnchor(topics.map((t) => t.anchor).join("|"));
-  const topic = topics.find((t) => t.anchor === active) ?? topics[0];
+  const coming = useComing();
+  const topic = coming === null ? (topics.find((t) => t.anchor === active) ?? topics[0]) : undefined;
   return (
-    <header className={DASH_HEADER_CLASS}>
-      <h1 className="min-w-0 truncate text-[15px] font-semibold leading-snug">
-        {title}
-        {topic && (
-          <span className="font-normal opacity-80" aria-live="polite">
-            {" "}· {topic.title}
-          </span>
-        )}
-      </h1>
+    <header className="sticky top-14 z-20 -mx-4 mb-5 bg-header text-on-header shadow-sm sm:-mx-8 lg:top-0 lg:-mx-14">
+      <div className="mx-auto flex min-h-12 max-w-[1180px] box-content items-center px-4 py-2.5 sm:px-8 lg:px-14">
+        <h1 className="min-w-0 truncate text-[15px] font-semibold leading-snug" aria-busy={coming !== null || undefined}>
+          {coming ?? title}
+          {topic && (
+            <span className="font-normal opacity-80" aria-live="polite">
+              {" "}· {topic.title}
+            </span>
+          )}
+        </h1>
+      </div>
     </header>
   );
 }

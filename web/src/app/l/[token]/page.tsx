@@ -95,6 +95,8 @@ export default async function PublicSpacePage({ params, searchParams }: Props) {
         updated={updatedLine(toc, chosen?.instanceId ?? null)}
         footer={footer}
         content={
+          <>
+          {header}
           <div className="mx-auto max-w-[1180px]">
             {chosen && header ? (
               <>
@@ -102,7 +104,7 @@ export default async function PublicSpacePage({ params, searchParams }: Props) {
                 <DashboardSwitch>
                 <div key={chosen.instanceId} className="dash-enter">
                   {/* A new dashboard opens at once as a skeleton; a filter change keeps the page and only its cards wait. */}
-                  <Suspense fallback={<DashboardFallback header={header} hasPrevious={previous !== null} />}>
+                  <Suspense fallback={<DashboardFallback />}>
                     <DashboardBody
                       instanceId={chosen.instanceId}
                       templateId={chosen.templateId}
@@ -114,7 +116,6 @@ export default async function PublicSpacePage({ params, searchParams }: Props) {
                           {previous && (
                             <NextDashboard direction="previous" id={previous.id} name={previous.name} number={previous.number} href={hrefFor(previous.id)} />
                           )}
-                          {header}
                         </>
                       }
                       after={next && <NextDashboard id={next.id} name={next.name} number={next.number} href={hrefFor(next.id)} />}
@@ -127,6 +128,7 @@ export default async function PublicSpacePage({ params, searchParams }: Props) {
               <p className="py-24 text-center text-muted">Ainda não há dashboards publicados em {spaceName}.</p>
             )}
           </div>
+          </>
         }
       >
         <SidebarNav toc={toc} currentId={chosen?.instanceId ?? null} outlines={outlines} notes={notes} hrefFor={hrefFor} />

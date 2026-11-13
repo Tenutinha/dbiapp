@@ -29,18 +29,11 @@ function searchString(searchParams: Readonly<Record<string, string | string[] | 
 }
 
 /**
- * What the page shows while DashboardBody waits: the header already in place and a skeleton of the
- * visuals. The gap on top stands for the "previous dashboard" line, so the header does not jump when
- * the real page takes over.
+ * What the page shows while DashboardBody waits: a skeleton of the visuals (the header is already on
+ * top of the content area, and the way to the previous dashboard is a popup that takes no room).
  */
-export function DashboardFallback({ header, hasPrevious }: { header: React.ReactNode; hasPrevious: boolean }) {
-  return (
-    <>
-      {hasPrevious && <div aria-hidden className="mb-8 h-[45px]" />}
-      {header}
-      <DashboardSkeleton />
-    </>
-  );
+export function DashboardFallback() {
+  return <DashboardSkeleton />;
 }
 
 /**
