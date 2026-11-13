@@ -99,8 +99,8 @@ function buildOption(
   };
   const categoryAxis = {
     type: "category", data: categories, ...AXIS,
-    // Long names (a provider, a status) are cut so the bars keep their room.
-    axisLabel: { ...AXIS.axisLabel, hideOverlap: true, ...(horizontal ? { width: 170, overflow: "truncate" } : {}) },
+    // With values written beyond the bars, long names (a provider, a status) are cut so the bars keep their room.
+    axisLabel: { ...AXIS.axisLabel, hideOverlap: true, ...(horizontal && bareValues ? { width: 170, overflow: "truncate" } : {}) },
   };
   return {
     color: PALETTE,
@@ -116,7 +116,7 @@ function buildOption(
       label: labels
         ? {
             show: true, position: horizontal ? "right" : "top", color: c.text, fontSize: 11, fontWeight: 600,
-            formatter: (p: { value: unknown }) => formatValue(p.value, m.format, true),
+            formatter: (p: { value: unknown }) => formatValue(p.value, m.format, "counts"),
           }
         : undefined,
       smooth: type === "line",

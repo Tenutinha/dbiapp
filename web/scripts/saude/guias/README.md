@@ -68,7 +68,9 @@ recente):
   emissão, caráter de atendimento e o detalhamento por situação, com total.
 
 Os cartões com linha de apoio (`detail`), os valores escritos nas barras (`labels`) e os filtros no topo são
-recursos opcionais do motor: os outros moldes continuam como estavam.
+recursos opcionais do motor: os outros moldes continuam como estavam. Só os cartões com `detail` têm o número
+que encolhe com o card e as contagens de milhões em forma curta ("2,84 mi"); só os gráficos com `labels`
+encurtam os nomes longos das barras horizontais.
 
 ## Regras do Qlik e como ficaram
 

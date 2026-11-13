@@ -8,11 +8,15 @@ const currencyCompact = new Intl.NumberFormat("pt-BR", {
 });
 const number = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 });
 const integer = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 0 });
-/** "2,84 mi": counts of millions and up where space is short (cards, chart axes). */
+/** "2,84 mi": counts of millions and up, only where a template asks for the short form of counts too. */
 const numberCompact = new Intl.NumberFormat("pt-BR", { notation: "compact", maximumFractionDigits: 2 });
 const percent = new Intl.NumberFormat("pt-BR", { style: "percent", maximumFractionDigits: 1 });
 
-export function formatValue(value: unknown, format: ValueFormat, compact = false): string {
+/**
+ * compact: true shortens money ("R$ 2,87 mi"); "counts" also shortens counts of a million and up ("2,84 mi"),
+ * for the cards with a detail line and the values written on bars.
+ */
+export function formatValue(value: unknown, format: ValueFormat, compact: boolean | "counts" = false): string {
   if (value === null || value === undefined || value === "") return "—";
   if (format === "text") return String(value);
   if (format === "date") return formatDay(value);
@@ -27,9 +31,9 @@ export function formatValue(value: unknown, format: ValueFormat, compact = false
     case "percent":
       return percent.format(n);
     case "integer":
-      return compact && Math.abs(n) >= 1_000_000 ? numberCompact.format(n) : integer.format(n);
+      return compact === "counts" && Math.abs(n) >= 1_000_000 ? numberCompact.format(n) : integer.format(n);
     default:
-      return compact && Math.abs(n) >= 1_000_000 ? numberCompact.format(n) : number.format(n);
+      return compact === "counts" && Math.abs(n) >= 1_000_000 ? numberCompact.format(n) : number.format(n);
   }
 }
 

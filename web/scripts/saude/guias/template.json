@@ -564,6 +564,9 @@
       "type": "kpi",
       "title": "Guias",
       "measure": "guias",
+      "detail": {
+        "text": "emitidas no período"
+      },
       "span": 2
     },
     {

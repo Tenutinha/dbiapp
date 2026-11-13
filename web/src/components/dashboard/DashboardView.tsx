@@ -66,13 +66,21 @@ function VisualBody({ template, result }: { template: Template; result: VisualRe
       // Millions and up use the short form ("R$ 2,87 bi") so the card never overflows.
       const compact = Math.abs(Number(value ?? 0)) >= 1_000_000;
       const detail = visual.detail;
-      const dm = detail?.measure ? measure(detail.measure) : null;
-      const detailText = [dm ? formatValue(rows[0]?.[dm.id], dm.format) : "", detail?.text ?? ""].filter(Boolean).join(" ");
+      if (!detail) {
+        return (
+          <p className="mt-1 truncate text-3xl font-extrabold tracking-tight" title={formatValue(value, m.format)}>
+            {formatValue(value, m.format, compact)}
+          </p>
+        );
+      }
+      // Cards with a detail line come in narrow rows (six in a row): the number shrinks with the card instead of
+      // being cut off, and counts of millions take the short form too.
+      const dm = detail.measure ? measure(detail.measure) : null;
+      const detailText = [dm ? formatValue(rows[0]?.[dm.id], dm.format) : "", detail.text ?? ""].filter(Boolean).join(" ");
       return (
-        // The number shrinks with a narrow card (six in a row) instead of being cut off.
         <div className="@container">
           <p className="mt-1 truncate text-[clamp(1.125rem,13cqw,1.875rem)] font-extrabold tracking-tight" title={formatValue(value, m.format)}>
-            {formatValue(value, m.format, compact)}
+            {formatValue(value, m.format, compact ? "counts" : false)}
           </p>
           {detailText && <p className="mt-1 truncate text-xs text-muted" title={detailText}>{detailText}</p>}
         </div>
