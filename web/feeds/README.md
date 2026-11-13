@@ -38,4 +38,4 @@ ERP da Odeon Tecnologia, que exporta pelos seus clientes.
 - **Staging.** Ainda não foi escrito: precisa de uma amostra real das tabelas oficiais.
 - **Conferência (2026-11-13), camada modelo × publicado:** "Tudo igual" nos três moldes. Foram Vendas (8 tabelas, com `--data 2026-11-05`, a data do refresh do Power BI), Financeiro (11 tabelas, `--data 2026-11-09`) e Estoque (4 tabelas, `--data 2026-11-09`).
 - **Atenção no staging:** colunas que dependem de "hoje" e que o Power Query calculava (`dias_ate_vencimento`, `analise_status`, `faixa_vencimento_ordem`, `pendentes` do Financeiro) estão hoje na camada do modelo. A tradução para o staging precisa calculá-las com `getvariable('data_referencia')`.
-- **Pendente:** `estoque-movimentacao/movimento.venda_qtde` reproduz o publicado, em que a devolução soma em vez de abater (ver o comentário na receita).
+- **Correção (2026-11-13):** `estoque-movimentacao/movimento.venda_qtde` agora abate a devolução. O publicado de 09/11 somava: 771 linhas mudam e só essa coluna; o resto continua igual.

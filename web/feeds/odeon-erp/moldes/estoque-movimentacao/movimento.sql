@@ -52,9 +52,9 @@ venda AS (
     filial,
     item,
     strftime(data, '%Y-%m') AS mes,
-    -- PENDENTE (a decidir): reproduz o publicado, V menos a quantidade de D, que já vem negativa, então a
-    -- devolução SOMA. Líquido de devolução seria SUM(qtde) com V e D juntos (771 linhas mudariam).
-    SUM(CASE WHEN tipo = 'V' THEN qtde ELSE -qtde END) AS venda_qtde,
+    -- Quantidade vendida líquida de devolução: a D já vem negativa e abate a V.
+    -- (Até a carga de 09/11/2026 a devolução somava; corrigido em 13/11/2026.)
+    SUM(CASE WHEN tipo IN ('V', 'D') THEN qtde END) AS venda_qtde,
     -- Faturamento líquido: a devolução vem com valor negativo e abate.
     SUM(vlrliquido) AS venda_valor,
     -- Custo das vendas: só das vendas (V).
