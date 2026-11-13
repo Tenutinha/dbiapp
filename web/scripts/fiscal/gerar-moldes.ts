@@ -393,7 +393,8 @@ function efdIcms(): Json {
       ],
     },
     {
-      id: "documentos", title: "Notas fiscais e participantes", description: "A partir do registro C100 (notas canceladas, denegadas e inutilizadas ficam fora dos valores).",
+      id: "documentos", title: "Notas fiscais e participantes",
+      description: "A partir do registro C100 do período mais recente de cada estabelecimento (as notas uma a uma de todos os períodos pesariam demais). Notas canceladas, denegadas e inutilizadas ficam fora dos valores.",
       visuals: [
         kpi("k_documentos", "Notas fiscais", "documentos", 3, c100), kpi("k_docs_saida", "Notas de saída", "valor_docs_saida", 3, c100),
         kpi("k_docs_entrada", "Notas de entrada", "valor_docs_entrada", 3, c100), kpi("k_ctes", "Documentos de transporte (D100)", "ctes", 3, isReg("D100")),
@@ -404,20 +405,26 @@ function efdIcms(): Json {
       ],
     },
     {
-      id: "itens", title: "Itens e inventário", description: "Itens das notas (C170) e inventário (H010).",
+      id: "itens", title: "Itens e inventário",
+      description: "Itens das notas (C170) somados por item, CST, CFOP e alíquota, e inventário (H010), de todos os períodos enviados.",
       visuals: [
-        { id: "t_itens", type: "table", title: "Itens das notas", fields: ["item", "ncm"], measures: ["valor_itens", "valor_itens_entrada", "valor_itens_saida", "quantidade_itens"], limit: 200, span: 8, where: c170 },
-        { id: "b_ncm", type: "bar", title: "Valor dos itens por NCM", field: "ncm", measures: ["valor_itens"], sort: "measure_desc", horizontal: true, limit: 15, span: 4, where: c170 },
-        { ...kpi("k_inventario", "Valor do inventário (H010)", "valor_inventario", 6, h010), hideEmpty: true },
-        { ...kpi("k_itens_inventario", "Itens em inventário", "itens_inventario", 6, h010), hideEmpty: true },
-        { id: "t_inventario", type: "table", title: "Inventário por item", fields: ["item", "ncm"], measures: ["valor_inventario", "quantidade_inventario"], limit: 200, span: 12, where: h010, hideEmpty: true },
+        { id: "t_itens", type: "table", title: "Itens das notas", fields: ["item", "ncm"], measures: ["valor_itens", "valor_itens_entrada", "valor_itens_saida", "quantidade_itens"], limit: 200, span: 8, where: c170, fact: "bloco_c_resumo_itens" },
+        { id: "b_ncm", type: "bar", title: "Valor dos itens por NCM", field: "ncm", measures: ["valor_itens"], sort: "measure_desc", horizontal: true, limit: 15, span: 4, where: c170, fact: "bloco_c_resumo_itens" },
+        { ...kpi("k_inventario", "Valor do inventário (H010)", "valor_inventario", 6, h010), hideEmpty: true, fact: "bloco_h_inventario" },
+        { ...kpi("k_itens_inventario", "Itens em inventário", "itens_inventario", 6, h010), hideEmpty: true, fact: "bloco_h_inventario" },
+        { id: "t_inventario", type: "table", title: "Inventário por item", fields: ["item", "ncm"], measures: ["valor_inventario", "quantidade_inventario"], limit: 200, span: 12, where: h010, hideEmpty: true, fact: "bloco_h_inventario" },
       ],
     },
   ];
+  // The general panels read every period from the table made for them (the main fact holds one file whole).
+  const allPeriods = new Set(["visao_geral", "apuracao", "cfop_cst"]);
+  const panelsAllPeriods = panels.map((s) => (allPeriods.has(s.id)
+    ? { ...s, visuals: s.visuals.map((v) => (v.fact ? v : { ...v, fact: "paineis_todos_periodos" })) }
+    : s));
   return build(k, {
     name: "EFD ICMS/IPI", area: "Fiscal",
     description: "Escrituração fiscal de ICMS e IPI completa: operações, apuração, notas, itens e inventário em painéis, e todos os registros do arquivo com todos os campos para consulta.",
-    fields, measures, filters: ["ano", "mes", "estabelecimento", "operacao"], panels, panelGroup: "Painéis",
+    fields, measures, filters: ["ano", "mes", "estabelecimento", "operacao"], panels: panelsAllPeriods, panelGroup: "Painéis",
   });
 }
 

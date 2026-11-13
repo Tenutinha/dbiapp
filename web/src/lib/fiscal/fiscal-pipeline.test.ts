@@ -105,6 +105,15 @@ describe.each(FISCAL_IMPORTERS.map((i) => [i.templateId, i] as const))("template
     const data = await runDashboard(root, t, files, {});
     expect(data.visuals.filter((v) => v.error).map((v) => v.visual.id)).toEqual([]);
     expect(data.visuals.some((v) => v.visual.type === "kpi" && v.rows[0] && Object.values(v.rows[0])[0] !== null)).toBe(true);
+    if (templateId === "efd-icms-ipi") {
+      // The general panels read the analytical lines (C190 summed up) of every period, with the whole file's numbers.
+      const first = (id: string): unknown => Object.values(data.visuals.find((v) => v.visual.id === id)?.rows[0] ?? {})[0];
+      expect(t.visuals.find((v) => v.id === "k_saidas")?.fact).toBe("paineis_todos_periodos");
+      expect([first("k_entradas"), first("k_saidas"), first("k_icms_credito"), first("k_icms_debito")]).toEqual([1000, 500, 120, 54]);
+      // The items panel reads the items summed by item; the notes stay on the whole file of the latest period.
+      expect(t.visuals.find((v) => v.id === "t_itens")?.fact).toBe("bloco_c_resumo_itens");
+      expect(t.visuals.find((v) => v.id === "t_participantes")?.fact).toBeUndefined();
+    }
     if (templateId === "efd-contribuicoes") {
       // The sections of the blocks read their own facts; the original data of a block too.
       const first = (id: string): unknown => Object.values(data.visuals.find((v) => v.visual.id === id)?.rows[0] ?? {})[0];
