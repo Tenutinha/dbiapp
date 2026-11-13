@@ -3,9 +3,11 @@ import type { FileState } from "@/lib/fiscal/panel";
 import { formatBytes, formatDateTime } from "@/lib/format";
 import type { FiscalPanelView, PanelFile, PanelModel } from "@/lib/services/fiscal-panel";
 import { FileMapGrid } from "./FileMapGrid";
+import { FileReaderProvider } from "./FileReader";
 import { count, periodLabel, STATE_LABEL, STATE_ORDER } from "./labels";
 import { LineagePanel } from "./LineagePanel";
 import { PanelActions } from "./PanelActions";
+import { ReadableFileMap } from "./ReadableFileMap";
 
 interface FiscalPanelProps {
   view: FiscalPanelView;
@@ -58,7 +60,9 @@ function ModelCard({ model, canManage, looseInSpace }: { model: PanelModel; canM
   const d = model.dashboard;
   const months = model.map.periods;
   const publishedRows = d?.published.reduce((s, t) => s + t.rows, 0) ?? 0;
-  return (
+  // Who manages the data reads from the map too (a click on a month) with the same reader as the buttons.
+  const readable = canManage && d !== null && model.mode === "sped";
+  const card = (
     <section className="card flex flex-col gap-4 p-5" aria-labelledby={`molde-${model.templateId}`}>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h3 id={`molde-${model.templateId}`} className="text-base font-semibold">{model.title}</h3>
@@ -89,7 +93,7 @@ function ModelCard({ model, canManage, looseInSpace }: { model: PanelModel; canM
         </Layer>
       </div>
 
-      <FileMapGrid map={model.map} />
+      {readable ? <ReadableFileMap map={model.map} toRead={model.toRead} big={model.big} /> : <FileMapGrid map={model.map} />}
       <FileList title="Arquivos com erro" files={model.failed} tone="danger" />
       <FileList title="Grandes demais para a tela (carregados pelo script)" files={model.big} tone="accent" />
 
@@ -135,6 +139,8 @@ function ModelCard({ model, canManage, looseInSpace }: { model: PanelModel; canM
       )}
     </section>
   );
+  // The buttons share the reader with the map, so every model with a dashboard gets one (NF-e too).
+  return canManage && d ? <FileReaderProvider dashboardId={d.id}>{card}</FileReaderProvider> : card;
 }
 
 /**

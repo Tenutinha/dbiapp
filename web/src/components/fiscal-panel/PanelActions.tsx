@@ -1,9 +1,10 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { publishAction } from "@/app/actions";
 import type { PanelFile } from "@/lib/services/fiscal-panel";
+import { useFileReader } from "./FileReader";
 import { count } from "./labels";
 
 interface Envelope<T> {
@@ -48,11 +49,10 @@ async function post<T>(url: string, body?: unknown): Promise<Envelope<T>> {
  */
 export function PanelActions({ dashboardId, mode, toRead, loose, hasDraft }: PanelActionsProps) {
   const router = useRouter();
-  const [busy, setBusy] = useState<null | "organizar" | "ler" | "montar" | "publicar">(null);
-  const [progress, setProgress] = useState<{ done: number; total: number; failed: number; current: string } | null>(null);
+  const [busy, setBusy] = useState<null | "organizar" | "montar" | "publicar">(null);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [build, setBuild] = useState<BuildView | null>(null);
-  const stop = useRef(false);
+  const reader = useFileReader();
 
   const organize = async (): Promise<void> => {
     setBusy("organizar");
@@ -66,33 +66,9 @@ export function PanelActions({ dashboardId, mode, toRead, loose, hasDraft }: Pan
   };
 
   const readAll = async (): Promise<void> => {
-    setBusy("ler");
     setMessage(null);
-    stop.current = false;
-    let failed = 0;
-    let done = 0;
-    for (const file of toRead) {
-      if (stop.current) break;
-      setProgress({ done, total: toRead.length, failed, current: file.path });
-      const res = await post<{ ok: boolean }>(`/api/instances/${dashboardId}/fiscal/ler`, { key: file.key });
-      if (!res.success) {
-        failed += 1;
-        // The server refused the request itself (not the file): stop instead of failing every file the same way.
-        if (!res.data && res.error && !/arquivo/i.test(res.error)) {
-          setMessage({ ok: false, text: res.error });
-          break;
-        }
-      }
-      done += 1;
-    }
-    setProgress(null);
-    setBusy(null);
-    setMessage((prev) => prev ?? {
-      ok: failed === 0,
-      text: `${count(done)} de ${count(toRead.length)} arquivo(s) lido(s)${failed > 0 ? `, ${count(failed)} com erro` : ""}${stop.current ? " (interrompido)" : ""}.`
-        + (done === toRead.length ? " Agora, monte as tabelas." : " O que já foi lido fica guardado: continue quando quiser."),
-    });
-    router.refresh();
+    setBuild(null);
+    await reader.read(toRead);
   };
 
   const assemble = async (): Promise<void> => {
@@ -118,7 +94,7 @@ export function PanelActions({ dashboardId, mode, toRead, loose, hasDraft }: Pan
     router.refresh();
   };
 
-  const idle = busy === null;
+  const idle = busy === null && !reader.reading;
   return (
     <div className="flex flex-col gap-2 rounded-md border border-line bg-bg-2/40 p-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -127,13 +103,10 @@ export function PanelActions({ dashboardId, mode, toRead, loose, hasDraft }: Pan
             {busy === "organizar" ? "Organizando…" : `Organizar soltos (${count(loose)})`}
           </button>
         )}
-        {mode === "sped" && toRead.length > 0 && busy !== "ler" && (
+        {mode === "sped" && toRead.length > 0 && (
           <button type="button" className="btn btn-primary" disabled={!idle} onClick={() => void readAll()}>
-            Ler {count(toRead.length)} arquivo(s)
+            {reader.reading ? "Lendo…" : `Ler ${count(toRead.length)} arquivo(s)`}
           </button>
-        )}
-        {busy === "ler" && (
-          <button type="button" className="btn btn-ghost" onClick={() => { stop.current = true; }}>Parar depois deste</button>
         )}
         <button type="button" className={toRead.length === 0 || mode === "documents" ? "btn btn-primary" : "btn btn-ghost"} disabled={!idle} onClick={() => void assemble()}>
           {busy === "montar" ? "Montando…" : "Montar tabelas"}
@@ -144,18 +117,6 @@ export function PanelActions({ dashboardId, mode, toRead, loose, hasDraft }: Pan
           </button>
         )}
       </div>
-      {progress && (
-        <div className="flex flex-col gap-1" aria-live="polite">
-          <p className="text-sm">
-            Lendo {count(progress.done + 1)} de {count(progress.total)}
-            {progress.failed > 0 ? ` · ${count(progress.failed)} com erro` : ""}
-          </p>
-          <div className="h-1.5 overflow-hidden rounded-full bg-line" role="progressbar" aria-valuemin={0} aria-valuemax={progress.total} aria-valuenow={progress.done}>
-            <div className="h-full bg-brand-2 transition-all" style={{ width: `${(progress.done / progress.total) * 100}%` }} />
-          </div>
-          <p className="truncate font-mono text-xs text-muted" title={progress.current}>{progress.current}</p>
-        </div>
-      )}
       {message && <p className={`text-sm ${message.ok ? "text-ok" : "text-danger"}`} aria-live="polite">{message.ok ? "✓" : "✕"} {message.text}</p>}
       {build && (
         <div className="flex flex-col gap-0.5 text-xs">
@@ -169,7 +130,7 @@ export function PanelActions({ dashboardId, mode, toRead, loose, hasDraft }: Pan
       )}
       <p className="text-xs text-muted">
         {mode === "sped"
-          ? "Cada arquivo é lido numa requisição; se a página fechar, o que já foi lido fica guardado. Montar junta o que foi lido nas tabelas do rascunho; publicar mostra no dashboard."
+          ? "Cada arquivo é lido numa requisição; se a página fechar, o que já foi lido fica guardado. Para ler só um mês, clique no quadradinho dele no mapa. Montar junta o que foi lido nas tabelas do rascunho; publicar mostra no dashboard."
           : "A NF-e é lida inteira a cada montagem. Montar põe as tabelas no rascunho; publicar mostra no dashboard."}
       </p>
     </div>
