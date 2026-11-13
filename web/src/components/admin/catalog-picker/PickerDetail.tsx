@@ -13,6 +13,7 @@ const KIND_LABEL: Record<VisualKind, string> = {
   map: "mapas",
   rows: "listagens",
   text: "textos",
+  statement: "demonstrativos",
 };
 
 function Stat({ value, label }: { value: number; label: string }) {

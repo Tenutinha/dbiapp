@@ -52,6 +52,12 @@ export function visualRefs(v: Visual): { fields: string[]; measures: string[]; s
       return { fields: [], measures: [], sql: [...where, ...v.columns.map((c) => c.sql), ...(v.orderBy ? [v.orderBy] : [])] };
     case "text":
       return { fields: [], measures: [], sql: [] };
+    case "statement":
+      return {
+        fields: [...v.levels, v.column],
+        measures: [v.measure],
+        sql: [...where, ...v.lines.flatMap((l) => (l.where ? [l.where] : []))],
+      };
   }
 }
 

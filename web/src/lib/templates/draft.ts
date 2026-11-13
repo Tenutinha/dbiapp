@@ -94,6 +94,8 @@ export function defaultVisual(type: VisualType, id: string, title: string): Visu
       return { ...base, type, columns: [], limit: 100 };
     case "text":
       return { ...base, type, body: "" };
+    case "statement":
+      return { ...base, type, measure: "", column: "", levels: [], lines: [] };
   }
 }
 
@@ -162,6 +164,10 @@ export function usedIds(t: Template): UsedIds {
           if (v.color.strengthMeasure) measures.add(v.color.strengthMeasure);
         }
         v.tooltip.forEach((m) => measures.add(m));
+        break;
+      case "statement":
+        measures.add(v.measure);
+        [v.column, ...v.levels].forEach((f) => fields.add(f));
         break;
       case "rows":
       case "text":
