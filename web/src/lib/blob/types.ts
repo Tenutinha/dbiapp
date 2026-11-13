@@ -1,9 +1,15 @@
-import type { FolderListing } from "../storage-browse";
+import type { BrowseEntryFile, FolderListing } from "../storage-browse";
 
 /** A private object bucket in the cloud. Keys are already validated by `storage.ts`. */
 export interface RemoteBucket {
   /** One level of a folder: its sub-folders and files (at most `limit` files). */
   list(prefix: string, limit: number): Promise<FolderListing>;
+  /**
+   * Every object under a prefix, all levels, in one paginated listing (no per-folder round trips).
+   * `names`: only objects with one of these file names (filtered by the bucket when it can).
+   * Optional: without it the storage walks the folders one level at a time.
+   */
+  listTree?(prefix: string, names?: readonly string[]): Promise<BrowseEntryFile[]>;
   upload(key: string, body: Uint8Array, contentType: string): Promise<void>;
   download(key: string): Promise<Uint8Array>;
   /** The first `bytes` of an object (to identify a big file without fetching it whole). */

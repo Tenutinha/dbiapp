@@ -1,4 +1,6 @@
 import { Suspense } from "react";
+import { FiscalPanelBody, FiscalPanelFallback } from "@/components/fiscal-panel/FiscalPanelBody";
+import { isFiscalPanel } from "@/lib/fiscal/panel";
 import { requireInstance, type ClientRef, type InstanceAccess, type OrgRef } from "@/lib/access";
 import { AccessError, type CurrentUser } from "@/lib/auth";
 import { firstItem, nextItem, previousItem, type TocGroup } from "@/lib/layout/toc";
@@ -91,6 +93,28 @@ export async function SpaceHome({ org, client, membership, user, searchParams }:
     return <Workspace space={space} currentId={null} userName={user.name}>{null}</Workspace>;
   }
 
+  // The panel of fiscal data has no visuals: it draws the space's fiscal files and tables itself.
+  if (isFiscalPanel(access.templateId)) {
+    const { outlines, notes } = await loadOutlines(space.toc);
+    return (
+      <Workspace
+        space={space}
+        currentId={access.instanceId}
+        userName={user.name}
+        outlines={outlines}
+        notes={notes}
+        top={<DashHeader title={access.name} topics={[]} />}
+      >
+        <DashboardArrival dashboardId={access.instanceId} />
+        <div key={access.instanceId} className="dash-enter">
+          <Suspense fallback={<FiscalPanelFallback />}>
+            <FiscalPanelBody org={org} client={client} canManage={access.actions.has("manageData")} />
+          </Suspense>
+        </div>
+      </Workspace>
+    );
+  }
+
   // Only what the frame of the page needs is awaited here; the data arrives inside the Suspense below.
   const [template, { outlines, notes }] = await Promise.all([getTemplate(access.templateId), loadOutlines(space.toc)]);
   const topics = template ? buildOutline(template) : [];
@@ -108,6 +132,7 @@ export async function SpaceHome({ org, client, membership, user, searchParams }:
       userName={user.name}
       outlines={outlines}
       notes={notes}
+      top={header}
     >
       <DashboardArrival dashboardId={access.instanceId} />
       <DashboardSwitch>
@@ -115,7 +140,7 @@ export async function SpaceHome({ org, client, membership, user, searchParams }:
       <div key={access.instanceId} className="dash-enter">
         <DashboardOpener />
         {/* A new dashboard opens at once as a skeleton; a filter change keeps the page and only its cards wait. */}
-        <Suspense fallback={<DashboardFallback header={header} hasPrevious={previous !== null} />}>
+        <Suspense fallback={<DashboardFallback />}>
           <DashboardBody
             instanceId={access.instanceId}
             templateId={access.templateId}
@@ -125,7 +150,6 @@ export async function SpaceHome({ org, client, membership, user, searchParams }:
             before={
               <>
                 {previous && <NextDashboard direction="previous" id={previous.id} name={previous.name} number={previous.number} />}
-                {header}
               </>
             }
             after={next && <NextDashboard id={next.id} name={next.name} number={next.number} />}

@@ -6,6 +6,8 @@ import { getOrgContext, orgActions, requireAction, requireInstance, type OrgCont
 import { AccessError } from "@/lib/auth";
 import { archiveDashboard, linkDashboard } from "@/lib/data/instances";
 import { listClients } from "@/lib/data/organizations";
+import { isFiscalPanel } from "@/lib/fiscal/panel";
+import { afterLink } from "@/lib/services/panel-activation";
 import { getCatalogEntry } from "@/lib/templates/registry";
 import type { FormState } from "./actions";
 
@@ -46,10 +48,12 @@ export async function linkDashboardAction(_prev: FormState, formData: FormData):
     if (!entry || entry.status !== "published") return { ok: false, message: "Este dashboard não está disponível no catálogo." };
 
     const result = await linkDashboard(ctx.org.id, clientId, entry.template.id, entry.template.name);
+    if (result.outcome === "created") await afterLink(entry.template.id, result.id);
     revalidatePath(`/${ctx.org.slug}`, "layout");
     const name = entry.template.name;
     if (result.outcome === "already-linked") return { ok: true, message: `"${name}" já estava vinculado.` };
     if (result.outcome === "restored") return { ok: true, message: `"${name}" vinculado de novo, com os dados que já tinha.` };
+    if (isFiscalPanel(entry.template.id)) return { ok: true, message: `"${name}" vinculado: já aparece no espaço.` };
     return { ok: true, message: `"${name}" vinculado. Agora suba os arquivos em "Dados".` };
   } catch (err) {
     return failure(err);

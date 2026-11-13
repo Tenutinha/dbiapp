@@ -1,0 +1,34 @@
+{
+  "id": "dados-fiscais",
+  "version": 1,
+  "name": "Dados fiscais",
+  "area": "Fiscal",
+  "origin": "web",
+  "description": "Painel do caminho dos arquivos fiscais do espaço: o que foi enviado (SPED e NF-e) por molde, empresa e mês; o que já foi lido, o que falta e o que deu erro; as tabelas publicadas de cada dashboard fiscal e de quais arquivos vem cada uma. Para a equipe de dados, também organiza os arquivos soltos, lê os arquivos um a um, monta as tabelas e publica. Não recebe arquivos próprios: lê os dos dashboards fiscais do espaço.",
+  "tables": [
+    {
+      "name": "arquivos",
+      "kind": "fact",
+      "description": "Os arquivos fiscais do espaço, um por linha (o painel os lê direto da pasta do espaço; esta tabela só descreve o que ele mostra).",
+      "columns": [
+        { "name": "molde", "type": "text", "required": true, "description": "Molde fiscal (efd-icms-ipi, efd-contribuicoes, ecd, nfe)" },
+        { "name": "cnpj", "type": "text", "required": true, "description": "Empresa" },
+        { "name": "periodo", "type": "text", "required": true, "description": "Mês (aaaa-mm)" },
+        { "name": "estado", "type": "text", "required": true, "description": "pronto, falta, erro, script ou guardado" },
+        { "name": "tamanho", "type": "integer", "description": "Bytes" }
+      ]
+    }
+  ],
+  "relationships": [],
+  "fields": [
+    { "id": "molde", "label": "Molde", "sql": "arquivos.molde" },
+    { "id": "estado", "label": "Estado", "sql": "arquivos.estado" }
+  ],
+  "measures": [
+    { "id": "arquivos", "label": "Arquivos", "sql": "COUNT(*)", "format": "integer" }
+  ],
+  "filters": [],
+  "visuals": [
+    { "id": "k_arquivos", "type": "kpi", "title": "Arquivos", "measure": "arquivos", "span": 3 }
+  ]
+}

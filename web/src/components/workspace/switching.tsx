@@ -4,7 +4,6 @@ import { useLinkStatus } from "next/link";
 import { useRouter } from "next/navigation";
 import { startTransition, useEffect, useState, useTransition } from "react";
 import { DashboardSkeleton } from "@/components/dashboard/DashboardSkeleton";
-import { DASH_HEADER_CLASS } from "./DashHeader";
 import { selectDashboardAction } from "./view-actions";
 
 /**
@@ -100,7 +99,7 @@ export function useOpenDashboard(name: string, announce = true): { pending: bool
  * dropping it is not: it goes as a transition, so it lands together with the navigation that brings the
  * new dashboard instead of cutting in front of it and leaving the screen empty in between.
  */
-function useComing(): string | null {
+export function useComing(): string | null {
   const [name, setName] = useState<string | null>(null);
   useEffect(() => {
     const sync = (): void => {
@@ -137,9 +136,6 @@ export function DashboardSwitch({ children }: { children: React.ReactNode }) {
     <>
       {name !== null && (
         <div className="dash-enter">
-          <header className={DASH_HEADER_CLASS}>
-            <h1 className="min-w-0 truncate text-[15px] font-semibold leading-snug">{name}</h1>
-          </header>
           <DashboardSkeleton />
         </div>
       )}

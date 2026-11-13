@@ -78,6 +78,24 @@ export function gcsBucket(cfg: GcsConfig): RemoteBucket {
         throw new Error(`storage list failed for ${prefix}: ${errMsg(e)}`);
       }
     },
+    async listTree(prefix, names) {
+      try {
+        // matchGlob: the bucket itself keeps only the named files (thousands of parts folders, two names wanted).
+        const glob = names && names.length > 0 ? `${prefix}**/${names.length === 1 ? names[0] : `{${names.join(",")}}`}` : undefined;
+        const [files] = await bucket.getFiles({ prefix, autoPaginate: true, ...(glob ? { matchGlob: glob } : {}) });
+        return files
+          .filter((f) => !f.name.endsWith("/") && !f.name.endsWith(".emptyFolderPlaceholder"))
+          .map((f) => ({
+            key: f.name,
+            name: f.name.slice(f.name.lastIndexOf("/") + 1),
+            sizeBytes: Number(f.metadata.size ?? 0),
+            updatedAt: f.metadata.updated ? new Date(f.metadata.updated) : null,
+          }))
+          .filter((f) => !names || names.includes(f.name));
+      } catch (e) {
+        throw new Error(`storage list failed for ${prefix}: ${errMsg(e)}`);
+      }
+    },
     async upload(key, body, contentType) {
       try {
         // ifGenerationMatch 0 = only create, never overwrite (keys are immutable).

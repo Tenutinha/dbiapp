@@ -17,6 +17,7 @@ import { DashHeader } from "@/components/workspace/DashHeader";
 import { getEffectiveBranding } from "@/lib/data/branding";
 import { getSpaceLayout } from "@/lib/data/layout";
 import { getPublishedDashboard, resolveSpaceLink } from "@/lib/data/space-links";
+import { isFiscalPanel } from "@/lib/fiscal/panel";
 import { formatDateTime } from "@/lib/format";
 import { buildToc, nextItem, previousItem, updatedLine } from "@/lib/layout/toc";
 import { chooseDashboard, DASHBOARD_PARAM, spaceLinkPath } from "@/lib/space-link";
@@ -55,7 +56,10 @@ export default async function PublicSpacePage({ params, searchParams }: Props) {
     getSpaceLayout({ orgId: link.orgId, clientId: link.clientId }),
     getEffectiveBranding(link.orgId, link.clientId),
   ]);
-  const toc = buildToc(layout.sections, layout.dashboards, { includeUnpublished: false, includeEmptySections: false });
+  // The panel of fiscal data shows the space's files and actions: never through a public link.
+  const toc = buildToc(layout.sections, layout.dashboards.filter((d) => !isFiscalPanel(d.templateId)), {
+    includeUnpublished: false, includeEmptySections: false,
+  });
   const chosenId = chooseDashboard(toc.flatMap((g) => g.items.map((i) => i.id)), requested);
   const chosen = chosenId ? await getPublishedDashboard(link.orgId, link.clientId, chosenId) : null;
   // Only what the frame of the page needs is awaited here; the data arrives inside the Suspense below.
@@ -95,6 +99,8 @@ export default async function PublicSpacePage({ params, searchParams }: Props) {
         updated={updatedLine(toc, chosen?.instanceId ?? null)}
         footer={footer}
         content={
+          <>
+          {header}
           <div className="mx-auto max-w-[1180px]">
             {chosen && header ? (
               <>
@@ -102,7 +108,7 @@ export default async function PublicSpacePage({ params, searchParams }: Props) {
                 <DashboardSwitch>
                 <div key={chosen.instanceId} className="dash-enter">
                   {/* A new dashboard opens at once as a skeleton; a filter change keeps the page and only its cards wait. */}
-                  <Suspense fallback={<DashboardFallback header={header} hasPrevious={previous !== null} />}>
+                  <Suspense fallback={<DashboardFallback />}>
                     <DashboardBody
                       instanceId={chosen.instanceId}
                       templateId={chosen.templateId}
@@ -114,7 +120,6 @@ export default async function PublicSpacePage({ params, searchParams }: Props) {
                           {previous && (
                             <NextDashboard direction="previous" id={previous.id} name={previous.name} number={previous.number} href={hrefFor(previous.id)} />
                           )}
-                          {header}
                         </>
                       }
                       after={next && <NextDashboard id={next.id} name={next.name} number={next.number} href={hrefFor(next.id)} />}
@@ -127,6 +132,7 @@ export default async function PublicSpacePage({ params, searchParams }: Props) {
               <p className="py-24 text-center text-muted">Ainda não há dashboards publicados em {spaceName}.</p>
             )}
           </div>
+          </>
         }
       >
         <SidebarNav toc={toc} currentId={chosen?.instanceId ?? null} outlines={outlines} notes={notes} hrefFor={hrefFor} />

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { filesForFact, parseMarker, partsFolderId, planParts, type PartsFolder, type PartsMarker, type RawFile } from "./parts-plan";
+import { filesForFact, parseFailure, parseMarker, partsFolderId, planParts, type PartsFolder, type PartsMarker, type RawFile } from "./parts-plan";
 
 const file = (periodo: string, over: Partial<RawFile> = {}): RawFile => ({
   key: `orgs/acme/fiscal/efd-contribuicoes/11222333000181/${periodo}/PISCOFINS.txt`,
@@ -58,12 +58,18 @@ describe("planParts", () => {
     expect(planParts([july], [folderOf(july, ["registros"])], tables, 1).read).toEqual([july]);
   });
 
-  it("treats a folder without its marker (an interrupted read) as obsolete", () => {
+  it("reads again a file whose folder has no marker (an interrupted or failed read), into that same folder", () => {
     const july = file("2026-07");
     const interrupted: PartsFolder = { ...folderOf(july, tables), marker: null };
     const plan = planParts([july], [interrupted], tables, 1);
     expect(plan.read).toEqual([july]);
-    expect(plan.obsolete).toEqual([interrupted]);
+    // Not obsolete: deleting it after the new read would take the parts just written.
+    expect(plan.obsolete).toEqual([]);
+  });
+
+  it("keeps out of the obsolete list the folder of a file read again because the template has a new table", () => {
+    const july = file("2026-07");
+    expect(planParts([july], [folderOf(july, ["registros"])], tables, 1).obsolete).toEqual([]);
   });
 
   it("drops the parts of a file that was deleted", () => {
@@ -95,5 +101,15 @@ describe("parseMarker", () => {
     expect(parseMarker({ ...m, reader: "1" })).toBeNull();
     expect(parseMarker({ ...m, tables: { registros: { key: 1, rows: 1 } } })).toBeNull();
     expect(parseMarker({ ...m, dimensions: undefined })).toBeNull();
+  });
+});
+
+describe("parseFailure", () => {
+  it("accepts a failure record, trims a long message and refuses anything else", () => {
+    expect(parseFailure({ error: "Arquivo sem registro 0000.", at: "2026-11-13T10:00:00.000Z" }))
+      .toEqual({ error: "Arquivo sem registro 0000.", at: "2026-11-13T10:00:00.000Z" });
+    expect(parseFailure({ error: "x".repeat(900), at: "t" })?.error).toHaveLength(500);
+    expect(parseFailure({ error: 1, at: "t" })).toBeNull();
+    expect(parseFailure("erro")).toBeNull();
   });
 });

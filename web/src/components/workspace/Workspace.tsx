@@ -14,11 +14,13 @@ interface WorkspaceProps {
   outlines?: Outlines;
   /** What each dashboard is about: shown as a note when the mouse rests on it in the sidebar. */
   notes?: Notes;
+  /** Full-width bar on top of the content area (the dashboard header), outside the centred column. */
+  top?: React.ReactNode;
   children: React.ReactNode;
 }
 
 /** Two-pane layout: light table of contents on the left, the dashboard on the right. */
-export function Workspace({ space, currentId, userName, outlines = {}, notes = {}, children }: WorkspaceProps) {
+export function Workspace({ space, currentId, userName, outlines = {}, notes = {}, top, children }: WorkspaceProps) {
   const { org, client } = space;
   // The organization's own page is linked only when this person can open it (client users may not).
   const orgHref = space.spaces.some((s) => s.kind === "org") ? `/${org.slug}` : null;
@@ -53,7 +55,12 @@ export function Workspace({ space, currentId, userName, outlines = {}, notes = {
         orgSlug={org.slug}
         clientSlug={client?.slug ?? null}
         footer={footer}
-        content={<div className="mx-auto max-w-[1180px]">{children}</div>}
+        content={
+          <>
+            {top}
+            <div className="mx-auto max-w-[1180px]">{children}</div>
+          </>
+        }
       >
         <SidebarNav toc={space.toc} currentId={currentId} outlines={outlines} notes={notes} />
       </SidebarShell>

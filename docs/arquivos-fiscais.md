@@ -99,6 +99,8 @@ ingestão). Depois: gerar moldes, testes, PR, deploy e carga (seção 4).
   O resultado diz quantos arquivos foram lidos agora e quantos já tinham sido lidos.
 - Limite: pela tela, a montagem recusa ler mais de **250 MB** de arquivos de uma vez (limites da função na Vercel:
   disco e 300 s). A primeira carga de anos de EFD Contribuições (≈8 GB) ou uma ECD grande passa disso; um mês novo, não.
+- **Painel de dados fiscais** (molde `dados-fiscais`, vinculado ao cliente como os outros dashboards): o caminho dos
+  arquivos do espaço em três camadas, do original às tabelas publicadas. Veja a seção 7.
 
 ## 4. Carga pelo script (volumes grandes)
 
@@ -161,6 +163,7 @@ tabela:
 | mês novo enviado | só esse arquivo é lido |
 | retificadora do mesmo mês | só o arquivo novo é lido; a pasta do antigo é apagada |
 | arquivo apagado | a pasta dele é apagada e suas linhas saem das tabelas |
+| leitura interrompida ou com erro | o arquivo é lido de novo, na mesma pasta, esvaziada antes; o erro fica em `erro.json` até o arquivo mudar |
 | molde ganha uma tabela | os arquivos são lidos de novo (o marcador não tem a tabela nova) |
 | leitor muda (`SPED_READER_VERSION` sobe) | todos os arquivos são lidos de novo |
 | `--reler-tudo` no script | todas as pastas são apagadas e tudo é lido de novo |
@@ -193,20 +196,51 @@ A cada montagem é gravado, ao lado das tabelas do rascunho, um **`linhagem.json
 Além disso, **cada linha** de uma fato guarda a sua origem: `arquivo` (empresa e mês) e `linha` (a linha no
 arquivo original). Nas linhas somadas (resumos do bloco C), `linha` é 0.
 
-Código: `web/src/lib/fiscal/lineage.ts`. Ainda não há tela para a linhagem (fase 2).
+Código: `web/src/lib/fiscal/lineage.ts`. A tela da linhagem fica no painel de dados fiscais (seção 7).
 
-## 7. Próximas fases (proposta)
+## 7. Painel de dados fiscais (fase 2, implementada)
+
+Um painel por espaço, **vinculado ao cliente** pela Administração como qualquer dashboard do catálogo (molde
+`dados-fiscais`, em `web/templates/`). Ao ser vinculado ele já é publicado (uma versão vazia: o painel não tem tabelas
+próprias) e aparece no sumário do espaço; a tela do espaço o desenha no lugar dos visuais. Não abre por link público.
+
+Para cada molde fiscal com arquivos ou com dashboard no espaço, em três camadas:
+
+1. **Arquivos originais** — os `.txt`/`.xml` em `<espaço>/fiscal/<molde>/<CNPJ>/<aaaa-mm>/` e os soltos;
+2. **Lidos (partes)** — o estado de cada arquivo: *lido* (a pasta de partes tem `pronto.json`), *falta ler* (novo,
+   trocado ou leitor novo), *com erro* (`erro.json`, com o motivo), *pelo script* (mais de 250 MB, na Vercel) e, na
+   NF-e, *guardado* (lida inteira a cada montagem);
+3. **Tabelas publicadas** — as tabelas do dashboard (linhas, tamanho, data), o rascunho esperando publicação e a
+   **linhagem** de cada tabela (como é feita e de quais arquivos, página a página), lida do `linhagem.json`.
+
+O **mapa** tem uma linha por empresa e uma coluna por mês, cada célula com a cor do pior estado dos seus arquivos.
+Ele vem de uma única listagem do bucket por molde (o `pronto.json` não é lido, só a presença dele na pasta com o nome
+do conteúdo do arquivo): no cliente de referência, 5.785 arquivos em ~3 s.
+
+Quem só vê enxerga o mapa e a linhagem. Quem gerencia os dados (`manageData`) também tem, por molde:
+
+| Botão | Rota | O que faz |
+|---|---|---|
+| Organizar soltos | `POST /api/instances/<id>/fiscal/organizar` | leva os arquivos soltos reconhecidos para `<CNPJ>/<mês>/` |
+| Ler N arquivo(s) | `POST /api/instances/<id>/fiscal/ler` `{ key }` | lê **um** arquivo para as partes; a tela chama arquivo a arquivo, com "37 de 103" e "Parar" |
+| Montar tabelas | `POST /api/instances/<id>/fiscal/montar` | SPED: junta as partes no rascunho **sem ler nada** (recusa se faltar ler algum arquivo; os com erro ficam de fora); NF-e: a montagem de sempre |
+| Publicar | ação `publishAction` | publica o rascunho |
+
+A linhagem vem de `GET /api/instances/<id>/fiscal/linhagem?versao=publicada|rascunho[&tabela=…&offset=…]`
+(o rascunho só para quem gerencia os dados). Se a página fechar no meio da leitura, os marcadores dizem onde parou.
+Arquivos acima de 250 MB (ECD) continuam pelo script (seção 4).
+
+Código: `web/src/lib/fiscal/panel.ts` (puro), `web/src/lib/services/fiscal-panel.ts`,
+`web/src/components/fiscal-panel/`, e os passos separados em `services/fiscal-parts.ts` (`readSpedFile`,
+`spedFilesOverview`, `spedPartsState`, `assembleSpedFromParts`).
+
+## 8. Próximas fases (proposta)
 
 ### A sugestão na tela
 
-Comparando a pasta fiscal do cliente com as partes já lidas, o sistema sabe o que falta, e pode mostrar:
-
-- ao **vincular** um molde fiscal a um cliente que já tem arquivos reconhecidos: *"Este cliente tem 103 arquivos
-  EFD Contribuições (jan/2018 a jul/2026). Criar as tabelas do dashboard?"*;
-- no **gerenciador de dados** e no **explorador**, depois de um envio: *"4 arquivos novos e 1 retificado ainda não
-  estão no dashboard — Atualizar"*;
-- uma lista por empresa e período com o estado de cada arquivo (novo, pronto, com erro);
-- a **linhagem** de cada tabela e de cada visual ("de onde vêm estes números").
+Ainda não feito: avisar ao **vincular** um molde fiscal a um cliente que já tem arquivos reconhecidos, e no
+**gerenciador de dados** e no **explorador** depois de um envio (*"4 arquivos novos ainda não estão no dashboard —
+Atualizar"*). O painel já tem a contagem para isso.
 
 ### Onde roda o processamento
 
@@ -218,12 +252,13 @@ Comparando a pasta fiscal do cliente com as partes já lidas, o sistema sabe o q
 ### Fases
 
 1. ✅ **Partes por arquivo, marcador e linhagem**, pelo botão "Montar tabelas" e pelo script.
-2. **Sugestão na tela**, estado por arquivo, progresso arquivo a arquivo e tela da linhagem.
+2. ✅ **Painel de dados fiscais**: estado por arquivo, progresso arquivo a arquivo e tela da linhagem (seção 7). Falta a
+   sugestão ao vincular e depois de um envio.
 3. **Processador fora da Vercel** para arquivos grandes e lotes longos.
 4. **Atualização automática** ao enviar arquivos (opcional por espaço), sem clique.
 
 ### Pontos em aberto
 
 - Publicar sozinho ou sempre pedir confirmação? (Sugestão: rascunho, com aviso; publicação automática como opção.)
-- Erros por arquivo ficam só no resultado da montagem; guardar o histórico pede uma tabela no banco.
+- O erro de cada arquivo fica no `erro.json` da pasta de partes até o arquivo mudar; um histórico pede uma tabela no banco.
 - O bloco C completo: com partes por mês e leitura direta do bucket, ele poderia voltar a ser publicado inteiro.

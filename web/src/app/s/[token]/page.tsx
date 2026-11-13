@@ -7,6 +7,7 @@ import { MainHeader } from "@/components/workspace/Workspace";
 import { SpaceLogo, ThemeScope } from "@/components/workspace/ThemeScope";
 import { getEffectiveBranding } from "@/lib/data/branding";
 import { formatDateLong, formatDateTime } from "@/lib/format";
+import { isFiscalPanel } from "@/lib/fiscal/panel";
 import { loadDashboard } from "@/lib/services/dashboard";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +22,8 @@ export default async function GuestPage({ params, searchParams }: Props) {
   const { token } = await params;
   if (!/^[A-Za-z0-9_-]{20,64}$/.test(token)) notFound();
   const shared = await resolveShareToken(token);
-  if (!shared?.activeVersionId) notFound();
+  // The panel of fiscal data shows the space's files: it is never opened through a link.
+  if (!shared?.activeVersionId || isFiscalPanel(shared.templateId)) notFound();
 
   const [{ template, data, totalRows }, branding] = await Promise.all([
     loadDashboard(shared.instanceId, shared.templateId, shared.activeVersionId, await searchParams),

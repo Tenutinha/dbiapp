@@ -37,18 +37,18 @@ const MAX_FILES_PER_FOLDER = 20_000;
 const XML_MIME = "application/xml";
 const TXT_MIME = "text/plain";
 
-export function fiscalImporter(access: InstanceAccess): FiscalImporter | null {
+export function fiscalImporter(access: Pick<InstanceAccess, "templateId">): FiscalImporter | null {
   return fiscalImporterFor(access.templateId);
 }
 
-function requireImporter(access: InstanceAccess): FiscalImporter {
+export function requireImporter(access: InstanceAccess): FiscalImporter {
   const importer = fiscalImporter(access);
   if (!importer) throw new UserFacingError("Este dashboard não recebe arquivos fiscais.");
   return importer;
 }
 
 /** The dashboard's folder of raw files, inside its space's folder (the client's, or the organization's). */
-function folderOf(access: InstanceAccess): string {
+function folderOf(access: Pick<InstanceAccess, "org" | "client" | "templateId">): string {
   return fiscalFolder(access.org.slug, access.client?.slug || null, access.templateId);
 }
 
@@ -130,31 +130,71 @@ export interface FiscalPeriod {
   sizeBytes: number;
 }
 
-/** Every stored file, walking company → period folders. */
+const TAX_ID = /^\d{11,14}$/;
+const PERIOD = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+/** What a model's fiscal folder holds: the files in their company/period folders, and the ones dropped at its root. */
+export interface StoredFiscalFiles {
+  files: RawFile[];
+  /** Files at the root of the folder, outside any company/period folder (filed by "Organizar"). */
+  loose: RawFile[];
+}
+
+/**
+ * Every stored file of one model in one space, in one listing of the whole folder (one listing per
+ * company and period took seconds for a client with thousands of files).
+ */
+export async function storedFiscalFiles(orgSlug: string, clientSlug: string | null, templateId: string): Promise<StoredFiscalFiles> {
+  const folder = fiscalFolder(orgSlug, clientSlug, templateId);
+  const files: RawFile[] = [];
+  const loose: RawFile[] = [];
+  for (const f of await storage.listTree(folder)) {
+    const parts = f.key.slice(folder.length).split("/");
+    const updatedAt = f.updatedAt ? new Date(f.updatedAt).toISOString() : null;
+    if (parts.length === 1) loose.push({ key: f.key, name: f.name, cnpj: "", periodo: "", sizeBytes: f.sizeBytes, updatedAt });
+    if (parts.length !== 3 || !TAX_ID.test(parts[0]) || !PERIOD.test(parts[1])) continue;
+    files.push({ key: f.key, name: f.name, cnpj: parts[0], periodo: parts[1], sizeBytes: f.sizeBytes, updatedAt });
+  }
+  return { files, loose };
+}
+
+/** Every stored file, grouped by company and period. */
 async function walk(access: InstanceAccess): Promise<{
   period: Omit<FiscalPeriod, "files" | "sizeBytes">;
   keys: { key: string; name: string; sizeBytes: number; updatedAt: string | null }[];
 }[]> {
-  const base = relativeToOrg(access.org.slug, folderOf(access)).replace(/\/$/, "");
-  // Companies, then their periods, then each period's files: each level in parallel (one listing at a
-  // time took ~0.2 s per folder, seconds for a year of periods).
-  const companies = await storage.listOrgFolder(access.org.slug, base);
-  const periods = (await Promise.all(
-    companies.folders.map(async (cnpj) =>
-      (await storage.listOrgFolder(access.org.slug, `${base}/${cnpj}`)).folders.map((periodo) => ({ cnpj, periodo }))),
-  )).flat();
-  const listed = await Promise.all(
-    periods.map(async (period) => ({
-      period,
-      files: (await storage.listOrgFolder(access.org.slug, `${base}/${period.cnpj}/${period.periodo}`, MAX_FILES_PER_FOLDER)).files,
-    })),
-  );
-  return listed
-    .filter((l) => l.files.length > 0)
-    .map(({ period, files }) => ({
-      period,
-      keys: files.map((f) => ({ key: f.key, name: f.name, sizeBytes: f.sizeBytes, updatedAt: f.updatedAt ? new Date(f.updatedAt).toISOString() : null })),
-    }));
+  const { files } = await storedFiscalFiles(access.org.slug, access.client?.slug || null, access.templateId);
+  const byPeriod = new Map<string, RawFile[]>();
+  for (const f of files) byPeriod.set(`${f.cnpj}/${f.periodo}`, [...(byPeriod.get(`${f.cnpj}/${f.periodo}`) ?? []), f]);
+  return [...byPeriod.values()].map((list) => ({
+    period: { cnpj: list[0].cnpj, periodo: list[0].periodo },
+    keys: list.map((f) => ({ key: f.key, name: f.name, sizeBytes: f.sizeBytes, updatedAt: f.updatedAt })),
+  }));
+}
+
+/**
+ * One stored raw file of the dashboard, by its key as the panel sent it back: it must be inside the
+ * dashboard's own folder, in a company/period folder, and exist (its size and date come from the bucket).
+ */
+export async function findStoredFile(access: InstanceAccess, key: string): Promise<RawFile | null> {
+  const folder = folderOf(access);
+  if (!key.startsWith(folder)) return null;
+  const [cnpj, periodo, name, ...rest] = key.slice(folder.length).split("/");
+  if (rest.length > 0 || !name || !TAX_ID.test(cnpj) || !PERIOD.test(periodo)) return null;
+  const listing = await storage.listOrgFolder(access.org.slug, relativeToOrg(access.org.slug, `${folder}${cnpj}/${periodo}/`), MAX_FILES_PER_FOLDER);
+  const found = listing.files.find((f) => f.key === key);
+  if (!found) return null;
+  return {
+    key, name: found.name, cnpj, periodo, sizeBytes: found.sizeBytes,
+    updatedAt: found.updatedAt ? new Date(found.updatedAt).toISOString() : null,
+  };
+}
+
+/** Files left loose at the root of a space's folder whose extension one of the fiscal models accepts. */
+export async function looseSpaceFiles(orgSlug: string, clientSlug: string | null, extensions: readonly string[]): Promise<number> {
+  const root = relativeToOrg(orgSlug, spaceFolder(orgSlug, clientSlug)).replace(/\/$/, "");
+  const listing = await storage.listOrgFolder(orgSlug, root, MAX_FILES_PER_FOLDER);
+  return listing.files.filter((f) => extensions.some((ext) => f.name.toLowerCase().endsWith(ext))).length;
 }
 
 export async function listFiscalPeriods(access: InstanceAccess): Promise<FiscalPeriod[]> {
@@ -291,10 +331,9 @@ async function gatherDocuments(
 }
 
 /** The stored raw SPED files, as the parts plan sees them. */
-async function rawFiles(access: InstanceAccess): Promise<RawFile[]> {
-  return (await walk(access)).flatMap(({ period, keys }) => keys
-    .filter((k) => k.name.toLowerCase().endsWith(".txt"))
-    .map((k) => ({ ...k, cnpj: period.cnpj, periodo: period.periodo })));
+export async function rawFiles(access: InstanceAccess): Promise<RawFile[]> {
+  const { files } = await storedFiscalFiles(access.org.slug, access.client?.slug || null, access.templateId);
+  return files.filter((f) => f.name.toLowerCase().endsWith(".txt"));
 }
 
 /** Files what was uploaded loose, reads every stored file into the template's tables and puts them in the draft. */
