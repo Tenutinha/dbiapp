@@ -5,7 +5,10 @@ fiscais leem: onde ficam, como são lidos, quais tabelas existem, como carregar,
 única vez (montagem por arquivo), a **linhagem** de cada tabela e as próximas fases.
 
 Moldes fiscais hoje: **EFD ICMS/IPI** (`efd-icms-ipi`), **EFD Contribuições** (`efd-contribuicoes`),
-**ECD** (`ecd`) e **NF-e** (`nfe`).
+**ECD** (`ecd`) e **NF-e** (`nfe`), mais a **Auditoria fiscal** (`auditoria-fiscal`), que lê os outros.
+
+Para implantar tudo isso num cliente novo, siga [fiscal-implantacao.md](fiscal-implantacao.md); as regras e o
+preparo da Auditoria estão em [auditoria-fiscal.md](auditoria-fiscal.md).
 
 ---
 
