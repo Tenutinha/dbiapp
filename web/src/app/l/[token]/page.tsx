@@ -68,8 +68,8 @@ export default async function PublicSpacePage({ params, searchParams }: Props) {
   const previous = chosen ? previousItem(toc, chosen.instanceId) : null;
 
   const header = chosen ? (
-    // Only the visuals on screen: the sidebar names the space, the open dashboard and when it was updated.
-    <DashHeader title={chosen.name} topics={template ? buildOutline(template) : []} />
+    // Only the visuals under the header (dashboard · topic · when it was updated).
+    <DashHeader title={chosen.name} topics={template ? buildOutline(template) : []} updated={updatedLine(toc, chosen.instanceId)} />
   ) : null;
 
   const home = spaceLinkPath(token);
@@ -96,7 +96,6 @@ export default async function PublicSpacePage({ params, searchParams }: Props) {
         orgSlug={link.orgSlug}
         clientSlug={link.clientSlug}
         homeHref={home}
-        updated={updatedLine(toc, chosen?.instanceId ?? null)}
         footer={footer}
         content={
           <>
