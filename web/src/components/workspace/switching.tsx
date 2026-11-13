@@ -4,6 +4,7 @@ import { useLinkStatus } from "next/link";
 import { useRouter } from "next/navigation";
 import { startTransition, useEffect, useState, useTransition } from "react";
 import { DashboardSkeleton } from "@/components/dashboard/DashboardSkeleton";
+import { onOpenRequest, requestOpen, takeOpenRequest, type OpenRequest } from "./open-request";
 import { selectDashboardAction } from "./view-actions";
 
 /**
@@ -40,16 +41,6 @@ export function useSwitchSignal(pending: boolean, name: string): void {
   }, [pending, name]);
 }
 
-interface OpenRequest {
-  id: string;
-  name: string;
-  /** False when it is the dashboard already on screen: it reloads in place, without a skeleton. */
-  announce: boolean;
-}
-
-let openRequest: OpenRequest | null = null;
-const openListeners = new Set<() => void>();
-
 /**
  * Runs the "open this dashboard" action for the summary (signed-in screen). It lives inside the
  * dashboard being left, on purpose: the transition is then owned by a component that goes away together
@@ -65,9 +56,8 @@ export function DashboardOpener() {
 
   useEffect(() => {
     const run = (): void => {
-      const request = openRequest;
+      const request = takeOpenRequest();
       if (!request) return;
-      openRequest = null;
       setCurrent(request);
       startOpening(async () => {
         const target = await selectDashboardAction(request.id);
@@ -75,21 +65,29 @@ export function DashboardOpener() {
         if (target !== null) startOpening(() => router.push(target));
       });
     };
-    openListeners.add(run);
-    return () => {
-      openListeners.delete(run);
-    };
+    return onOpenRequest(run);
   }, [router]);
 
   return null;
 }
 
-/** For the summary: asks the dashboard on screen (DashboardOpener) to open another one. */
+/**
+ * For the summary: asks the dashboard on screen (DashboardOpener) to open another one. A screen without
+ * one (nothing open yet, or a page that forgot to mount it) is opened from here instead — the click must
+ * never be swallowed.
+ */
 export function useOpenDashboard(name: string, announce = true): { pending: boolean; open: (id: string) => void } {
   const coming = useComing();
+  const router = useRouter();
+  const [opening, startOpening] = useTransition();
+  useSwitchSignal(opening && announce, name);
   const open = (id: string): void => {
-    openRequest = { id, name, announce };
-    openListeners.forEach((listener) => listener());
+    if (requestOpen({ id, name, announce })) return;
+    startOpening(async () => {
+      const target = await selectDashboardAction(id);
+      // After the await, the navigation must join the transition again to keep it pending.
+      if (target !== null) startOpening(() => router.push(target));
+    });
   };
   return { pending: announce && coming === name, open };
 }
