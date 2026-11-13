@@ -22,6 +22,8 @@
   --color-ink: #1c1c1a;
   --color-ink-muted: #6e6c66;
   --color-paper-line: #dddbd3;
+  --color-header: #111623;
+  --color-on-header: #e8ecf5;
 }
 
 :root {
@@ -44,6 +46,8 @@ html[data-theme="light"] {
   --color-card-2: #ffffff;
   --color-line: #e3e1da;
   --color-text: #17171a;
+  --color-header: #ffffff;
+  --color-on-header: #17171a;
   --color-muted: #66666f;
   --color-brand: #6d4cf0;
   --color-brand-2: #0e7490;

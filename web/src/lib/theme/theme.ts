@@ -24,6 +24,8 @@ export interface BrandingInput {
   appearance: Appearance | null;
   /** Background of the dashboard area (behind the cards). Null = the appearance's own background. */
   backgroundColor: string | null;
+  /** Fixed bar on top of the dashboard (dashboard · topic). Null = the colour of the cards. */
+  headerColor: string | null;
 }
 
 export const brandingInputSchema = z.object({
@@ -32,6 +34,7 @@ export const brandingInputSchema = z.object({
   sidebarColor: hex.nullable(),
   appearance: z.enum(APPEARANCES).nullable(),
   backgroundColor: hex.nullable().default(null),
+  headerColor: hex.nullable().default(null),
 });
 
 export interface Theme {
@@ -41,6 +44,8 @@ export interface Theme {
   appearance: Appearance;
   /** Null = the light or dark surfaces of `appearance`; set = surfaces derived from this colour. */
   backgroundColor: string | null;
+  /** Null = the dashboard bar takes the colour of the cards. */
+  headerColor: string | null;
 }
 
 export const DEFAULT_THEME: Theme = {
@@ -49,10 +54,11 @@ export const DEFAULT_THEME: Theme = {
   sidebarColor: "#f6f5f1",
   appearance: "dark",
   backgroundColor: null,
+  headerColor: null,
 };
 
 export const EMPTY_BRANDING: BrandingInput = {
-  primaryColor: null, secondaryColor: null, sidebarColor: null, appearance: null, backgroundColor: null,
+  primaryColor: null, secondaryColor: null, sidebarColor: null, appearance: null, backgroundColor: null, headerColor: null,
 };
 
 /** Most specific wins: client → organization → platform default. */
@@ -70,6 +76,7 @@ export function resolveTheme(...layers: readonly (BrandingInput | null | undefin
     sidebarColor: pick("sidebarColor"),
     appearance: pick("appearance"),
     backgroundColor: pick("backgroundColor"),
+    headerColor: pick("headerColor"),
   };
 }
 
@@ -183,8 +190,11 @@ function surfacesFrom(bg: string): Record<string, string> {
 /** All custom properties a themed subtree needs. Values are validated hex, safe for inline styles. */
 export function themeCssVars(theme: Theme): Record<string, string> {
   const ink = readableOn(theme.sidebarColor);
+  const surfaces = theme.backgroundColor ? surfacesFrom(theme.backgroundColor) : SURFACES[theme.appearance];
   return {
-    ...(theme.backgroundColor ? surfacesFrom(theme.backgroundColor) : SURFACES[theme.appearance]),
+    ...surfaces,
+    "--color-header": theme.headerColor ?? surfaces["--color-card"],
+    "--color-on-header": theme.headerColor ? readableOn(theme.headerColor) : surfaces["--color-text"],
     "--color-brand": theme.primaryColor,
     "--color-brand-2": theme.secondaryColor,
     "--color-on-brand": readableOn(theme.primaryColor),

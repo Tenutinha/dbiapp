@@ -47,8 +47,8 @@ function Preview({ theme, logoUrl, spaceName }: { theme: Theme; logoUrl: string 
           <p className="border-l border-ink pl-2 text-[11px] font-medium">Visão geral</p>
           <p className="border-l border-paper-line pl-2 text-[11px]">Funil</p>
         </div>
-        <div className="flex flex-1 flex-col gap-2 p-4">
-          <p className="font-serif text-2xl">Visão geral</p>
+        <div className="flex flex-1 flex-col gap-2 p-4 pt-0">
+          <p className="-mx-4 bg-header px-4 py-2 text-[12px] font-medium text-on-header">Vendas · Visão geral</p>
           <div className="grid grid-cols-2 gap-2">
             <div className="rounded-lg border border-line bg-card p-2 text-[10px] text-muted">Receita<p className="text-sm font-bold text-text">R$ 2,8 mi</p></div>
             <div className="rounded-lg border border-line bg-card p-2 text-[10px] text-muted">Margem<p className="text-sm font-bold text-text">35%</p></div>
@@ -68,51 +68,58 @@ function Preview({ theme, logoUrl, spaceName }: { theme: Theme; logoUrl: string 
 /** Quick picks for the dashboard background: soft lights first, then deep darks. */
 const BACKGROUND_PRESETS = ["#ffffff", "#f6f5f1", "#eef2ff", "#f0fdf4", "#fff7ed", "#0b1220", "#111827", "#1e1b4b", "#052e2b"];
 
-interface BackgroundPickerProps {
+/** Quick picks for the dashboard bar: strong colours that read well with white or black text. */
+const HEADER_PRESETS = ["#3f4ad8", "#1e3a8a", "#0f766e", "#111827", "#7c3aed", "#b91c1c", "#ffffff", "#f6f5f1"];
+
+interface OptionalColorProps {
+  /** Form field. */
+  name: "backgroundColor" | "headerColor";
+  label: string;
+  presets: readonly string[];
   /** What this space set (null = not set here). */
   own: string | null;
-  /** What it would inherit (organization's background for a client; null = the appearance's own). */
+  /** What it would inherit (the organization's colour for a client; null = the default). */
   inherited: string | null;
   inheritedLabel: string;
-  /** The background the preview shows right now. */
+  /** The colour the preview shows right now. */
   shown: string;
+  /** What the colour does once chosen, and what the default is. */
+  setNote: string;
+  defaultNote: string;
   onChange: (color: string | null) => void;
 }
 
-/** "Fundo do dashboard": the colour behind the cards; cards, lines and text follow it. */
-function BackgroundPicker({ own, inherited, inheritedLabel, shown, onChange }: BackgroundPickerProps) {
-  const note = own
-    ? "Os cartões, linhas e textos se ajustam à cor; a área fica clara ou escura conforme ela."
-    : inherited
-      ? `Herdando de ${inheritedLabel}.`
-      : "Padrão: o fundo da área clara ou escura escolhida acima.";
+/** A colour that may stay unset ("Usar o padrão"), with a row of quick picks. */
+function OptionalColor(props: OptionalColorProps) {
+  const { name, label, presets, own, inherited, inheritedLabel, shown, setNote, defaultNote, onChange } = props;
+  const note = own ? setNote : inherited ? `Herdando de ${inheritedLabel}.` : defaultNote;
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-3">
         <input
           type="color"
-          aria-label="Fundo do dashboard"
+          aria-label={label}
           value={shown}
           onChange={(e) => onChange(e.target.value.toLowerCase())}
           className="size-10 shrink-0 cursor-pointer rounded-lg border border-line bg-transparent p-0.5"
         />
-        <input type="hidden" name="backgroundColor" value={own ?? ""} />
+        <input type="hidden" name={name} value={own ?? ""} />
         <div className="min-w-0 flex-1">
-          <p className="text-sm">Fundo do dashboard <span className="font-mono text-xs text-muted">{shown}</span></p>
+          <p className="text-sm">{label} <span className="font-mono text-xs text-muted">{shown}</span></p>
           <p className="text-xs text-muted">{note}</p>
         </div>
         {own && (
           <button type="button" onClick={() => onChange(null)} className="text-xs text-muted hover:text-text">Usar o padrão</button>
         )}
       </div>
-      <div className="flex flex-wrap gap-1.5 pl-[52px]" role="group" aria-label="Sugestões de fundo">
-        {BACKGROUND_PRESETS.map((c) => (
+      <div className="flex flex-wrap gap-1.5 pl-[52px]" role="group" aria-label={`Sugestões: ${label}`}>
+        {presets.map((c) => (
           <button
             key={c}
             type="button"
             onClick={() => onChange(c)}
             title={c}
-            aria-label={`Fundo ${c}`}
+            aria-label={`${label} ${c}`}
             aria-pressed={own === c}
             style={{ background: c }}
             className={`size-6 rounded-md border transition hover:scale-110 ${own === c ? "border-brand ring-2 ring-brand/40" : "border-line"}`}
@@ -222,12 +229,30 @@ export function ThemeForm(props: ThemeFormProps) {
             <input type="hidden" name="appearance" value={draft.appearance ?? ""} />
           </fieldset>
 
-          <BackgroundPicker
+          <OptionalColor
+            name="backgroundColor"
+            label="Fundo do dashboard"
+            presets={BACKGROUND_PRESETS}
             own={draft.backgroundColor}
             inherited={inherited.backgroundColor}
             inheritedLabel={inheritedLabel}
             shown={themeCssVars(preview)["--color-bg"]}
+            setNote="Os cartões, linhas e textos se ajustam à cor; a área fica clara ou escura conforme ela."
+            defaultNote="Padrão: o fundo da área clara ou escura escolhida acima."
             onChange={(backgroundColor) => setDraft((d) => ({ ...d, backgroundColor }))}
+          />
+
+          <OptionalColor
+            name="headerColor"
+            label="Cabeçalho do dashboard"
+            presets={HEADER_PRESETS}
+            own={draft.headerColor}
+            inherited={inherited.headerColor}
+            inheritedLabel={inheritedLabel}
+            shown={themeCssVars(preview)["--color-header"]}
+            setNote="Barra fixa no alto do dashboard, com o nome dele e do tópico; o texto se ajusta à cor."
+            defaultNote="Padrão: a cor dos cartões."
+            onChange={(headerColor) => setDraft((d) => ({ ...d, headerColor }))}
           />
 
           <div className="flex items-center gap-3">

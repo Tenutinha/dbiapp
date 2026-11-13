@@ -12,7 +12,8 @@ import { DashboardBody, DashboardFallback } from "./DashboardBody";
 import { NextDashboard } from "./NextDashboard";
 import { DashboardOpener, DashboardSwitch } from "./switching";
 import type { Notes, Outlines } from "./SidebarNav";
-import { ScreenTitle, Workspace } from "./Workspace";
+import { DashHeader } from "./DashHeader";
+import { Workspace } from "./Workspace";
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
@@ -92,12 +93,13 @@ export async function SpaceHome({ org, client, membership, user, searchParams }:
 
   // Only what the frame of the page needs is awaited here; the data arrives inside the Suspense below.
   const [template, { outlines, notes }] = await Promise.all([getTemplate(access.templateId), loadOutlines(space.toc)]);
-  const anchorsKey = template ? buildOutline(template).map((i) => i.anchor).join("|") : "";
+  const topics = template ? buildOutline(template) : [];
+  const anchorsKey = topics.map((i) => i.anchor).join("|");
   const next = nextItem(space.toc, access.instanceId);
   const previous = previousItem(space.toc, access.instanceId);
   // Only the visuals on screen: the sidebar names the space, the open dashboard and when it was updated;
   // sharing is done by the organization's admins, in the administration.
-  const header = <ScreenTitle title={access.name} />;
+  const header = <DashHeader title={access.name} topics={topics} />;
 
   return (
     <Workspace

@@ -13,7 +13,7 @@ import { SidebarNav } from "@/components/workspace/SidebarNav";
 import { DbiLogo, SidebarShell } from "@/components/workspace/SidebarShell";
 import { ThemeScope } from "@/components/workspace/ThemeScope";
 import { loadOutlines } from "@/components/workspace/SpaceHome";
-import { ScreenTitle } from "@/components/workspace/Workspace";
+import { DashHeader } from "@/components/workspace/DashHeader";
 import { getEffectiveBranding } from "@/lib/data/branding";
 import { getSpaceLayout } from "@/lib/data/layout";
 import { getPublishedDashboard, resolveSpaceLink } from "@/lib/data/space-links";
@@ -65,7 +65,7 @@ export default async function PublicSpacePage({ params, searchParams }: Props) {
 
   const header = chosen ? (
     // Only the visuals on screen: the sidebar names the space, the open dashboard and when it was updated.
-    <ScreenTitle title={chosen.name} />
+    <DashHeader title={chosen.name} topics={template ? buildOutline(template) : []} />
   ) : null;
 
   const home = spaceLinkPath(token);
