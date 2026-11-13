@@ -13,6 +13,8 @@ interface DashHeaderProps {
   title: string;
   /** Its analyses in reading order: the one on screen is named after the dashboard. */
   topics: readonly HeaderTopic[];
+  /** "Atualizado em …" of the open dashboard, on the right of the bar (none: nothing shown). */
+  updated?: string | null;
 }
 
 /**
@@ -21,13 +23,13 @@ interface DashHeaderProps {
  * dashboard is on its way it already names that one. Its colour is the space's "Cabeçalho do dashboard".
  * The negative margins cancel the content area's padding (SidebarShell's <main>).
  */
-export function DashHeader({ title, topics }: DashHeaderProps) {
+export function DashHeader({ title, topics, updated }: DashHeaderProps) {
   const active = useActiveAnchor(topics.map((t) => t.anchor).join("|"));
   const coming = useComing();
   const topic = coming === null ? (topics.find((t) => t.anchor === active) ?? topics[0]) : undefined;
   return (
     <header className="sticky top-14 z-20 -mx-4 mb-5 bg-header text-on-header shadow-sm sm:-mx-8 lg:top-0 lg:-mx-14">
-      <div className="mx-auto flex min-h-12 max-w-[1180px] box-content items-center px-4 py-2.5 sm:px-8 lg:px-14">
+      <div className="mx-auto flex min-h-12 max-w-[1180px] box-content items-center justify-between gap-4 px-4 py-2.5 sm:px-8 lg:px-14">
         <h1 className="min-w-0 truncate text-[15px] font-semibold leading-snug" aria-busy={coming !== null || undefined}>
           {coming ?? title}
           {topic && (
@@ -36,6 +38,8 @@ export function DashHeader({ title, topics }: DashHeaderProps) {
             </span>
           )}
         </h1>
+        {/* The date belongs to the open dashboard: left out while another one is on its way. */}
+        {updated && coming === null && <p className="shrink-0 text-[12px] opacity-80">{updated}</p>}
       </div>
     </header>
   );

@@ -3,7 +3,7 @@ import { FiscalPanelBody, FiscalPanelFallback } from "@/components/fiscal-panel/
 import { isFiscalPanel } from "@/lib/fiscal/panel";
 import { requireInstance, type ClientRef, type InstanceAccess, type OrgRef } from "@/lib/access";
 import { AccessError, type CurrentUser } from "@/lib/auth";
-import { firstItem, nextItem, previousItem, type TocGroup } from "@/lib/layout/toc";
+import { firstItem, nextItem, previousItem, updatedLine, type TocGroup } from "@/lib/layout/toc";
 import type { Membership } from "@/lib/permissions";
 import { loadSpace } from "@/lib/services/space";
 import { getTemplate } from "@/lib/templates/registry";
@@ -121,9 +121,9 @@ export async function SpaceHome({ org, client, membership, user, searchParams }:
   const anchorsKey = topics.map((i) => i.anchor).join("|");
   const next = nextItem(space.toc, access.instanceId);
   const previous = previousItem(space.toc, access.instanceId);
-  // Only the visuals on screen: the sidebar names the space, the open dashboard and when it was updated;
-  // sharing is done by the organization's admins, in the administration.
-  const header = <DashHeader title={access.name} topics={topics} />;
+  // Only the visuals under the header (dashboard · topic · when it was updated); sharing is done by the
+  // organization's admins, in the administration.
+  const header = <DashHeader title={access.name} topics={topics} updated={updatedLine(space.toc, access.instanceId)} />;
 
   return (
     <Workspace

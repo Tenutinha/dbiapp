@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { updatedLine } from "@/lib/layout/toc";
 import type { SpaceView } from "@/lib/services/space";
 import { SignOutButton } from "../SignOutButton";
 import { SidebarNav, type Notes, type Outlines } from "./SidebarNav";
@@ -48,7 +47,6 @@ export function Workspace({ space, currentId, userName, outlines = {}, notes = {
     <ThemeScope theme={space.theme}>
       <SidebarShell
         title={client?.name ?? org.name}
-        updated={updatedLine(space.toc, currentId)}
         org={{ name: org.name, href: orgHref }}
         spaces={space.spaces}
         logoUrl={space.logoUrl}
