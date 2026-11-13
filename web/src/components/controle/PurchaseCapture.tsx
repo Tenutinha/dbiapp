@@ -13,6 +13,8 @@ import { ErrorNote } from "./fields";
 import { shrinkPhoto } from "./image";
 import { PurchaseForm } from "./PurchaseForm";
 import { readQrCode } from "./qr";
+import { QrScanner } from "./QrScanner";
+import { liveCameraSupported } from "./scan";
 
 const EMPTY: PurchaseDraft = { readable: true, supplier: null, purchasedOn: null, totalCents: null, paymentMethod: null, notes: null, items: [] };
 const NOTE_ALREADY_IN = "Esta nota já foi lançada.";
@@ -32,6 +34,8 @@ interface Review {
 type Stage =
   | { name: "idle" }
   | { name: "manual" }
+  /** The camera inside the page, waiting for an NFC-e QR Code. */
+  | { name: "scanning" }
   | { name: "working"; step: string }
   | ({ name: "review" } & Review)
   /** An NFC-e read on the SEFAZ and already saved; "conferir" opens it for editing. */
@@ -50,9 +54,9 @@ const message = (err: unknown): string => (err instanceof ControleError ? err.me
 const items = (n: number): string => (n === 1 ? "1 item" : `${n} itens`);
 
 /**
- * New purchase, from the phone: photograph the receipt (or pick a file). When the photo shows the
- * QR Code of an NFC-e, the note is read on the SEFAZ and saved right away; otherwise the photo is
- * read by the AI and checked before saving. Without a proof, "Lançar à mão" asks one question at a time.
+ * New purchase, from the phone: point the camera at the receipt (or pick a file). As soon as the
+ * camera sees the QR Code of an NFC-e, the note is read on the SEFAZ and saved right away; a photo
+ * without one is read by the AI and checked before saving. Without a proof, "Lançar à mão" asks one question at a time.
  */
 export function PurchaseCapture({ api, today, readerEnabled, onClose }: PurchaseCaptureProps) {
   const router = useRouter();
@@ -97,7 +101,8 @@ export function PurchaseCapture({ api, today, readerEnabled, onClose }: Purchase
     }
   }
 
-  async function handleFile(picked: File | undefined): Promise<void> {
+  /** A photo of the receipt; `knownQr` when the live camera already read its NFC-e QR Code. */
+  async function handleFile(picked: File | undefined, knownQr: string | null = null): Promise<void> {
     if (!picked) return;
     setError(null);
     setSaved(false);
@@ -107,7 +112,7 @@ export function PurchaseCapture({ api, today, readerEnabled, onClose }: Purchase
     try {
       setStage({ name: "working", step: "Preparando a foto…" });
       // The QR Code is looked for on the full picture, before it is shrunk for sending.
-      const found = readerEnabled ? await readQrCode(picked) : null;
+      const found = knownQr ?? (readerEnabled ? await readQrCode(picked) : null);
       qr = found && parseNfceQr(found) ? found : null;
       file = await shrinkPhoto(picked);
       setStage({ name: "working", step: "Enviando o comprovante…" });
@@ -156,6 +161,35 @@ export function PurchaseCapture({ api, today, readerEnabled, onClose }: Purchase
     setStage({ name: "idle" });
     setSaved(true);
     router.refresh();
+  }
+
+  const pickers = (
+    <>
+      <input ref={cameraRef} type="file" accept="image/*" capture="environment" hidden onChange={(e) => { void handleFile(e.target.files?.[0]); e.target.value = ""; }} />
+      <input ref={fileRef} type="file" accept={RECEIPT_ACCEPT} hidden onChange={(e) => { void handleFile(e.target.files?.[0]); e.target.value = ""; }} />
+    </>
+  );
+
+  /** The camera inside the page when it can read QR Codes live; the phone's camera app otherwise. */
+  function openCamera(): void {
+    setError(null);
+    setSaved(false);
+    if (readerEnabled && liveCameraSupported()) setStage({ name: "scanning" });
+    else cameraRef.current?.click();
+  }
+
+  if (stage.name === "scanning") {
+    return (
+      <>
+        {pickers}
+        <QrScanner
+          onNfce={(qr, photo) => void handleFile(photo, qr)}
+          onPhoto={(photo) => void handleFile(photo)}
+          onNativeCamera={() => { setStage({ name: "idle" }); cameraRef.current?.click(); }}
+          onCancel={() => setStage({ name: "idle" })}
+        />
+      </>
+    );
   }
 
   if (stage.name === "manual") {
@@ -230,10 +264,9 @@ export function PurchaseCapture({ api, today, readerEnabled, onClose }: Purchase
 
   return (
     <div className="flex flex-col gap-3">
-      <input ref={cameraRef} type="file" accept="image/*" capture="environment" hidden onChange={(e) => { void handleFile(e.target.files?.[0]); e.target.value = ""; }} />
-      <input ref={fileRef} type="file" accept={RECEIPT_ACCEPT} hidden onChange={(e) => { void handleFile(e.target.files?.[0]); e.target.value = ""; }} />
-      <button type="button" onClick={() => cameraRef.current?.click()} className="btn btn-primary flex-col justify-center gap-0.5 py-3.5 text-base">
-        Fotografar cupom ou QR Code
+      {pickers}
+      <button type="button" onClick={openCamera} className="btn btn-primary flex-col justify-center gap-0.5 py-3.5 text-base">
+        Ler QR Code ou fotografar cupom
         {readerEnabled && <span className="text-xs font-normal opacity-80">NFC-e com QR Code: os dados vêm direto da SEFAZ</span>}
       </button>
       <div className="grid grid-cols-2 gap-2">
