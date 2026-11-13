@@ -187,7 +187,13 @@ export function DashboardView({ template, data, totalRows, later, notesInSummary
   const pending = new Set(later?.pending ?? []);
   // Only previews get here with analyses off the air: readers never receive them (withoutHidden).
   const off = offTheAir(template);
-  const header = (s: (typeof sections)[number]): React.ReactNode => (
+  const sideways = template.paging === "horizontal";
+  // Pages turned sideways beside the summary: the summary names and marks the page on screen, so the
+  // page itself shows only its visuals (the title stays for screen readers).
+  const bare = sideways && notesInSummary;
+  const header = (s: (typeof sections)[number]): React.ReactNode => bare && !off.has(s.analysis.id) ? (
+    <h2 id={`${s.anchor}-titulo`} className="sr-only">{s.analysis.title}</h2>
+  ) : (
     <header className={notesInSummary ? "mb-4 border-t border-line pt-4" : "mb-5 border-t border-line pt-6"}>
       {s.number !== null && <p className="font-mono text-xs tabular-nums text-muted">{String(s.number).padStart(2, "0")}</p>}
       {off.has(s.analysis.id) && (
@@ -204,7 +210,6 @@ export function DashboardView({ template, data, totalRows, later, notesInSummary
       {s.analysis.description && !notesInSummary && <p className="mt-3 max-w-3xl leading-relaxed text-text/75">{s.analysis.description}</p>}
     </header>
   );
-  const sideways = template.paging === "horizontal";
   const pageClass = sideways ? PAGE_CLASS : undefined;
   // An analysis computed with the page that has nothing to show under these filters leaves the page.
   const shown = sections.filter(
@@ -231,7 +236,7 @@ export function DashboardView({ template, data, totalRows, later, notesInSummary
     <>
       <FilterBar filters={data.filters} cross={data.cross} />
       <VisualGrid template={template} results={loose} />
-      {sideways ? <PageStrip pages={shown.map((s) => ({ anchor: s.anchor, title: s.analysis.title }))}>{body}</PageStrip> : body}
+      {sideways ? <PageStrip pages={shown.map((s) => ({ anchor: s.anchor, title: s.analysis.title }))} tabs={!notesInSummary}>{body}</PageStrip> : body}
       <p className="mt-6 text-right font-mono text-xs text-muted">
         {totalRows.toLocaleString("pt-BR")} linhas na fato · {data.visuals.length} visuais calculados em {data.elapsedMs} ms
         {pending.size > 0 && " · as demais análises carregam ao chegar nelas"}

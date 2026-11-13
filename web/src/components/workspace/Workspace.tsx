@@ -98,3 +98,15 @@ export function MainHeader({ kicker, meta, title, lead, links = [] }: MainHeader
     </header>
   );
 }
+
+/**
+ * The dashboard's title for screen readers only: on the space's screen the sidebar already shows which
+ * dashboard is open, so the page keeps nothing but its visuals (and a little room on top).
+ */
+export function ScreenTitle({ title }: { title: string }) {
+  return (
+    <header className="pt-5 lg:pt-6">
+      <h1 className="sr-only">{title}</h1>
+    </header>
+  );
+}
