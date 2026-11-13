@@ -133,6 +133,12 @@ function identifyEcd(r: SpedRecord | undefined): SpedIdentity & { uf: string | n
 /** Items of the goods notes (EFD Contribuições, C170): what tells them apart in a summary, and what is added. */
 const C170_KEYS = ["CFOP", "CST_PIS", "ALIQ_PIS", "CST_COFINS", "ALIQ_COFINS"] as const;
 const C170_SUMS = ["QTD", "VL_ITEM", "VL_DESC", "VL_BC_PIS", "VL_PIS", "VL_BC_COFINS", "VL_COFINS"] as const;
+/** EFD ICMS/IPI: the analytical lines of the notes (C190) are summed by CST, CFOP and rate. */
+const C190_KEYS = ["CST_ICMS", "CFOP", "ALIQ_ICMS"] as const;
+const C190_SUMS = ["VL_OPR", "VL_BC_ICMS", "VL_ICMS", "VL_BC_ICMS_ST", "VL_ICMS_ST", "VL_RED_BC", "VL_IPI"] as const;
+/** EFD ICMS/IPI: the items of the notes (C170) are summed by item, CST, CFOP and rate. */
+const ICMS_C170_KEYS = ["CST_ICMS", "CFOP", "ALIQ_ICMS"] as const;
+const ICMS_C170_SUMS = ["QTD", "VL_ITEM", "VL_DESC", "VL_BC_ICMS", "VL_ICMS", "VL_BC_ICMS_ST", "VL_ICMS_ST", "VL_BC_IPI", "VL_IPI"] as const;
 
 export const SPED_KINDS: readonly SpedKind[] = [
   {
@@ -145,8 +151,31 @@ export const SPED_KINDS: readonly SpedKind[] = [
     establishmentRecords: new Set(),
     identify: identifyIcms,
     dimensions: ["estabelecimentos", "participantes", "itens"],
-    blockFacts: {},
-    mainFactPeriods: "all",
+    blockFacts: {
+      bloco_b_iss: { blocks: ["B"] },
+      bloco_d_servicos: { blocks: ["D"] },
+      bloco_e_apuracao: { blocks: ["E"] },
+      bloco_g_ciap: { blocks: ["G"] },
+      bloco_h_inventario: { blocks: ["H"] },
+      bloco_k_producao_estoque: { blocks: ["K"] },
+      bloco_1_outras_informacoes: { blocks: ["1"] },
+      bloco_9_encerramento: { blocks: ["9"] },
+      // Bloco C whole (notes, items, analytical lines) is tens of millions of lines for a chain of stores: the
+      // general panels read the analytical lines of every document (C190 summed up) and the apuração (E110).
+      paineis_todos_periodos: {
+        blocks: ["C", "D", "E"],
+        only: ["C190", "C490", "C590", "C850", "D190", "D590", "E110"],
+        collapse: { record: "C190", keys: C190_KEYS, sums: C190_SUMS, byEstablishment: true, byItem: false },
+      },
+      // The items of the notes (C170), summed by item: what the items panel reads for every period.
+      bloco_c_resumo_itens: {
+        blocks: ["C"],
+        only: ["C170"],
+        collapse: { record: "C170", keys: ICMS_C170_KEYS, sums: ICMS_C170_SUMS, byEstablishment: true, byItem: true },
+      },
+    },
+    // The whole file (notes one by one) is kept for the latest period of each establishment only.
+    mainFactPeriods: "latest",
   },
   {
     templateId: "efd-contribuicoes",

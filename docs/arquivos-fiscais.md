@@ -55,6 +55,24 @@ Por que tantas tabelas: o arquivo inteiro de 103 meses teria ~58 milhões de lin
 bloco C, e o servidor baixa cada tabela inteira ao abrir o dashboard. As tabelas por bloco guardam todos os
 períodos com poucos MB; o bloco C entra **resumido**.
 
+### EFD ICMS/IPI
+
+Cada estabelecimento entrega a sua EFD ICMS/IPI. Uma rede de lojas tem um arquivo por loja e por mês: no cliente
+de referência, 4.513 arquivos (121 estabelecimentos, 43 meses, 4,8 GB), ~49 milhões de linhas, quase todas C100,
+C170 e C190.
+
+| Tabela | O que guarda | Redução medida |
+|---|---|---|
+| `registros` | o arquivo **inteiro** — fato principal | só o período mais recente **de cada estabelecimento** |
+| `paineis_todos_periodos` | os analíticos (C190 **somado** por CST, CFOP e alíquota; C490, C590, C850, D190, D590) e a apuração (E110) — o que Visão geral, Apuração e CFOP/CST leem | ~1 linha para cada 140 do arquivo |
+| `bloco_c_resumo_itens` | C170 somados por estabelecimento, item, CST, CFOP e alíquota — o painel de itens | ~1 para 12 do C170 |
+| `bloco_b_iss`, `bloco_d_servicos`, `bloco_e_apuracao`, `bloco_g_ciap`, `bloco_h_inventario`, `bloco_k_producao_estoque`, `bloco_1_outras_informacoes`, `bloco_9_encerramento` | cada bloco inteiro, de todos os períodos | blocos leves (o H tem o inventário, em geral uma vez por ano) |
+| `estabelecimentos`, `participantes`, `itens` | dimensões (0000, 0150, 0200) | |
+
+As notas uma a uma (C100) ficam só na `registros`: o painel "Notas fiscais e participantes" mostra o período mais
+recente de cada estabelecimento. Conferido com 4 arquivos reais: operações, ICMS, ICMS-ST, IPI, E110, itens por item e
+inventário iguais ao centavo aos do arquivo inteiro.
+
 Quem lê o quê: cada visual do molde diz de qual fato lê (`fact`). Sem `fact`, lê a principal (`registros`).
 Uma fato com `sameAs: "registros"` tem as mesmas colunas e é lida com esse nome, então medidas e filtros
 servem para todas.
