@@ -37,7 +37,14 @@ const reducedMotion = (): boolean => window.matchMedia("(prefers-reduced-motion:
  * is as tall as the page on screen, so a short page leaves no gap under it. The pages off screen are
  * inert, so Tab never jumps the strip sideways.
  */
-export function PageStrip({ pages, children }: { pages: readonly StripPage[]; children: React.ReactNode }) {
+interface PageStripProps {
+  pages: readonly StripPage[];
+  /** Tabs above the strip; off when the sidebar summary already lists and marks the pages. */
+  tabs?: boolean;
+  children: React.ReactNode;
+}
+
+export function PageStrip({ pages, tabs: showTabs = true, children }: PageStripProps) {
   const strip = useRef<HTMLDivElement>(null);
   const tabs = useRef<HTMLElement>(null);
   const [active, setActive] = useState<string | null>(pages[0]?.anchor ?? null);
@@ -107,7 +114,7 @@ export function PageStrip({ pages, children }: { pages: readonly StripPage[]; ch
 
   return (
     <div>
-      {listed.length > 1 && (
+      {showTabs && listed.length > 1 && (
         <nav ref={tabs} aria-label="Páginas do dashboard" className="scroll-quiet relative -mx-1 mb-4 flex gap-1 overflow-x-auto px-1 pb-1">
           {listed.map((p) => (
             <button

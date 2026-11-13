@@ -120,6 +120,13 @@ describe("DashboardView with pages turned sideways", () => {
     expect(html).toContain('aria-current="page"');
   });
 
+  it("beside the summary, shows only the visuals: no tabs and the page titles for screen readers only", () => {
+    const html = renderToStaticMarkup(createElement(DashboardView, { template: twoPages, data, totalRows: 10, notesInSummary: true }));
+    expect(html).not.toContain("Páginas do dashboard");
+    expect(html).toContain('class="sr-only">Visão geral</h2>');
+    expect(html).toContain("snap-x");
+  });
+
   it("keeps sections one below the other by default", () => {
     const html = render();
     expect(html).not.toContain("Páginas do dashboard");

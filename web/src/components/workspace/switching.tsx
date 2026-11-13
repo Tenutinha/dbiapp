@@ -120,11 +120,9 @@ export function LinkSwitchSignal({ name }: { name: string }) {
   return null;
 }
 
-const BLOCK = "animate-pulse rounded-lg bg-text/10";
-
 /**
  * Wraps the dashboard on screen. While another one is on its way, the current page gives way at once to
- * the coming dashboard's title over a skeleton; the page itself stays mounted (hidden), because the
+ * a skeleton of the coming dashboard; the page itself stays mounted (hidden), because the
  * component that asked for the change lives in it and must see the change through.
  */
 export function DashboardSwitch({ children }: { children: React.ReactNode }) {
@@ -138,11 +136,8 @@ export function DashboardSwitch({ children }: { children: React.ReactNode }) {
     <>
       {name !== null && (
         <div className="dash-enter">
-          <header className="pb-6 pt-6 lg:pt-8">
-            <div className="border-b border-line pb-4">
-              <div className={`${BLOCK} h-4 w-48`} />
-            </div>
-            <h1 className="mt-5 font-serif text-[clamp(2rem,3.6vw,3rem)] font-normal leading-[1.05] tracking-[-0.02em]">{name}</h1>
+          <header className="pt-5 lg:pt-6">
+            <h1 className="sr-only">{name}</h1>
           </header>
           <DashboardSkeleton />
         </div>

@@ -13,11 +13,11 @@ import { SidebarNav } from "@/components/workspace/SidebarNav";
 import { DbiLogo, SidebarShell } from "@/components/workspace/SidebarShell";
 import { ThemeScope } from "@/components/workspace/ThemeScope";
 import { loadOutlines } from "@/components/workspace/SpaceHome";
-import { MainHeader } from "@/components/workspace/Workspace";
+import { ScreenTitle } from "@/components/workspace/Workspace";
 import { getEffectiveBranding } from "@/lib/data/branding";
 import { getSpaceLayout } from "@/lib/data/layout";
 import { getPublishedDashboard, resolveSpaceLink } from "@/lib/data/space-links";
-import { formatDateLong, formatDateTime } from "@/lib/format";
+import { formatDateTime } from "@/lib/format";
 import { buildToc, nextItem, previousItem } from "@/lib/layout/toc";
 import { chooseDashboard, DASHBOARD_PARAM, spaceLinkPath } from "@/lib/space-link";
 import { getTemplate } from "@/lib/templates/registry";
@@ -64,11 +64,8 @@ export default async function PublicSpacePage({ params, searchParams }: Props) {
   const previous = chosen ? previousItem(toc, chosen.instanceId) : null;
 
   const header = chosen ? (
-    <MainHeader
-      kicker={link.clientName ? `${link.orgName} · ${link.clientName}` : link.orgName}
-      meta={chosen.publishedAt ? `Atualizado em ${formatDateLong(chosen.publishedAt)}` : undefined}
-      title={chosen.name}
-    />
+    // Only the visuals on screen: the sidebar names the space, the open dashboard and when it was updated.
+    <ScreenTitle title={chosen.name} />
   ) : null;
 
   const home = spaceLinkPath(token);
