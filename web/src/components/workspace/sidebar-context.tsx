@@ -10,6 +10,8 @@ export interface SidebarState {
   expand: () => void;
   /** The space's logo, shown where the panel showed it while the panel is collapsed. */
   logoUrl: string | null;
+  /** The signed-in person's avatar and menu, shown at the right of the dashboard header (null: nobody). */
+  account: React.ReactNode;
   /**
    * A bar on top of the page takes over the "open the panel" button and the logo while the panel is
    * collapsed (the dashboard header): the panel then drops its own floating button and the room it kept

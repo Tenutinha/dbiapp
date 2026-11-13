@@ -1,6 +1,8 @@
 import Link from "next/link";
+import { getCurrentUser, supabaseAuthEnabled } from "@/lib/auth";
+import { avatarUrl } from "@/lib/data/users";
 import type { SpaceView } from "@/lib/services/space";
-import { SignOutButton } from "../SignOutButton";
+import { UserMenu, type UserMenuLink } from "../user-menu/UserMenu";
 import { SidebarNav, type Notes, type Outlines } from "./SidebarNav";
 import { DbiLogo, SidebarShell } from "./SidebarShell";
 import { ThemeScope } from "./ThemeScope";
@@ -18,30 +20,42 @@ interface WorkspaceProps {
   children: React.ReactNode;
 }
 
+/**
+ * The signed-in person's avatar and its menu ("Administração" for the organization's admins, "Meu perfil",
+ * theme, "Sair"). Null when there is no session to show. getCurrentUser is cached per request.
+ */
+async function accountMenu(space: SpaceView, userName: string): Promise<React.ReactNode> {
+  try {
+    const user = await getCurrentUser();
+    const links: UserMenuLink[] = space.isOrgAdmin ? [{ label: "Administração", href: `/${space.org.slug}/admin` }] : [];
+    return (
+      <UserMenu
+        name={userName}
+        email={user.email}
+        avatarUrl={avatarUrl(user.avatarKey)}
+        links={links}
+        authEnabled={supabaseAuthEnabled()}
+      />
+    );
+  } catch {
+    return null;
+  }
+}
+
 /** Two-pane layout: light table of contents on the left, the dashboard on the right. */
-export function Workspace({ space, currentId, userName, outlines = {}, notes = {}, top, children }: WorkspaceProps) {
+export async function Workspace({ space, currentId, userName, outlines = {}, notes = {}, top, children }: WorkspaceProps) {
   const { org, client } = space;
   // The organization's own page is linked only when this person can open it (client users may not).
   const orgHref = space.spaces.some((s) => s.kind === "org") ? `/${org.slug}` : null;
 
-  // Other spaces are in the switcher at the top; the footer keeps who is signed in, the admin links,
-  // and the DBI logo (back to the platform's home) next to "Sair".
+  // Other spaces are in the switcher at the top; the footer keeps only the DBI logo (back to the platform's
+  // home). Who is signed in, the administration and "Sair" are in the avatar at the right of the header.
   const footer = (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between gap-2 text-[13px] text-ink-muted">
-        <span className="truncate">{userName}</span>
-        {space.isOrgAdmin && (
-          <Link href={`/${org.slug}/admin`} className="shrink-0 hover:text-ink hover:underline">Administração</Link>
-        )}
-      </div>
-      <div className="flex items-center justify-between gap-2">
-        <Link href="/" aria-label="DBI — voltar à tela inicial" title="Voltar à tela inicial" className="rounded-md hover:opacity-80">
-          <DbiLogo />
-        </Link>
-        <SignOutButton className="text-[13px] text-ink-muted hover:text-ink hover:underline" />
-      </div>
-    </div>
+    <Link href="/" aria-label="DBI — voltar à tela inicial" title="Voltar à tela inicial" className="inline-flex rounded-md hover:opacity-80">
+      <DbiLogo />
+    </Link>
   );
+  const account = await accountMenu(space, userName);
 
   return (
     <ThemeScope theme={space.theme}>
@@ -53,9 +67,11 @@ export function Workspace({ space, currentId, userName, outlines = {}, notes = {
         orgSlug={org.slug}
         clientSlug={client?.slug ?? null}
         footer={footer}
+        account={account}
         content={
           <>
-            {top}
+            {/* No header on this screen: the avatar keeps its corner, at the top right of the page. */}
+            {top ?? (account && <div className="flex justify-end pt-4">{account}</div>)}
             <div className="mx-auto max-w-[1180px]">{children}</div>
           </>
         }

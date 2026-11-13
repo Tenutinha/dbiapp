@@ -108,6 +108,8 @@ export function DashHeader({ title, topics, updated }: DashHeaderProps) {
         <div className="flex shrink-0 items-center gap-3">
           {updated && coming === null && <p className="text-[12px] opacity-80">{updated}</p>}
           <FiltersButton />
+          {/* Who is signed in: the avatar opens the menu (administration for admins, profile, "Sair"). */}
+          {sidebar?.account}
         </div>
       </div>
       {/* Pages side by side: their scrollbar lives here, always in sight. */}
