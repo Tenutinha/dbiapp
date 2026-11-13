@@ -141,15 +141,22 @@ export function NextDashboard({ id, name, number, href, direction = "next" }: Ne
       </div>
     );
   }
+  // The next dashboard already shows as a band of another colour (a tint of the dashboard header's), from the
+  // sidebar to the window's edge and down to its bottom: the reader sees that pushing on leads elsewhere.
+  // The tint deepens as the push goes on. The box-shadow + clip-path pair paints the band past the centred
+  // column without widening the page.
+  const tint = `color-mix(in srgb, var(--color-header) ${Math.round(12 + 28 * shown)}%, var(--color-bg))`;
   return (
-    <button type="button" onClick={open} aria-busy={pending || undefined} className="group mt-16 block w-full pb-10 text-left">
-      <span className="block h-px w-full bg-line" aria-hidden>
-        <span
-          className={`block h-px origin-left bg-text transition-transform duration-150 ease-out ${pending ? "animate-pulse" : ""}`}
-          style={{ transform: `scaleX(${shown})` }}
-        />
-      </span>
-      <span className="mt-6 block font-mono text-xs text-muted">{pending ? "Abrindo…" : "A seguir · continue rolando"}</span>
+    <button
+      type="button"
+      onClick={open}
+      aria-busy={pending || undefined}
+      style={{ background: tint, boxShadow: `0 0 0 100vmax ${tint}`, clipPath: "inset(0 -100vmax -100vmax)" }}
+      className={`group relative mt-16 -mb-16 block min-h-[38vh] w-full pb-16 pt-10 text-left transition-[background,box-shadow] duration-150 ease-out ${
+        pending ? "animate-pulse" : ""
+      }`}
+    >
+      <span className="block font-mono text-xs text-muted">{pending ? "Abrindo…" : "A seguir · continue rolando ↓"}</span>
       <span className="mt-1 flex items-baseline justify-between gap-4">
         <span className="font-serif text-3xl leading-tight tracking-[-0.01em] text-text/80 transition-colors group-hover:text-text sm:text-4xl">
           {name}
