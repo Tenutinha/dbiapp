@@ -160,6 +160,9 @@ cabeçalho) e diz se está **pronto para engatar** num dashboard do espaço ou s
   `web/src/lib/data/file-analysis.ts`, `web/src/components/storage/` (StatusBadge, OrganizeDialog).
 - Como os arquivos fiscais viram as tabelas dos dashboards (tabelas por bloco, carga, regras e a proposta de
   processamento incremental): [arquivos-fiscais.md](arquivos-fiscais.md).
+- Passo a passo para implantar os dashboards fiscais numa organização ou cliente novo:
+  [fiscal-implantacao.md](fiscal-implantacao.md). Regras e preparo da Auditoria fiscal:
+  [auditoria-fiscal.md](auditoria-fiscal.md).
 
 ## ✅ Decisão (2026-11-10): acesso por link a um espaço inteiro
 
