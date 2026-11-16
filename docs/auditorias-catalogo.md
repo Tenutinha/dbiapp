@@ -570,9 +570,11 @@ Cuidados:
 - **Totais e apuração.** Recontar os registros de encerramento (0990, C990, 9900, 9990, 9999), marcar o arquivo como
   retificador (`0000.TIPO_ESCRIT` = 1, com o `NUM_REC_ANTERIOR`) e refazer o bloco M no PVA: a inclusão muda o M105, o
   M100 e o M200 (a função de gerar a apuração no PVA é a confirmar).
-- **Ponto a decidir com o tributarista:** "exatamente como está no ICMS" copia também o `CST_PIS`, o `CST_COFINS`, as
-  bases e as alíquotas do C170 da EFD ICMS/IPI. Se lá eles estiverem vazios ou com CST sem crédito, a nota entra na
-  Contribuições e não gera crédito. A regra tem de dizer se mantém o que veio ou se aplica o CST de crédito por CFOP.
+- **PIS/COFINS do item: como estão.** Decisão do responsável pela análise (16/11/2026): o `CST_PIS`, o `CST_COFINS`,
+  as bases, as alíquotas e os valores vão para a Contribuições como estão no C170 da EFD ICMS/IPI; o gerador não
+  recalcula nem troca CST por CFOP. Consequência: item que lá estiver com esses campos vazios ou com CST sem crédito
+  entra na Contribuições sem gerar crédito. O relatório da inclusão deve separar essas notas (incluídas sem crédito)
+  das que geram crédito, para o tributarista ver o que ficou de fora.
 - A EFD ICMS/IPI começa em 2019 e a Contribuições em 2018: a análise vale para os meses e estabelecimentos que têm os
   dois arquivos.
 
