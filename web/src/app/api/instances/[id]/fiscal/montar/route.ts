@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireInstance } from "@/lib/access";
 import { requireTemplate } from "@/lib/services/datasets";
-import { rawFiles, rebuildFiscal, requireImporter } from "@/lib/services/fiscal";
+import { rawFiles, rebuildFiscal, requireImporter, requireModelingHere } from "@/lib/services/fiscal";
 import { assembleSpedFromParts } from "@/lib/services/fiscal-parts";
 import { fail, handleError, instanceParams } from "../../upload/respond";
 
@@ -18,6 +18,7 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
   if (!params.success) return fail(404, "Dashboard não encontrado.");
   try {
     const access = await requireInstance(params.data.id, "manageData");
+    requireModelingHere();
     const importer = requireImporter(access);
     const result = importer.mode === "sped"
       ? await assembleSpedFromParts(access, importer, await requireTemplate(access.templateId), await rawFiles(access))

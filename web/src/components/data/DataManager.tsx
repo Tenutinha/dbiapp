@@ -3,7 +3,7 @@ import { getDraft, listFiles, type DatasetFile } from "@/lib/data/repository";
 import { isFiscalPanel } from "@/lib/fiscal/panel";
 import { formatBytes } from "@/lib/format";
 import { requireTemplate } from "@/lib/services/datasets";
-import { fiscalImporter, listFiscalPeriods, type FiscalPeriod } from "@/lib/services/fiscal";
+import { fiscalImporter, fiscalModelingHere, listFiscalPeriods, type FiscalPeriod } from "@/lib/services/fiscal";
 import { storageFolderSuggestions } from "@/lib/services/storage-import";
 import { CLIENTS_DIR } from "@/lib/storage-keys";
 import { splitParts } from "@/lib/storage-parts";
@@ -52,6 +52,8 @@ export async function DataManager({ access }: { access: InstanceAccess }) {
   }
   const canUpload = access.actions.has("manageData");
   const fiscal = fiscalImporter(access);
+  // Fiscal tables are put together and published on the DBI's machine; the hosted app only receives the files.
+  const modeling = fiscalModelingHere();
   // Everything at once (database and storage), not one after the other: this is what the modal waits for.
   const [template, { draft, draftFiles }, activeFiles, suggestions, periods] = await Promise.all([
     requireTemplate(access.templateId),
@@ -79,7 +81,7 @@ export async function DataManager({ access }: { access: InstanceAccess }) {
         instanceId={access.instanceId}
         draftVersion={draft?.version ?? null}
         pendingTables={pending}
-        canPublish={canUpload}
+        canPublish={canUpload && (!fiscal || modeling)}
       />
 
       {fiscal && (
@@ -89,6 +91,7 @@ export async function DataManager({ access }: { access: InstanceAccess }) {
           extensions={fiscal.extensions}
           initialPeriods={periods}
           canUpload={canUpload}
+          canBuild={modeling}
           files={{ orgSlug: access.org.slug, folder: startFolder }}
         />
       )}

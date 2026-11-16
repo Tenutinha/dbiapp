@@ -43,6 +43,25 @@ async function ingest(name: string, content: string): Promise<{ errors: string[]
   return { errors: [], rows };
 }
 
+describe("ingest of a CSV the app wrote", () => {
+  it("reads a quoted cell that only shows up far down the file", async () => {
+    const simple: TemplateTable = {
+      name: "participantes", kind: "dimension", description: "", key: "id",
+      columns: [{ name: "id", type: "text", required: true }, { name: "nome", type: "text", required: false }, { name: "uf", type: "text", required: false }],
+    };
+    // More plain lines than the reader samples to guess the dialect, then a name with a comma between quotes.
+    const lines = ["id,nome,uf", ...Array.from({ length: 30_000 }, (_, i) => `P${i},FULANO ${i},MT`), 'PX,"NOME//99,74 **NG**",MT'];
+    const source = path.join(root, "proprio.csv");
+    const target = toDuckPath(path.join(root, "proprio.parquet"));
+    await writeFile(source, lines.join("\n"), "utf8");
+    const report = await ingestTable({ storageRoot: root, table: simple, sourcePath: toDuckPath(source), format: "csv", ownCsv: true, targetPath: target });
+    expect(report.errors).toEqual([]);
+    expect(report.rowCount).toBe(30_001);
+    const rows = await withConnection(root, (conn) => queryRows(conn, `SELECT nome, uf FROM read_parquet('${target}') WHERE id = 'PX'`));
+    expect(rows).toEqual([{ nome: "NOME//99,74 **NG**", uf: "MT" }]);
+  });
+});
+
 describe("ingest of Brazilian text formats", () => {
   it("reads decimal commas, dd/mm/aaaa dates and quoted text with separators and line breaks", async () => {
     const { errors, rows } = await ingest("br", [

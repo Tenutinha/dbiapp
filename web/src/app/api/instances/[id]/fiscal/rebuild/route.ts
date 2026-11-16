@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireInstance } from "@/lib/access";
-import { rebuildFiscal } from "@/lib/services/fiscal";
+import { rebuildFiscal, requireModelingHere } from "@/lib/services/fiscal";
 import { fail, handleError, instanceParams } from "../../upload/respond";
 
 export const runtime = "nodejs";
@@ -13,6 +13,7 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
   if (!params.success) return fail(404, "Dashboard não encontrado.");
   try {
     const access = await requireInstance(params.data.id, "manageData");
+    requireModelingHere();
     const result = await rebuildFiscal(access);
     const firstError = result.tables.flatMap((t) => t.errors.map((e) => `${t.table}: ${e}`))[0];
     return NextResponse.json({ success: result.ok, data: result, error: firstError }, { status: result.ok ? 200 : 422 });

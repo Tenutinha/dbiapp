@@ -10,6 +10,7 @@ import { HowItWorks } from "./HowItWorks";
 import { FileReaderProvider } from "./FileReader";
 import { count, periodLabel, STATE_LABEL, STATE_ORDER } from "./labels";
 import { LineagePanel } from "./LineagePanel";
+import { LocalLoad } from "./LocalLoad";
 import { PanelActions } from "./PanelActions";
 import { ReadableFileMap } from "./ReadableFileMap";
 
@@ -18,6 +19,10 @@ interface FiscalPanelProps {
   orgSlug: string;
   /** The space's folder in the file explorer (to send files). */
   filesFolder: string;
+  /** Local server only: the folder "Converter nesta máquina" suggests (null: not offered here). */
+  localFolder: string | null;
+  /** The files are read and the tables put together here (a local server); the hosted app only receives files. */
+  modeling: boolean;
 }
 
 /** One of the three layers: a title, its main number and what it is. */
@@ -60,12 +65,12 @@ function FileList({ title, files, tone }: { title: string; files: PanelFile[]; t
   );
 }
 
-function ModelCard({ model, canManage, looseInSpace, now }: { model: PanelModel; canManage: boolean; looseInSpace: number; now: number }) {
+function ModelCard({ model, canManage, canModel, looseInSpace, now, localFolder }: { model: PanelModel; canManage: boolean; canModel: boolean; looseInSpace: number; now: number; localFolder: string | null }) {
   const d = model.dashboard;
   const months = model.map.periods;
   const publishedRows = d?.published.reduce((s, t) => s + t.rows, 0) ?? 0;
   // Who manages the data reads from the map too (a click on a month) with the same reader as the buttons.
-  const readable = canManage && d !== null && model.mode === "sped";
+  const readable = canModel && d !== null && model.mode === "sped";
   const card = (
     <section className="card flex flex-col gap-4 p-5" aria-labelledby={`molde-${model.templateId}`}>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -130,7 +135,7 @@ function ModelCard({ model, canManage, looseInSpace, now }: { model: PanelModel;
 
       {d && <LineagePanel dashboardId={d.id} hasDraft={d.draft !== null} canManage={canManage} />}
 
-      {canManage && d && (
+      {canModel && d && (
         <PanelActions
           dashboardId={d.id}
           mode={model.mode}
@@ -139,13 +144,14 @@ function ModelCard({ model, canManage, looseInSpace, now }: { model: PanelModel;
           hasDraft={d.draft !== null}
         />
       )}
+      {canModel && d && model.mode === "sped" && localFolder !== null && <LocalLoad dashboardId={d.id} defaultFolder={localFolder} />}
       {canManage && !d && model.files > 0 && (
         <p className="text-sm text-muted">Vincule o dashboard &ldquo;{model.title}&rdquo; a este espaço na Administração para ler estes arquivos e montar as tabelas.</p>
       )}
     </section>
   );
   // The buttons share the reader with the map, so every model with a dashboard gets one (NF-e too).
-  return canManage && d ? <FileReaderProvider dashboardId={d.id}>{card}</FileReaderProvider> : card;
+  return canModel && d ? <FileReaderProvider dashboardId={d.id}>{card}</FileReaderProvider> : card;
 }
 
 /**
@@ -153,7 +159,7 @@ function ModelCard({ model, canManage, looseInSpace, now }: { model: PanelModel;
  * file to the published tables — the map (company × month), the lineage and, for who manages the data,
  * the steps to bring it up to date.
  */
-export function FiscalPanel({ view, orgSlug, filesFolder }: FiscalPanelProps) {
+export function FiscalPanel({ view, orgSlug, filesFolder, localFolder, modeling }: FiscalPanelProps) {
   // Rendered on the server at each refresh: "há 1 min" is counted from this moment.
   const now = Date.now();
   const running = view.models.some((m) => m.dashboard?.build && isActive(m.dashboard.build) && !isStale(m.dashboard.build, now));
@@ -168,17 +174,18 @@ export function FiscalPanel({ view, orgSlug, filesFolder }: FiscalPanelProps) {
             {" "}Envie arquivos pelo explorador de{" "}
             <FilesLink orgSlug={orgSlug} folder={filesFolder} className="font-semibold text-brand-2 hover:underline">📁 Arquivos</FilesLink>.
             {view.looseInSpace > 0 ? ` Há ${count(view.looseInSpace)} arquivo(s) .txt/.xml solto(s) na pasta do espaço.` : ""}
+            {modeling ? "" : " A leitura dos arquivos e a montagem das tabelas são feitas pela equipe da DBI; o andamento aparece aqui."}
           </>
         )}
       </p>
       <HowItWorks />
-      {view.maxReadBytes !== null && view.canManage && (
+      {view.maxReadBytes !== null && view.canManage && modeling && (
         <p className="text-xs text-muted">Pela tela, cada arquivo pode ter até {formatBytes(view.maxReadBytes)}; os maiores (ECD de centenas de MB) são carregados pelo script.</p>
       )}
       {view.models.length === 0 ? (
         <p className="card p-5 text-sm text-muted">Nenhum arquivo fiscal nem dashboard fiscal neste espaço ainda.</p>
       ) : (
-        view.models.map((m) => <ModelCard key={m.templateId} model={m} canManage={view.canManage} looseInSpace={view.looseInSpace} now={now} />)
+        view.models.map((m) => <ModelCard key={m.templateId} model={m} canManage={view.canManage} canModel={view.canManage && modeling} looseInSpace={view.looseInSpace} now={now} localFolder={localFolder} />)
       )}
     </div>
   );

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireInstance } from "@/lib/access";
-import { adoptLooseFiles } from "@/lib/services/fiscal";
+import { adoptLooseFiles, requireModelingHere } from "@/lib/services/fiscal";
 import { fail, handleError, instanceParams } from "../../upload/respond";
 
 export const runtime = "nodejs";
@@ -12,6 +12,7 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
   if (!params.success) return fail(404, "Dashboard não encontrado.");
   try {
     const access = await requireInstance(params.data.id, "manageData");
+    requireModelingHere();
     return NextResponse.json({ success: true, data: { adopted: await adoptLooseFiles(access) } });
   } catch (err) {
     return handleError(err, "fiscal-organizar");

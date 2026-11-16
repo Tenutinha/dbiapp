@@ -29,16 +29,21 @@ export interface IngestInput {
   sourcePath: string;
   format: SourceFormat;
   targetPath: string;
+  /**
+   * The CSV was written by the app itself (comma, double quotes doubled inside): the reader is told so
+   * instead of guessing from a sample — a quoted cell far down a long file would be missed by the guess.
+   */
+  ownCsv?: boolean;
 }
 
 /**
  * CSV is read entirely as text: the contract decides the types (via TRY_CAST), so codes like
  * "00123" keep their leading zeros and a bad value on row 1M is reported, not thrown.
  */
-function reader(format: SourceFormat, file: string): string {
-  return format === "parquet"
-    ? `read_parquet(${quotePath(file)})`
-    : `read_csv(${quotePath(file)}, header = true, auto_detect = true, all_varchar = true)`;
+function reader(format: SourceFormat, file: string, ownCsv = false): string {
+  if (format === "parquet") return `read_parquet(${quotePath(file)})`;
+  const dialect = ownCsv ? `, delim = ',', quote = '"', escape = '"'` : "";
+  return `read_csv(${quotePath(file)}, header = true, auto_detect = true, all_varchar = true${dialect})`;
 }
 
 async function describe(conn: DuckDBConnection, src: string): Promise<SourceColumn[]> {
@@ -97,7 +102,7 @@ export async function ingestTable(input: IngestInput): Promise<TableReport> {
   const tmpPath = `${targetPath}.${randomUUID()}.tmp`;
 
   return withConnection(input.storageRoot, async (conn) => {
-    const src = reader(input.format, input.sourcePath);
+    const src = reader(input.format, input.sourcePath, input.ownCsv);
     let columns: SourceColumn[];
     try {
       columns = await describe(conn, src);
