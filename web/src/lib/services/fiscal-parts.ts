@@ -210,19 +210,27 @@ async function assembleTable(
   const local = await inBatches(sources.flatMap(splitParts), DOWNLOADS_AT_A_TIME, (k) => withRetries(() => storage.localPath(k)));
   const target = path.join(dir, `${table.name}.parquet`);
   const columns = table.columns.map((c) => c.name).join(", ");
+  const copyOptions = "(FORMAT parquet, COMPRESSION zstd, ROW_GROUP_SIZE 122880)";
   await withConnection(storage.workRoot, async (conn) => {
-    // A chain of stores has thousands of parts: they go in a few hundred at a time, not in one statement.
+    if (!latestWins) {
+      // A fact goes straight from its parts to the file: kept whole in a table first, years of a chain of
+      // stores do not fit in memory. The sort spills to disk.
+      const order = sortColumns(table);
+      const files = `read_parquet([${local.map(quotePath).join(", ")}])`;
+      await conn.run(`COPY (SELECT ${columns} FROM ${files}${order.length > 0 ? ` ORDER BY ${order.join(", ")}` : ""}) TO ${quotePath(target)} ${copyOptions}`);
+      return;
+    }
+    // A dimension needs the order of its sources; thousands of parts go in a few hundred at a time.
     await conn.run(`CREATE TEMP TABLE __partes AS SELECT ${columns}, 0 AS __ordem FROM ${readParquet(local[0])} LIMIT 0`);
     for (let start = 0; start < local.length; start += PARTS_PER_STATEMENT) {
       const union = local.slice(start, start + PARTS_PER_STATEMENT)
         .map((file, i) => `SELECT ${columns}, ${start + i} AS __ordem FROM ${readParquet(file)}`).join(" UNION ALL ");
       await conn.run(`INSERT INTO __partes ${union}`);
     }
-    const order = sortColumns(table);
-    const body = latestWins && table.key
+    const body = table.key
       ? `SELECT ${columns} FROM __partes QUALIFY row_number() OVER (PARTITION BY ${table.key} ORDER BY __ordem DESC) = 1`
-      : `SELECT ${columns} FROM __partes${order.length > 0 ? ` ORDER BY ${order.join(", ")}` : ""}`;
-    await conn.run(`COPY (${body}) TO ${quotePath(target)} (FORMAT parquet, COMPRESSION zstd, ROW_GROUP_SIZE 122880)`);
+      : `SELECT ${columns} FROM __partes`;
+    await conn.run(`COPY (${body}) TO ${quotePath(target)} ${copyOptions}`);
   });
   return ingestIntoDraft(access, stored(table), target, `${table.name}.parquet`);
 }
