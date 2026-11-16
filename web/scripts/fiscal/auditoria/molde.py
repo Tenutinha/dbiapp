@@ -1,6 +1,7 @@
 """
 Gera template.json do molde "Auditoria fiscal" na pasta de trabalho (AUDITORIA_PASTA, padrão: a pasta atual).
-As regras vêm de preparar.py, para o texto da seção Regras. Documentação: docs/auditoria-fiscal.md.
+As regras vêm de preparar.py, para o texto da seção Regras; os temas do Glossário, de glossario.py.
+Documentação: docs/auditoria-fiscal.md.
 """
 import json
 import os
@@ -8,6 +9,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from glossario import CATALOGO, montar as montar_glossario
 from preparar import REGRAS
 
 PASTA = Path(os.environ.get("AUDITORIA_PASTA", Path.cwd())).resolve()
@@ -51,6 +53,23 @@ tables = [
                     col("notas", "integer", True), col("valor", "decimal")],
     },
     {
+        "name": "glossario", "kind": "fact", "sortBy": "ordem",
+        "description": "Glossário: uma linha por auditoria, as que já rodam (Ativa) e as do catálogo (Planejada). "
+                       "Gerada por glossario.py a partir de docs/auditorias-catalogo.md e das regras do preparo.",
+        "columns": [
+            col("ordem", "integer", True, "Ordem de leitura: tema a tema, as ativas primeiro."),
+            col("codigo", required=True, description="Código da auditoria (C01, X02, O03 nas regras ativas; EC01, CR17… no catálogo)."),
+            col("tema_ordem", "integer", True, "Número do tema no catálogo (1 a 15)."),
+            col("tema", required=True), col("auditoria", required=True, description="Nome curto."),
+            col("situacao", required=True, description="Ativa (já roda) ou Planejada (está no catálogo)."),
+            col("confere", required=True, description="O que a auditoria confere."),
+            col("importa", required=True, description="Por que importa para a empresa; nas regras ativas, o que fazer com o achado."),
+            col("dificuldade", description="Baixa, média ou alta; vazia nas regras ativas."),
+            col("tributarista", required=True, description="Sim quando o achado depende de validação do tributarista."),
+            col("resultado", required=True, description="Erro, risco, oportunidade de recuperação ou indicador."),
+        ],
+    },
+    {
         "name": "regras", "kind": "dimension", "key": "regra",
         "description": "Cadastro das regras de auditoria: o que cada uma confere e o que fazer com o achado.",
         "columns": [col("regra", required=True), col("grupo", required=True), col("titulo", required=True),
@@ -74,6 +93,7 @@ fields = [
     {"id": "cfop", "label": "CFOP", "sql": "achados.cfop"},
     {"id": "cst_pis", "label": "CST PIS", "sql": "achados.cst_pis"},
     {"id": "cob_competencia", "label": "Competência", "sql": "cobertura.competencia"},
+    {"id": "gl_tema", "label": "Tema", "sql": "glossario.tema"},
 ]
 
 measures = [
@@ -95,6 +115,13 @@ measures = [
      "sql": "SUM(CASE WHEN cobertura.fonte = 'EFD ICMS/IPI' THEN cobertura.notas END)"},
     {"id": "cob_xml", "label": "NF-e (XML)", "format": "integer",
      "sql": "SUM(CASE WHEN cobertura.fonte = 'NF-e (XML)' THEN cobertura.notas END)"},
+    {"id": "gl_auditorias", "label": "Auditorias", "sql": "COUNT(glossario.codigo)", "format": "integer"},
+    {"id": "gl_ativas", "label": "Ativas", "format": "integer",
+     "sql": "COUNT(CASE WHEN glossario.situacao = 'Ativa' THEN 1 END)"},
+    {"id": "gl_planejadas", "label": "Planejadas", "format": "integer",
+     "sql": "COUNT(CASE WHEN glossario.situacao = 'Planejada' THEN 1 END)"},
+    {"id": "gl_tributarista", "label": "Dependem do tributarista", "format": "integer",
+     "sql": "COUNT(CASE WHEN glossario.tributarista = 'Sim' THEN 1 END)"},
 ]
 
 FILTROS = ["ano", "competencia", "grupo", "regra", "fonte", "operacao", "estabelecimento"]
@@ -131,7 +158,40 @@ def secao_grupo(prefixo, sid, titulo, descricao, medidas_extra):
     return vis, {"id": sid, "title": titulo, "description": descricao, "visuals": [v["id"] for v in vis]}
 
 
+def secao_glossario(temas: list[str]) -> tuple[list[dict], dict]:
+    """A primeira seção: os números do glossário e uma listagem por tema. Não segue os filtros da página."""
+    comum = {"fact": "glossario", "skipFilters": FILTROS}
+    colunas = [
+        {"label": "Código", "sql": "glossario.codigo"}, {"label": "Auditoria", "sql": "glossario.auditoria", "wrap": True},
+        {"label": "Situação", "sql": "glossario.situacao"}, {"label": "O que confere", "sql": "glossario.confere", "wrap": True},
+        {"label": "Por que importa", "sql": "glossario.importa", "wrap": True}, {"label": "Dificuldade", "sql": "glossario.dificuldade"},
+        {"label": "Tributarista", "sql": "glossario.tributarista"}, {"label": "Resultado", "sql": "glossario.resultado"},
+    ]
+    vis = [
+        {"id": "k_gl_auditorias", "type": "kpi", "title": "Auditorias no glossário", "span": 3, "measure": "gl_auditorias", **comum},
+        {"id": "k_gl_ativas", "type": "kpi", "title": "Ativas", "span": 3, "measure": "gl_ativas", **comum},
+        {"id": "k_gl_planejadas", "type": "kpi", "title": "Planejadas", "span": 3, "measure": "gl_planejadas", **comum},
+        {"id": "k_gl_tributarista", "type": "kpi", "title": "Dependem do tributarista", "span": 3, "measure": "gl_tributarista", **comum},
+        {"id": "t_gl_temas", "type": "table", "title": "Auditorias por tema", "span": 12, "fields": ["gl_tema"],
+         "measures": ["gl_ativas", "gl_planejadas", "gl_auditorias"], "total": True, "limit": 50, **comum},
+        *({"id": f"r_gl_{n:02d}", "type": "rows", "title": tema, "span": 12, "columns": colunas, "orderBy": "glossario.ordem",
+           "limit": 100, "where": f"glossario.tema_ordem = {n}", **comum} for n, tema in enumerate(temas, 1)),
+    ]
+    return vis, {
+        "id": "glossario", "title": "Glossário",
+        "description": "Todas as auditorias que fazemos e que podemos fazer com os arquivos fiscais do espaço, por tema. "
+                       "Ativa: já roda (as regras C, X e O têm os achados nas seções seguintes; a inclusão de insumos gera o arquivo "
+                       "corrigido à parte). Planejada: está no catálogo e ainda não foi implementada. "
+                       "Onde o tributarista aparece como \"Sim\", o achado só vira oportunidade ou risco depois de validado. "
+                       "Esta seção não segue os filtros da página.",
+        "visuals": [v["id"] for v in vis],
+    }
+
+
+vis_glossario, sec_glossario = secao_glossario(list(dict.fromkeys(a.tema for a in montar_glossario(CATALOGO.read_text(encoding="utf-8")))))
+
 visuals = [
+    *vis_glossario,
     {"id": "k_achados", "type": "kpi", "title": "Achados", "span": 3, "measure": "achados"},
     {"id": "k_notas", "type": "kpi", "title": "Notas com achado", "span": 3, "measure": "notas"},
     {"id": "k_regras", "type": "kpi", "title": "Regras com achado", "span": 3, "measure": "regras_com_achado"},
@@ -143,12 +203,12 @@ visuals = [
      "measures": ["achados"], "sort": "field", "limit": 200},
     {"id": "d_grupo", "type": "donut", "title": "Achados por grupo de regras", "span": 4, "field": "grupo", "measure": "achados"},
 ]
-analyses = [{
+analyses = [sec_glossario, {
     "id": "visao_geral", "title": "Visão geral",
     "description": "Achados das regras de auditoria sobre os arquivos fiscais do espaço (EFD Contribuições, EFD ICMS/IPI e XML de NF-e). "
                    "Um achado é uma nota ou um item que não cumpriu uma regra; o que cada regra confere está na seção Regras. "
                    "A diferença absoluta soma as diferenças de valor sem sinal: é o tamanho do problema, não um valor a recuperar.",
-    "visuals": [v["id"] for v in visuals],
+    "visuals": [v["id"] for v in visuals if v not in vis_glossario],
 }]
 
 for prefixo, sid, titulo, descricao, extra in (
