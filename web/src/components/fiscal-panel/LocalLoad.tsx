@@ -67,7 +67,7 @@ function Check({ check }: { check: FolderCheck }) {
 function Progress({ view, now }: { view: LoadView; now: number }) {
   const { run, log, build } = view;
   if (!run || !log) return null;
-  const startedAt = new Date(run.startedAt).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+  const startedAt = new Date(run.startedAt).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: "America/Sao_Paulo" });
   return (
     <div className="flex flex-col gap-2">
       {run.phase === "rodando" && build && <BuildBanner status={build} now={now} />}
