@@ -124,6 +124,14 @@ export function gcsBucket(cfg: GcsConfig): RemoteBucket {
         throw new Error(`storage download failed for ${key}: ${errMsg(e)}`);
       }
     },
+    async md5(key) {
+      try {
+        const [meta] = await bucket.file(key).getMetadata();
+        return typeof meta.md5Hash === "string" ? Buffer.from(meta.md5Hash, "base64").toString("hex") : null;
+      } catch (e) {
+        throw new Error(`storage metadata failed for ${key}: ${errMsg(e)}`);
+      }
+    },
     async remove(keys, strict) {
       const results = await Promise.allSettled(keys.map((k) => bucket.file(k).delete({ ignoreNotFound: true })));
       const failed = results.filter((r): r is PromiseRejectedResult => r.status === "rejected");

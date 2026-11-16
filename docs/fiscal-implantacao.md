@@ -76,6 +76,12 @@ Na máquina que roda o script:
 - **Disco**: cada arquivo é baixado para a pasta de trabalho e lido; reserve uns 20 GB livres. Leitura com
   milhões de linhas no DuckDB gasta disco temporário: se o disco encher, a carga para no meio (refaça; o que já
   foi lido é reaproveitado).
+- **Originais na própria máquina**: se os arquivos enviados também existem em disco, aponte
+  `DBI_FISCAL_LOCAL_ORIGINALS` para a pasta (qualquer profundidade). A carga lê a cópia local em vez de baixar,
+  desde que o tamanho e o MD5 sejam os do bucket; o que não bater é baixado como antes. A pasta fica fora do
+  repositório ou no `.gitignore`: só os Parquet prontos sobem.
+- **Cadastros depois de uma carga interrompida**: use `--dimensoes-das-partes` para montar as dimensões a
+  partir de todos os arquivos já lidos, e não só dos lidos na rodada.
 - **Tempo de referência**: 103 meses de EFD Contribuições (≈8 GB) levaram ~25 min na primeira carga; um mês
   novo, segundos.
 

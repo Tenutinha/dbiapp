@@ -247,6 +247,12 @@ export const storage = {
     return file;
   },
 
+  /** MD5 of a stored object, in hex, as the bucket records it; null on local disk or when the bucket keeps none. */
+  async md5(key: string): Promise<string | null> {
+    assertKey(key);
+    return isRemote() ? ((await bucket().md5?.(key)) ?? null) : null;
+  },
+
   async read(key: string): Promise<Uint8Array> {
     return new Uint8Array(await readFile(await this.localPath(key)));
   },

@@ -24,6 +24,7 @@ import { getDraft, listFiles } from "../data/repository";
 import { quotePath, readParquet, withConnection } from "../duck/engine";
 import { csvLine, toCsv } from "../fiscal/csv";
 import type { FiscalTables, SpedImporter } from "../fiscal/importers";
+import { indexLocalOriginals, localCandidates, matchingLocal, type LocalIndex } from "../fiscal/local-originals";
 import { dimensionHow, factHow, sourcesOf, type Lineage, type TableLineage } from "../fiscal/lineage";
 import {
   filesForFact, parseFailure, parseMarker, partsFolderId, planParts,
@@ -154,7 +155,9 @@ async function keepPart(table: TemplateTable, source: string, key: string): Prom
 async function readFile(
   importer: SpedImporter, template: Template, facts: readonly TemplateTable[], file: RawFile, folder: string, dir: string,
 ): Promise<PartsMarker> {
-  const local = await storage.localPath(file.key);
+  // A copy kept on this machine spares the download; it is never removed.
+  const original = await localOriginal(file);
+  const local = original ?? await storage.localPath(file.key);
   try {
     const { csv, lines, dimensions } = await readIntoCsv(importer, facts, local, dir);
     const marker: PartsMarker = {
@@ -187,7 +190,28 @@ async function readFile(
     return marker;
   } finally {
     // The cached copy of a remote object is only needed while it is read.
-    if (storage.remote()) await rm(local, { force: true }).catch(() => undefined);
+    if (!original && storage.remote()) await rm(local, { force: true }).catch(() => undefined);
+  }
+}
+
+let localIndex: Promise<LocalIndex> | null = null;
+
+/**
+ * The raw file's copy on this machine, when DBI_FISCAL_LOCAL_ORIGINALS points to a folder that has it with
+ * the size and the MD5 the bucket records. Anything else (no folder, no copy, a failure) means: download.
+ */
+async function localOriginal(file: RawFile): Promise<string | null> {
+  const root = process.env.DBI_FISCAL_LOCAL_ORIGINALS?.trim();
+  if (!root || !storage.remote()) return null;
+  try {
+    localIndex ??= indexLocalOriginals(root);
+    const candidates = localCandidates(await localIndex, file);
+    if (candidates.length === 0) return null;
+    const stored = await storage.md5(file.key);
+    return stored ? await matchingLocal(candidates, stored) : null;
+  } catch (err) {
+    console.warn("[fiscal] local copy not used for", file.key, err instanceof Error ? err.message : err);
+    return null;
   }
 }
 
