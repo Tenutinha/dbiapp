@@ -1,6 +1,6 @@
 """
 Gera template.json do molde "Auditoria fiscal" na pasta de trabalho (AUDITORIA_PASTA, padrão: a pasta atual).
-As regras vêm de preparar.py, para o texto da seção Regras; os temas do Glossário, de glossario.py.
+As regras vêm de preparar.py, para o texto da seção Regras; o Glossário lê a tabela que glossario.py grava.
 Documentação: docs/auditoria-fiscal.md.
 """
 import json
@@ -9,7 +9,6 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from glossario import CATALOGO, montar as montar_glossario
 from preparar import REGRAS
 
 PASTA = Path(os.environ.get("AUDITORIA_PASTA", Path.cwd())).resolve()
@@ -158,8 +157,8 @@ def secao_grupo(prefixo, sid, titulo, descricao, medidas_extra):
     return vis, {"id": sid, "title": titulo, "description": descricao, "visuals": [v["id"] for v in vis]}
 
 
-def secao_glossario(temas: list[str]) -> tuple[list[dict], dict]:
-    """A primeira seção: os números do glossário e uma listagem por tema. Não segue os filtros da página."""
+def secao_glossario() -> tuple[list[dict], dict]:
+    """A primeira seção: os números do glossário e o catálogo numa listagem só, por tema. Não segue os filtros da página."""
     comum = {"fact": "glossario", "skipFilters": FILTROS}
     colunas = [
         {"label": "Código", "sql": "glossario.codigo"}, {"label": "Auditoria", "sql": "glossario.auditoria", "wrap": True},
@@ -174,12 +173,14 @@ def secao_glossario(temas: list[str]) -> tuple[list[dict], dict]:
         {"id": "k_gl_tributarista", "type": "kpi", "title": "Dependem do tributarista", "span": 3, "measure": "gl_tributarista", **comum},
         {"id": "t_gl_temas", "type": "table", "title": "Auditorias por tema", "span": 12, "fields": ["gl_tema"],
          "measures": ["gl_ativas", "gl_planejadas", "gl_auditorias"], "total": True, "limit": 50, **comum},
-        *({"id": f"r_gl_{n:02d}", "type": "rows", "title": tema, "span": 12, "columns": colunas, "orderBy": "glossario.ordem",
-           "limit": 100, "where": f"glossario.tema_ordem = {n}", **comum} for n, tema in enumerate(temas, 1)),
+        # Uma listagem só: cada tema é um tópico (linha de título) e as suas auditorias, os subtópicos.
+        {"id": "r_gl_auditorias", "type": "rows", "title": "Catálogo de auditorias", "span": 12, "columns": colunas,
+         "orderBy": "glossario.ordem", "groupBy": "concat(glossario.tema_ordem, '. ', glossario.tema)", "limit": 1000, **comum},
     ]
     return vis, {
         "id": "glossario", "title": "Glossário",
-        "description": "Todas as auditorias que fazemos e que podemos fazer com os arquivos fiscais do espaço, por tema. "
+        "description": "Todas as auditorias que fazemos e que podemos fazer com os arquivos fiscais do espaço, num catálogo só: "
+                       "cada tema é um tópico e as suas auditorias vêm logo abaixo. "
                        "Ativa: já roda (as regras C, X e O têm os achados nas seções seguintes; a inclusão de insumos gera o arquivo "
                        "corrigido à parte). Planejada: está no catálogo e ainda não foi implementada. "
                        "Onde o tributarista aparece como \"Sim\", o achado só vira oportunidade ou risco depois de validado. "
@@ -188,7 +189,7 @@ def secao_glossario(temas: list[str]) -> tuple[list[dict], dict]:
     }
 
 
-vis_glossario, sec_glossario = secao_glossario(list(dict.fromkeys(a.tema for a in montar_glossario(CATALOGO.read_text(encoding="utf-8")))))
+vis_glossario, sec_glossario = secao_glossario()
 
 visuals = [
     *vis_glossario,

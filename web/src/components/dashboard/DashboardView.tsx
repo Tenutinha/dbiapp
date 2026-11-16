@@ -124,7 +124,10 @@ function VisualBody({ template, result }: { template: Template; result: VisualRe
               : "Use os filtros para chegar às demais."
           }`;
       return (
-        <ScrollTable dense columns={columns} rows={rows.map((r) => visual.columns.map((_, j) => String(r[`c${j}`] ?? "")))} note={note} />
+        <ScrollTable
+          dense columns={columns} rows={rows.map((r) => visual.columns.map((_, j) => String(r[`c${j}`] ?? "")))} note={note}
+          groups={visual.groupBy ? rows.map((r) => String(r.g ?? "")) : undefined}
+        />
       );
     }
     case "table": {
