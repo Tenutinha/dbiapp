@@ -32,6 +32,25 @@ function initials(label: string): string {
 }
 
 /**
+ * What stands before a space's name in the menu: its own logo when it has one, else the two-letter badge.
+ * Both sit in a slot of the same width, so the names stay aligned (logos are usually wider than tall).
+ */
+function SpaceBadge({ space }: { space: SpaceOption }) {
+  return (
+    <span className="grid h-6 w-9 shrink-0 place-items-center" aria-hidden>
+      {space.logoUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={space.logoUrl} alt="" loading="lazy" className="max-h-6 max-w-9 object-contain" />
+      ) : (
+        <span className={`grid size-6 place-items-center rounded-md text-[10px] font-bold tracking-wide ${space.kind === "org" ? "bg-ink text-paper" : "bg-black/[0.07] text-ink-muted"}`}>
+          {initials(space.label)}
+        </span>
+      )}
+    </span>
+  );
+}
+
+/**
  * Subtitle under the organization's name in the sidebar: the open space (the organization itself or
  * one of its segments/clients). With more than one accessible space it opens a small menu to switch —
  * a listbox styled like the sidebar, with arrow keys, Enter, Esc and a search when the list is long.
@@ -170,9 +189,7 @@ function SpaceMenu({ spaces, current }: { spaces: SpaceOption[]; current: SpaceO
                 onClick={() => choose(space)}
                 className={`flex cursor-pointer items-center gap-2.5 rounded-lg px-2 py-1.5 text-[14px] text-ink ${i === active ? "bg-black/[0.06]" : ""}`}
               >
-                <span className={`grid size-6 shrink-0 place-items-center rounded-md text-[10px] font-bold tracking-wide ${space.kind === "org" ? "bg-ink text-paper" : "bg-black/[0.07] text-ink-muted"}`} aria-hidden>
-                  {initials(space.label)}
-                </span>
+                <SpaceBadge space={space} />
                 <span className={`min-w-0 flex-1 truncate ${space.current ? "font-semibold" : ""}`}>{space.label}</span>
                 {space.current && <CheckIcon />}
               </li>

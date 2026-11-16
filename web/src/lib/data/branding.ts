@@ -60,6 +60,18 @@ export async function getEffectiveBranding(orgId: string, clientId: string | nul
   };
 }
 
+/**
+ * The logo of every space of the organization that set its own, by client id (null = the organization) —
+ * for the sidebar's client switcher, which shows each client's logo beside its name.
+ */
+export async function listSpaceLogos(orgId: string): Promise<Map<string | null, string>> {
+  const rows = await sql<{ clientId: string | null; logoKey: string }[]>`
+    SELECT client_id AS "clientId", logo_key AS "logoKey"
+    FROM space_branding
+    WHERE organization_id = ${orgId} AND logo_key IS NOT NULL`;
+  return new Map(rows.map((r) => [r.clientId, `/api/branding/logo/${r.logoKey}`]));
+}
+
 /** The database has no background_color column yet (migration 011 missing). */
 export class BackgroundColorUnavailableError extends Error {}
 

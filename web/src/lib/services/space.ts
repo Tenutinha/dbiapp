@@ -1,6 +1,6 @@
 import "server-only";
 import type { ClientRef, OrgRef } from "../access";
-import { getEffectiveBranding } from "../data/branding";
+import { getEffectiveBranding, listSpaceLogos } from "../data/branding";
 import { getSpaceLayout } from "../data/layout";
 import { listClients } from "../data/organizations";
 import { buildToc, type TocGroup } from "../layout/toc";
@@ -31,10 +31,11 @@ export async function loadSpace(org: OrgRef, client: ClientRef | null, membershi
   const orgScope = allowedActions(membership, { clientId: null });
 
   const clientId = client?.id ?? null;
-  const [layout, clients, branding] = await Promise.all([
+  const [layout, clients, branding, logos] = await Promise.all([
     getSpaceLayout({ orgId: org.id, clientId }, { platformAdmin: membership.platformAdmin === true }),
     listClients(org.id),
     getEffectiveBranding(org.id, clientId),
+    listSpaceLogos(org.id),
   ]);
   const visible = new Set(visibleClientIds(membership, clients.map((c) => c.id)));
 
@@ -48,6 +49,12 @@ export async function loadSpace(org: OrgRef, client: ClientRef | null, membershi
     logoUrl: branding.logoUrl,
     // The viewing screen lists only what can be viewed; data work lives in the administration.
     toc: buildToc(layout.sections, layout.dashboards, { includeUnpublished: false, includeEmptySections: false }),
-    spaces: spaceOptions(org, clientId, orgScope.has("view"), clients.filter((c) => visible.has(c.id) || c.id === clientId)),
+    spaces: spaceOptions(
+      org,
+      clientId,
+      orgScope.has("view"),
+      clients.filter((c) => visible.has(c.id) || c.id === clientId),
+      logos,
+    ),
   };
 }
