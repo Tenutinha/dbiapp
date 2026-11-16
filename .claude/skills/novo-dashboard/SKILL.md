@@ -58,7 +58,7 @@ Escreva `template.json` na pasta de trabalho. As regras que mais dão problema:
 - **Datas** viram campos de texto ordenáveis: ano `CAST(year(t.data) AS VARCHAR)`, mês `strftime(t.data, '%Y-%m')`.
 - **Foto de um momento** (estoque, saldo, carteira): ponha o campo de mês em `filters` e em `filterDefaults` com um valor que não existe nos dados (`"mais recente"`); o filtro vira escolha única e abre no maior valor.
 - **A fato repete valores** (um título com várias linhas, por exemplo): gere nos dados uma coluna `<valor>_rateado` = valor ÷ número de linhas da chave, some essa coluna e explique na descrição da tabela.
-- **Consulta do dado original**: o visual `rows` lista linhas sem somar, com colunas próprias (`columns: [{label, sql}]`), e aceita `where`, `orderBy`, `limit` e `expand`.
+- **Consulta do dado original**: o visual `rows` lista linhas sem somar, com colunas próprias (`columns: [{label, sql}]`; `wrap: true` numa coluna de texto longo faz a célula quebrar em linhas em vez de cortar), e aceita `where`, `orderBy`, `limit` e `expand`.
 
 - **Dashboard interno** (documentação, auditoria da própria DBI): `"access": "platformAdmin"` no molde faz os dashboards dele existirem só para o administrador da plataforma. A equipe e os clientes da organização não o veem na barra lateral, na administração nem pelo endereço; links de compartilhamento não o abrem e ele nunca entra na vitrine.
 

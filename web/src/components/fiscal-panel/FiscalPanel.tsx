@@ -2,7 +2,11 @@ import { FilesLink } from "@/components/admin/FilesModal";
 import type { FileState } from "@/lib/fiscal/panel";
 import { formatBytes, formatDateTime } from "@/lib/format";
 import type { FiscalPanelView, PanelFile, PanelModel } from "@/lib/services/fiscal-panel";
+import { isActive, isStale } from "@/lib/fiscal/build-status";
+import { AutoRefresh } from "./AutoRefresh";
+import { BuildBanner } from "./BuildBanner";
 import { FileMapGrid } from "./FileMapGrid";
+import { HowItWorks } from "./HowItWorks";
 import { FileReaderProvider } from "./FileReader";
 import { count, periodLabel, STATE_LABEL, STATE_ORDER } from "./labels";
 import { LineagePanel } from "./LineagePanel";
@@ -56,7 +60,7 @@ function FileList({ title, files, tone }: { title: string; files: PanelFile[]; t
   );
 }
 
-function ModelCard({ model, canManage, looseInSpace }: { model: PanelModel; canManage: boolean; looseInSpace: number }) {
+function ModelCard({ model, canManage, looseInSpace, now }: { model: PanelModel; canManage: boolean; looseInSpace: number; now: number }) {
   const d = model.dashboard;
   const months = model.map.periods;
   const publishedRows = d?.published.reduce((s, t) => s + t.rows, 0) ?? 0;
@@ -69,6 +73,7 @@ function ModelCard({ model, canManage, looseInSpace }: { model: PanelModel; canM
         <span className="text-sm text-muted">{d ? `Dashboard: ${d.name}` : "Nenhum dashboard deste molde vinculado ao espaço"}</span>
       </div>
       {model.error && <p className="text-sm text-danger">{model.error}</p>}
+      {d?.build && <BuildBanner status={d.build} now={now} />}
 
       <div className="flex flex-col gap-2 md:flex-row md:items-stretch">
         <Layer step={1} title="Arquivos originais" value={`${count(model.files)} arquivo(s)`}>
@@ -149,8 +154,12 @@ function ModelCard({ model, canManage, looseInSpace }: { model: PanelModel; canM
  * the steps to bring it up to date.
  */
 export function FiscalPanel({ view, orgSlug, filesFolder }: FiscalPanelProps) {
+  // Rendered on the server at each refresh: "há 1 min" is counted from this moment.
+  const now = Date.now();
+  const running = view.models.some((m) => m.dashboard?.build && isActive(m.dashboard.build) && !isStale(m.dashboard.build, now));
   return (
     <div className="flex flex-col gap-5">
+      {running && <AutoRefresh />}
       <p className="max-w-3xl text-sm text-muted">
         O caminho dos arquivos fiscais deste espaço, do arquivo original às tabelas publicadas: o que foi enviado, por empresa e
         mês; o que já foi lido, o que falta e o que deu erro; e de quais arquivos vem cada tabela.
@@ -162,13 +171,14 @@ export function FiscalPanel({ view, orgSlug, filesFolder }: FiscalPanelProps) {
           </>
         )}
       </p>
+      <HowItWorks />
       {view.maxReadBytes !== null && view.canManage && (
         <p className="text-xs text-muted">Pela tela, cada arquivo pode ter até {formatBytes(view.maxReadBytes)}; os maiores (ECD de centenas de MB) são carregados pelo script.</p>
       )}
       {view.models.length === 0 ? (
         <p className="card p-5 text-sm text-muted">Nenhum arquivo fiscal nem dashboard fiscal neste espaço ainda.</p>
       ) : (
-        view.models.map((m) => <ModelCard key={m.templateId} model={m} canManage={view.canManage} looseInSpace={view.looseInSpace} />)
+        view.models.map((m) => <ModelCard key={m.templateId} model={m} canManage={view.canManage} looseInSpace={view.looseInSpace} now={now} />)
       )}
     </div>
   );

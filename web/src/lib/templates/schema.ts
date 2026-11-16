@@ -238,7 +238,12 @@ const visualSchema = z.discriminatedUnion("type", [
   z.object({
     ...base,
     type: z.literal("rows"),
-    columns: z.array(z.object({ label: z.string().min(1).max(80), sql: sqlExpr })).min(1).max(80),
+    columns: z.array(z.object({
+      label: z.string().min(1).max(80),
+      sql: sqlExpr,
+      /** Long text read as prose: the cell wraps instead of being cut (e.g. the description of a rule). */
+      wrap: z.boolean().optional(),
+    })).min(1).max(80),
     /** Expression the rows are ordered by, ascending (e.g. the line number in the file). */
     orderBy: sqlExpr.optional(),
     limit: z.number().int().min(1).max(1000).default(100),

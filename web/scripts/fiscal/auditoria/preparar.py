@@ -7,6 +7,7 @@ Pasta de trabalho (AUDITORIA_PASTA, padrão: a pasta atual), fora do repositóri
   entrada/icms_registros.parquet  fato "registros" publicada da EFD ICMS/IPI (extrair.ts)
   entrada/nfe_itens_*.parquet     fato "nfe_itens" publicada do dashboard NF-e (extrair.ts)
   dados/                          saída: achados.parquet (fato), regras.parquet (dimensão), cobertura.parquet (fato extra)
+                                  e glossario.parquet (fato extra, de glossario.py)
 
 Uso: uv run -q --no-project --python 3.11 --with duckdb python -I web/scripts/fiscal/auditoria/preparar.py [--contar]
 """
@@ -291,6 +292,11 @@ def main() -> None:
     """)
     con.execute(f"COPY (SELECT * FROM cobertura ORDER BY competencia, fonte) TO '{(DADOS / 'cobertura.parquet').as_posix()}' (FORMAT parquet)")
     print(con.execute(f"SELECT count(*) FROM '{(DADOS / 'achados.parquet').as_posix()}'").fetchone())
+    # O glossário importa as REGRAS deste módulo: a importação fica aqui para não ser circular.
+    # Com "python -I" a pasta do script não está no caminho de importação.
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from glossario import CATALOGO, gravar, montar
+    gravar(montar(CATALOGO.read_text(encoding="utf-8")), DADOS / "glossario.parquet")
 
 
 if __name__ == "__main__":

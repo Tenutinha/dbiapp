@@ -130,6 +130,8 @@ async function main(): Promise<void> {
     ...(process.argv.includes("--so-blocos") ? { only: "blocks" as const } : {}),
     rereadAll: process.argv.includes("--reler-tudo"),
     dimensionsFromParts: process.argv.includes("--dimensoes-das-partes"),
+    // The panel of fiscal data shows where the load is (montagem.json) and that it runs by the script.
+    by: "script",
     // A line every 25 files, so a long load shows where it is.
     onProgress: (done, total) => {
       if (done % 25 === 0 || done === total) console.log(`  lidos ${done} de ${total} (${((Date.now() - started) / 60000).toFixed(1)} min)`);
