@@ -28,7 +28,8 @@ import { indexLocalOriginals, localCandidates, matchingLocal, type LocalIndex } 
 import { parseBuildStatus, type BuildRunner, type BuildStatus } from "../fiscal/build-status";
 import { dimensionHow, factHow, sourcesOf, type Lineage, type TableLineage } from "../fiscal/lineage";
 import {
-  filesForFact, parseFailure, parseMarker, partsFolderId, planParts,
+  filesForFact, keepsMainFact, parseFailure, parseMarker, parseYears, partsFolderId, planParts, yearDigest, yearGroups,
+  type LatestOnlyFact, type YearPart, type YearsRecord,
   type PartsFailure, type PartsFolder, type PartsMarker, type PartsPlan, type RawFile,
 } from "../fiscal/parts-plan";
 import { FiscalFileError, type Row } from "../fiscal/sped";
@@ -40,13 +41,25 @@ import { relativeToOrg } from "../storage-browse";
 import { splitParts } from "../storage-parts";
 import { dashboardFolder, fiscalPartsFolder } from "../storage-keys";
 import { extraFacts, mainFact, sortColumns, type Template, type TemplateTable } from "../templates/schema";
-import { ingestIntoDraft, UserFacingError } from "./datasets";
+import { convertToPart, discardParts, ingestIntoDraft, registerParts, UserFacingError, type DraftPart } from "./datasets";
+import { isPartKey, partsStore } from "./fiscal-parts-store";
 
 const PARQUET_MIME = "application/vnd.apache.parquet";
 const JSON_MIME = "application/json";
 const MARKER = "pronto.json";
 const FAILURE = "erro.json";
 export const LINEAGE_FILE = "linhagem.json";
+/** Which Parquet each year of a big fact is, and what it was made from, in the dashboard's folder. */
+export const YEARS_FILE = "anos.json";
+/**
+ * A fact with at least this many lines is published as one Parquet per year instead of a single file: a new
+ * month rewrites and sends only its year, and the server keeps the closed years it already has. Smaller
+ * tables stay in one file (fewer objects to fetch when a dashboard opens).
+ */
+export function yearlyMinRows(value = process.env.DBI_FISCAL_YEARLY_MIN_ROWS): number {
+  const n = Number(value);
+  return value !== undefined && value.trim() !== "" && Number.isInteger(n) && n >= 0 ? n : 1_000_000;
+}
 /** Where a build says how far it is (fiscal/build-status.ts), in the dashboard's folder. */
 export const BUILD_STATUS_FILE = "montagem.json";
 /** While reading, the status is written at most this often (thousands of files would mean thousands of writes). */
@@ -138,13 +151,14 @@ function spedFacts(importer: SpedImporter, template: Template): TemplateTable[] 
 /** A table as stored (a block fact that sums lines on the way in is already summed in its parts). */
 const stored = (table: TemplateTable): TemplateTable => ({ ...table, source: undefined });
 
-const readJson = async (key: string): Promise<unknown> => JSON.parse(new TextDecoder().decode(await storage.readFresh(key)));
+const readJson = async (key: string): Promise<unknown> =>
+  JSON.parse(new TextDecoder().decode(await (isPartKey(key) ? partsStore : storage).readFresh(key)));
 
 /** The parts folders of a dashboard, with their markers (and failure records) read. */
 async function listPartsFolders(root: string): Promise<PartsFolder[]> {
   // One listing of the whole tree, not one per folder (thousands of folders in a big client).
   const found = new Map<string, { cnpj: string; periodo: string; id: string; marker: boolean; failure: boolean }>();
-  for (const f of await storage.listTree(root)) {
+  for (const f of await partsStore.listTree(root)) {
     const parts = f.key.slice(root.length).split("/");
     if (parts.length !== 4) continue;
     const [cnpj, periodo, id, name] = parts;
@@ -169,15 +183,16 @@ const MARKERS_AT_A_TIME = 32;
 
 /** Writes one CSV per table for one raw file; returns the files written, the lines of each and the dimensions. */
 async function readIntoCsv(
-  importer: SpedImporter, facts: readonly TemplateTable[], local: string, dir: string,
+  importer: SpedImporter, facts: readonly TemplateTable[], local: string, dir: string, keepMain: boolean,
 ): Promise<{ csv: Record<string, string>; lines: Record<string, number>; dimensions: FiscalTables }> {
   const [main, ...blocks] = facts;
-  const csv = Object.fromEntries(facts.map((t) => [t.name, path.join(dir, `${t.name}.csv`)]));
-  const outs: Record<string, WriteStream> = Object.fromEntries(facts.map((t) => [t.name, createWriteStream(csv[t.name], { encoding: "utf8" })]));
+  const written = keepMain ? facts : blocks;
+  const csv = Object.fromEntries(written.map((t) => [t.name, path.join(dir, `${t.name}.csv`)]));
+  const outs: Record<string, WriteStream> = Object.fromEntries(written.map((t) => [t.name, createWriteStream(csv[t.name], { encoding: "utf8" })]));
   try {
     for (const out of Object.values(outs)) await writeChunk(out, csvLine(factColumns(importer.kind)));
     const read = await appendSpedFile(importer.kind, local, {
-      fact: outs[main.name], blocks: Object.fromEntries(blocks.map((t) => [t.name, outs[t.name]])),
+      fact: keepMain ? outs[main.name] : null, blocks: Object.fromEntries(blocks.map((t) => [t.name, outs[t.name]])),
     });
     return { csv, lines: { [main.name]: read.lines, ...read.blockLines }, dimensions: read.dimensions };
   } finally {
@@ -188,21 +203,24 @@ async function readIntoCsv(
 
 /** Converts a CSV to the table's contract and keeps it at `key`. */
 async function keepPart(table: TemplateTable, source: string, key: string): Promise<number> {
-  const report = await ingestTable({ storageRoot: storage.workRoot, table, sourcePath: source, format: "csv", targetPath: storage.pathFor(key) });
+  const report = await ingestTable({ storageRoot: storage.workRoot, table, sourcePath: source, format: "csv", targetPath: partsStore.pathFor(key) });
   if (!report.ok) throw new Error(`${table.name}: ${report.errors.join(" ")}`);
-  await storage.commit(key, PARQUET_MIME);
+  await partsStore.commit(key, PARQUET_MIME);
   return report.rowCount;
 }
 
-/** Reads one raw file into its parts folder; the marker goes last, so a folder without it is incomplete. */
+/**
+ * Reads one raw file into its parts folder; the marker goes last, so a folder without it is incomplete.
+ * `keepMain` false: the main fact (the whole file) is not kept — the file is not its company's latest period.
+ */
 async function readFile(
-  importer: SpedImporter, template: Template, facts: readonly TemplateTable[], file: RawFile, folder: string, dir: string,
+  importer: SpedImporter, template: Template, facts: readonly TemplateTable[], file: RawFile, folder: string, dir: string, keepMain: boolean,
 ): Promise<PartsMarker> {
   // A copy kept on this machine spares the download; it is never removed.
   const original = await localOriginal(file);
   const local = original ?? await storage.localPath(file.key);
   try {
-    const { csv, lines, dimensions } = await readIntoCsv(importer, facts, local, dir);
+    const { csv, lines, dimensions } = await readIntoCsv(importer, facts, local, dir, keepMain);
     const marker: PartsMarker = {
       reader: SPED_READER_VERSION,
       source: { key: file.key, sizeBytes: file.sizeBytes, updatedAt: file.updatedAt },
@@ -210,6 +228,10 @@ async function readFile(
       dimensions: {},
     };
     for (const table of facts) {
+      if (!keepMain && table === facts[0]) {
+        marker.tables[table.name] = { key: null, rows: lines[table.name] ?? 0, skipped: true };
+        continue;
+      }
       // The header line alone: the file brings nothing for this table (the ingest refuses empty files).
       if ((lines[table.name] ?? 0) === 0) {
         marker.tables[table.name] = { key: null, rows: 0 };
@@ -229,7 +251,7 @@ async function readFile(
       const key = `${folder}${table.name}.parquet`;
       marker.dimensions[table.name] = { key, rows: await keepPart(table, source, key) };
     }
-    await storage.replaceBytes(`${folder}${MARKER}`, new TextEncoder().encode(JSON.stringify(marker)), JSON_MIME);
+    await partsStore.replaceBytes(`${folder}${MARKER}`, new TextEncoder().encode(JSON.stringify(marker)), JSON_MIME);
     return marker;
   } finally {
     // The cached copy of a remote object is only needed while it is read.
@@ -278,9 +300,61 @@ function placeholderRow(table: TemplateTable): Row {
 async function assembleTable(
   access: InstanceAccess, table: TemplateTable, sources: readonly string[], dir: string, latestWins: boolean,
 ): Promise<TableReport> {
-  // One temporary bucket error among thousands of downloads must not throw the whole table away.
-  const local = await inBatches(sources.flatMap(splitParts), DOWNLOADS_AT_A_TIME, (k) => withRetries(() => storage.localPath(k)));
   const target = path.join(dir, `${table.name}.parquet`);
+  await writeTable(table, sources, target, latestWins);
+  return ingestIntoDraft(access, stored(table), target, `${table.name}.parquet`);
+}
+
+const yearsKey = (access: DashboardRef): string =>
+  `${dashboardFolder(access.org.slug, access.client?.slug || null, access.instanceId, access.templateId)}${YEARS_FILE}`;
+
+/**
+ * Puts a big fact of the draft together as one Parquet per year. A year whose files (and the table's
+ * contract) are the ones its Parquet was made from keeps that Parquet: nothing is rewritten or sent again.
+ */
+async function assembleFactByYear(
+  access: InstanceAccess, table: TemplateTable, keep: readonly { file: RawFile; marker: PartsMarker }[], dir: string,
+): Promise<TableReport> {
+  const record: YearsRecord = await readJson(yearsKey(access)).then(parseYears, () => ({}));
+  const current = new Set(splitParts((await currentFile(access, table.name)) ?? ""));
+  const contract = JSON.stringify([stored(table).columns, sortColumns(table)]);
+  const parts: DraftPart[] = [];
+  const made: string[] = [];
+  const years: Record<string, YearPart> = {};
+  for (const [year, items] of yearGroups(keep)) {
+    const sources = items.flatMap((r) => r.marker.tables[table.name]?.key ?? []);
+    if (sources.length === 0) continue;
+    const name = `${table.name}-${year}.parquet`;
+    const digest = yearDigest(contract, sources);
+    const had = record[table.name]?.[year];
+    if (had && had.sources === digest && current.has(had.key)) {
+      parts.push({ key: had.key, name });
+      years[year] = had;
+      continue;
+    }
+    const target = path.join(dir, name);
+    await writeTable(table, sources, target, false);
+    const part = await convertToPart(access, stored(table), target, name);
+    if (!part.ok || !part.key) {
+      await discardParts(access, stored(table), made);
+      return part;
+    }
+    made.push(part.key);
+    parts.push({ key: part.key, name });
+    years[year] = { key: part.key, sources: digest, rows: part.rowCount };
+  }
+  const report = await registerParts(access, stored(table), parts);
+  if (report.ok) {
+    await storage.replaceBytes(yearsKey(access), new TextEncoder().encode(JSON.stringify({ ...record, [table.name]: years })), JSON_MIME)
+      .catch((err: unknown) => console.error("[fiscal] could not keep the years of", table.name, err));
+  }
+  return report;
+}
+
+/** Writes a table's Parquet at `target` from Parquet sources (parts, or what the dashboard already has). */
+async function writeTable(table: TemplateTable, sources: readonly string[], target: string, latestWins: boolean): Promise<void> {
+  // One temporary bucket error among thousands of downloads must not throw the whole table away.
+  const local = await inBatches(sources.flatMap(splitParts), DOWNLOADS_AT_A_TIME, (k) => withRetries(() => (isPartKey(k) ? partsStore : storage).localPath(k)));
   const columns = table.columns.map((c) => c.name).join(", ");
   const copyOptions = "(FORMAT parquet, COMPRESSION zstd, ROW_GROUP_SIZE 122880)";
   await withConnection(storage.workRoot, async (conn) => {
@@ -304,7 +378,6 @@ async function assembleTable(
       : `SELECT ${columns} FROM __partes`;
     await conn.run(`COPY (${body}) TO ${quotePath(target)} ${copyOptions}`);
   });
-  return ingestIntoDraft(access, stored(table), target, `${table.name}.parquet`);
 }
 
 /** Objects fetched from the bucket at the same time when a table is put together. */
@@ -381,18 +454,19 @@ const failureMessage = (err: unknown): string => (err instanceof FiscalFileError
  */
 async function readOne(
   access: InstanceAccess, importer: SpedImporter, template: Template, facts: readonly TemplateTable[], file: RawFile, work: string,
+  keepMain = true,
 ): Promise<{ ok: true; marker: PartsMarker } | { ok: false; error: string }> {
   const folder = folderOfFile(partsRoot(access), file);
   const dir = path.join(work, partsFolderId(file, SPED_READER_VERSION));
   await mkdir(dir, { recursive: true });
   try {
-    await storage.removeFolder(folder);
-    return { ok: true, marker: await readFile(importer, template, facts, file, folder, dir) };
+    await partsStore.removeFolder(folder);
+    return { ok: true, marker: await readFile(importer, template, facts, file, folder, dir, keepMain) };
   } catch (err) {
     if (!(err instanceof FiscalFileError)) console.error("[fiscal] could not read", file.key, err);
     const failure: PartsFailure = { error: failureMessage(err), at: new Date().toISOString() };
-    await storage.removeFolder(folder).catch(() => undefined);
-    await storage.replaceBytes(`${folder}${FAILURE}`, new TextEncoder().encode(JSON.stringify(failure)), JSON_MIME)
+    await partsStore.removeFolder(folder).catch(() => undefined);
+    await partsStore.replaceBytes(`${folder}${FAILURE}`, new TextEncoder().encode(JSON.stringify(failure)), JSON_MIME)
       .catch((e: unknown) => console.error("[fiscal] could not keep the failure of", file.key, e));
     return { ok: false, error: failure.error };
   } finally {
@@ -417,7 +491,7 @@ export interface SpedFilesOverview {
 export async function spedFilesOverview(access: DashboardRef, files: readonly RawFile[]): Promise<SpedFilesOverview> {
   const root = partsRoot(access);
   const records = new Map<string, Set<string>>();
-  for (const f of await storage.listTree(root, [MARKER, FAILURE])) {
+  for (const f of await partsStore.listTree(root, [MARKER, FAILURE])) {
     const place = f.key.slice(root.length, f.key.length - f.name.length);
     records.set(place, (records.get(place) ?? new Set()).add(f.name));
   }
@@ -448,7 +522,7 @@ export async function spedPartsState(
   access: InstanceAccess, importer: SpedImporter, template: Template, files: readonly RawFile[],
 ): Promise<SpedPartsState> {
   const folders = await listPartsFolders(partsRoot(access));
-  const plan = planParts(files, folders, spedFacts(importer, template).map((t) => t.name), SPED_READER_VERSION);
+  const plan = planParts(files, folders, spedFacts(importer, template).map((t) => t.name), SPED_READER_VERSION, latestOnlyFact(importer, template));
   const byPlace = new Map(folders.map((f) => [`${f.cnpj}/${f.periodo}/${f.id}`, f]));
   const failures = new Map<string, PartsFailure>();
   for (const file of plan.read) {
@@ -456,6 +530,11 @@ export async function spedPartsState(
     if (failure) failures.set(file.key, failure);
   }
   return { plan, failures };
+}
+
+/** The main fact, when the kind keeps it for each company's latest period only (see planParts). */
+function latestOnlyFact(importer: SpedImporter, template: Template): LatestOnlyFact | null {
+  return importer.kind.mainFactPeriods === "latest" ? { table: mainFact(template).name } : null;
 }
 
 export type ReadFileResult = { ok: true; rows: number } | { ok: false; error: string };
@@ -489,10 +568,10 @@ export async function rebuildSpedFromParts(
   let folders = await listPartsFolders(root);
   if (options.rereadAll) {
     // Reading everything again starts from no parts at all (a file would land in the folder it had).
-    for (const f of folders) await storage.removeFolder(`${root}${f.cnpj}/${f.periodo}/${f.id}/`);
+    for (const f of folders) await partsStore.removeFolder(`${root}${f.cnpj}/${f.periodo}/${f.id}/`);
     folders = [];
   }
-  const plan = planParts(files, folders, facts.map((t) => t.name), SPED_READER_VERSION);
+  const plan = planParts(files, folders, facts.map((t) => t.name), SPED_READER_VERSION, latestOnlyFact(importer, template));
 
   const bytes = plan.read.reduce((s, f) => s + f.sizeBytes, 0);
   if (hostedLimits() && bytes > MAX_HOSTED_READ_BYTES) {
@@ -513,7 +592,7 @@ export async function rebuildSpedFromParts(
     let done = 0;
     await Promise.all(Array.from({ length: Math.min(readConcurrency(), queue.length) }, async () => {
       for (let file = queue.shift(); file; file = queue.shift()) {
-        const result = await readOne(access, importer, template, facts, file, work);
+        const result = await readOne(access, importer, template, facts, file, work, keepsMainFact(file, files, importer.kind.mainFactPeriods));
         if (result.ok) justRead.push({ file, marker: result.marker });
         else skipped.push({ path: relativeToOrg(access.org.slug, file.key), error: result.error });
         done += 1;
@@ -583,7 +662,7 @@ async function assemble(
   const facts = spedFacts(importer, template);
   const { plan, justRead, skipped } = input;
   // Only now: replaced and deleted files' parts go.
-  for (const f of plan.obsolete) await storage.removeFolder(`${root}${f.cnpj}/${f.periodo}/${f.id}/`).catch(() => undefined);
+  for (const f of plan.obsolete) await partsStore.removeFolder(`${root}${f.cnpj}/${f.periodo}/${f.id}/`).catch(() => undefined);
 
   const ready = [...plan.ready, ...justRead].sort((a, b) => a.file.periodo.localeCompare(b.file.periodo) || a.file.key.localeCompare(b.file.key));
   if (ready.length === 0) {
@@ -604,7 +683,10 @@ async function assemble(
     const parts = keep.flatMap((r) => r.marker.tables[table.name]?.key ?? []);
     // A block the files do not bring (a company without services) stays out: an extra fact may be missing.
     if (parts.length === 0) continue;
-    const report = await assembleTable(access, table, parts, work, false);
+    // A big fact with more than one year goes as one Parquet per year (see yearlyMinRows).
+    const lines = keep.reduce((s, r) => s + (r.marker.tables[table.name]?.key ? r.marker.tables[table.name].rows : 0), 0);
+    const byYear = lines >= yearlyMinRows() && yearGroups(keep).length > 1;
+    const report = byYear ? await assembleFactByYear(access, table, keep, work) : await assembleTable(access, table, parts, work, false);
     tables.push(report);
     lineage.push({
       table: table.name, kind: "fact", how: factHow(importer.kind, table.name, table === facts[0]),

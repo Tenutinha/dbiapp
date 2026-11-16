@@ -108,6 +108,15 @@ export function gcsBucket(cfg: GcsConfig): RemoteBucket {
         throw new Error(`storage upload failed for ${key}: ${errMsg(e)}`);
       }
     },
+    async uploadFile(key, localPath, contentType) {
+      try {
+        await bucket.upload(localPath, {
+          destination: key, contentType, resumable: true, validation: "crc32c", preconditionOpts: { ifGenerationMatch: 0 },
+        });
+      } catch (e) {
+        throw new Error(`storage upload failed for ${key}: ${errMsg(e)}`);
+      }
+    },
     async download(key) {
       try {
         const [buf] = await bucket.file(key).download();
