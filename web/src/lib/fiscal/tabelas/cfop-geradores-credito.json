@@ -1,6 +1,6 @@
 {
   "tabela": "CFOP – Operações Geradoras de Créditos (EFD Contribuições)",
-  "situacao": "transcrita da planilha de parâmetros da análise original; não conferida contra a planilha oficial",
+  "situacao": "transcrita da planilha de parâmetros da análise original, com 11 CFOP acrescentados pela análise; não conferida contra a planilha oficial",
   "fonte": "Aba CFOP da planilha de parâmetros da análise original (a que alimentava o QlikView), indicada pelo responsável pela análise em 16/11/2026: os grupos que lá trazem o código de base de cálculo do crédito da tabela do SPED (Tabela I: base de cálculo de créditos M105/M505 em função do CFOP informado no documento fiscal). O responsável confirmou em 16/11/2026 que o filtro é a tabela oficial.",
   "fonte_oficial": "Tabela CFOP - Operações Geradoras de Créditos, versão 1.10, atualizada em 13.03.2020: http://sped.rfb.gov.br/arquivo/show/1681 (Tabela_CFOPOperacoesGeradorasCreditos.xls)",
   "consulta": "2026-11-16",
@@ -30,10 +30,11 @@
       "base_credito": "13",
       "descricao": "Outras operações com direito a crédito",
       "cfop": ["1922", "2922"]
+    },
+    {
+      "base_credito": null,
+      "descricao": "Devoluções de venda acrescentadas pela análise: a planilha de parâmetros as marca com POSSIBILITA_CREDITO = SIM, sem código de base de crédito da tabela do SPED. Entram no filtro por decisão do responsável pela análise (16/11/2026). O PVA só leva ao M105/M505 os CFOP da tabela oficial: conferir a apuração dessas notas.",
+      "cfop": ["1212", "1553", "2203", "2204", "2212", "2553", "3201", "3202", "3211", "3212", "3553"]
     }
-  ],
-  "fora_do_filtro": {
-    "descricao": "CFOP que a planilha de parâmetros marca com POSSIBILITA_CREDITO = SIM, mas sem código de base de crédito (acréscimo da análise, fora da tabela oficial): não entram no filtro. A confirmar com o responsável se devem entrar.",
-    "cfop": ["1212", "1553", "2203", "2204", "2212", "2553", "3201", "3202", "3211", "3212", "3553"]
-  }
+  ]
 }

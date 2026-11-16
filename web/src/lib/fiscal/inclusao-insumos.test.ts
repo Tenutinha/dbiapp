@@ -330,9 +330,9 @@ describe("incluirInsumos: encerramentos, abertura e conferências", () => {
 describe("tabela de CFOP que gera crédito", () => {
   it("a do repositório tem as compras para revenda e insumo e as devoluções de venda, sem imobilizado nem saídas", () => {
     const t = tabelaCfopCredito();
-    for (const cfop of ["1102", "2102", "1101", "1403", "1202", "2411", "1922", "3102"]) expect(t.cfop.has(cfop)).toBe(true);
-    for (const cfop of ["1551", "2551", "1949", "1152", "5102", "5202", "2203", "3201"]) expect(t.cfop.has(cfop)).toBe(false);
-    expect(t.cfop.size).toBe(89);
+    for (const cfop of ["1102", "2102", "1101", "1403", "1202", "2411", "1922", "3102", "2203", "3201"]) expect(t.cfop.has(cfop)).toBe(true);
+    for (const cfop of ["1551", "2551", "1949", "1152", "5102", "5202"]) expect(t.cfop.has(cfop)).toBe(false);
+    expect(t.cfop.size).toBe(100);
     expect([...t.cfop].every((c) => /^[123]\d{3}$/.test(c))).toBe(true);
     expect(t.situacao).toContain("não conferida");
   });

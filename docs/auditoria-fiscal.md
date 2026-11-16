@@ -181,9 +181,10 @@ testes sobre arquivos sintéticos em `inclusao-insumos.test.ts`.
   `web/src/lib/fiscal/tabelas/cfop-geradores-credito.json` e foi **transcrita da planilha de parâmetros da análise
   original** (os grupos que lá trazem o código de base de crédito da tabela do SPED); **não foi conferida contra a
   planilha oficial** (versão 1.10, de 13.03.2020), porque em 16/11/2026 o endereço antigo do portal redirecionava e
-  o novo pedia autenticação. Onze CFOP que a planilha de parâmetros marca com crédito, mas sem código da tabela
-  (1212, 1553, 2203, 2204, 2212, 2553, 3201, 3202, 3211, 3212, 3553), ficam fora do filtro e listados no mesmo
-  arquivo, a confirmar. Para usar outra lista, `--cfop <arquivo>` (um CFOP por linha).
+  o novo pedia autenticação. Entram também onze CFOP de devolução de venda que a planilha de parâmetros marca com
+  crédito, sem código da tabela (1212, 1553, 2203, 2204, 2212, 2553, 3201, 3202, 3211, 3212, 3553), por decisão do
+  responsável (16/11/2026); como o PVA só leva ao M105/M505 os CFOP da tabela oficial, confira a apuração dessas
+  notas. Para usar outra lista, `--cfop <arquivo>` (um CFOP por linha).
 - **A nota entra inteira**: tendo um item de CFOP que gera crédito, vão todos os C170, inclusive os de CFOP sem
   crédito (decisão do responsável, 16/11/2026; é também o que o Guia Prático pede no registro C170). Assim os totais
   do C100 continuam batendo com a soma dos itens.
