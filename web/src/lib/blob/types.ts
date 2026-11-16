@@ -14,6 +14,8 @@ export interface RemoteBucket {
   download(key: string): Promise<Uint8Array>;
   /** The first `bytes` of an object (to identify a big file without fetching it whole). */
   downloadHead(key: string, bytes: number): Promise<Uint8Array>;
+  /** MD5 of an object's content, in hex, from the bucket's own records (null when it keeps none). Optional. */
+  md5?(key: string): Promise<string | null>;
   /**
    * Best effort by default: logs and swallows errors (cleanup must not break the request).
    * With strict, throws when any object could not be deleted (the explorer must not report a false success).

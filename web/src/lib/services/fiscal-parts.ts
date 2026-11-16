@@ -24,6 +24,7 @@ import { getDraft, listFiles } from "../data/repository";
 import { quotePath, readParquet, withConnection } from "../duck/engine";
 import { csvLine, toCsv } from "../fiscal/csv";
 import type { FiscalTables, SpedImporter } from "../fiscal/importers";
+import { indexLocalOriginals, localCandidates, matchingLocal, type LocalIndex } from "../fiscal/local-originals";
 import { parseBuildStatus, type BuildRunner, type BuildStatus } from "../fiscal/build-status";
 import { dimensionHow, factHow, sourcesOf, type Lineage, type TableLineage } from "../fiscal/lineage";
 import {
@@ -82,6 +83,11 @@ export interface PartsOptions {
   only?: "blocks";
   /** Reads every file again, even the ones already read. */
   rereadAll?: boolean;
+  /**
+   * Dimensions from the parts of every file, not from what the dashboard has: for a load that stopped after
+   * reading (those files' parts never reached the dashboard).
+   */
+  dimensionsFromParts?: boolean;
   /** Called after each file read (or skipped): files done, files to read. */
   onProgress?: (done: number, total: number) => void;
   /** Who runs the build, for the panel ("script" or the app's screen). */
@@ -148,13 +154,18 @@ async function listPartsFolders(root: string): Promise<PartsFolder[]> {
     if (name === FAILURE) entry.failure = true;
     found.set(place, entry);
   }
-  return Promise.all([...found.values()].map(async (f) => {
+  // A few at a time: thousands of requests at once make the bucket client fail some of them, and a marker
+  // that could not be read would send its file to be read again.
+  return inBatches([...found.values()], MARKERS_AT_A_TIME, async (f) => {
     const folder = `${root}${f.cnpj}/${f.periodo}/${f.id}/`;
     const marker = f.marker ? await readJson(`${folder}${MARKER}`).then(parseMarker, () => null) : null;
     const failure = !marker && f.failure ? await readJson(`${folder}${FAILURE}`).then(parseFailure, () => null) : null;
     return { cnpj: f.cnpj, periodo: f.periodo, id: f.id, marker, failure };
-  }));
+  });
 }
+
+/** Markers read from the bucket at the same time. */
+const MARKERS_AT_A_TIME = 32;
 
 /** Writes one CSV per table for one raw file; returns the files written, the lines of each and the dimensions. */
 async function readIntoCsv(
@@ -187,7 +198,9 @@ async function keepPart(table: TemplateTable, source: string, key: string): Prom
 async function readFile(
   importer: SpedImporter, template: Template, facts: readonly TemplateTable[], file: RawFile, folder: string, dir: string,
 ): Promise<PartsMarker> {
-  const local = await storage.localPath(file.key);
+  // A copy kept on this machine spares the download; it is never removed.
+  const original = await localOriginal(file);
+  const local = original ?? await storage.localPath(file.key);
   try {
     const { csv, lines, dimensions } = await readIntoCsv(importer, facts, local, dir);
     const marker: PartsMarker = {
@@ -220,7 +233,28 @@ async function readFile(
     return marker;
   } finally {
     // The cached copy of a remote object is only needed while it is read.
-    if (storage.remote()) await rm(local, { force: true }).catch(() => undefined);
+    if (!original && storage.remote()) await rm(local, { force: true }).catch(() => undefined);
+  }
+}
+
+let localIndex: Promise<LocalIndex> | null = null;
+
+/**
+ * The raw file's copy on this machine, when DBI_FISCAL_LOCAL_ORIGINALS points to a folder that has it with
+ * the size and the MD5 the bucket records. Anything else (no folder, no copy, a failure) means: download.
+ */
+async function localOriginal(file: RawFile): Promise<string | null> {
+  const root = process.env.DBI_FISCAL_LOCAL_ORIGINALS?.trim();
+  if (!root || !storage.remote()) return null;
+  try {
+    localIndex ??= indexLocalOriginals(root);
+    const candidates = localCandidates(await localIndex, file);
+    if (candidates.length === 0) return null;
+    const stored = await storage.md5(file.key);
+    return stored ? await matchingLocal(candidates, stored) : null;
+  } catch (err) {
+    console.warn("[fiscal] local copy not used for", file.key, err instanceof Error ? err.message : err);
+    return null;
   }
 }
 
@@ -244,18 +278,66 @@ function placeholderRow(table: TemplateTable): Row {
 async function assembleTable(
   access: InstanceAccess, table: TemplateTable, sources: readonly string[], dir: string, latestWins: boolean,
 ): Promise<TableReport> {
-  const local = await Promise.all(sources.flatMap(splitParts).map((k) => storage.localPath(k)));
+  // One temporary bucket error among thousands of downloads must not throw the whole table away.
+  const local = await inBatches(sources.flatMap(splitParts), DOWNLOADS_AT_A_TIME, (k) => withRetries(() => storage.localPath(k)));
   const target = path.join(dir, `${table.name}.parquet`);
   const columns = table.columns.map((c) => c.name).join(", ");
+  const copyOptions = "(FORMAT parquet, COMPRESSION zstd, ROW_GROUP_SIZE 122880)";
   await withConnection(storage.workRoot, async (conn) => {
-    const union = local.map((file, i) => `SELECT ${columns}, ${i} AS __ordem FROM ${readParquet(file)}`).join(" UNION ALL ");
-    const order = sortColumns(table);
-    const body = latestWins && table.key
-      ? `SELECT ${columns} FROM (${union}) QUALIFY row_number() OVER (PARTITION BY ${table.key} ORDER BY __ordem DESC) = 1`
-      : `SELECT ${columns} FROM (${union})${order.length > 0 ? ` ORDER BY ${order.join(", ")}` : ""}`;
-    await conn.run(`COPY (${body}) TO ${quotePath(target)} (FORMAT parquet, COMPRESSION zstd, ROW_GROUP_SIZE 122880)`);
+    if (!latestWins) {
+      // A fact goes straight from its parts to the file: kept whole in a table first, years of a chain of
+      // stores do not fit in memory. The sort spills to disk.
+      const order = sortColumns(table);
+      const files = `read_parquet([${local.map(quotePath).join(", ")}])`;
+      await conn.run(`COPY (SELECT ${columns} FROM ${files}${order.length > 0 ? ` ORDER BY ${order.join(", ")}` : ""}) TO ${quotePath(target)} ${copyOptions}`);
+      return;
+    }
+    // A dimension needs the order of its sources; thousands of parts go in a few hundred at a time.
+    await conn.run(`CREATE TEMP TABLE __partes AS SELECT ${columns}, 0 AS __ordem FROM ${readParquet(local[0])} LIMIT 0`);
+    for (let start = 0; start < local.length; start += PARTS_PER_STATEMENT) {
+      const union = local.slice(start, start + PARTS_PER_STATEMENT)
+        .map((file, i) => `SELECT ${columns}, ${start + i} AS __ordem FROM ${readParquet(file)}`).join(" UNION ALL ");
+      await conn.run(`INSERT INTO __partes ${union}`);
+    }
+    const body = table.key
+      ? `SELECT ${columns} FROM __partes QUALIFY row_number() OVER (PARTITION BY ${table.key} ORDER BY __ordem DESC) = 1`
+      : `SELECT ${columns} FROM __partes`;
+    await conn.run(`COPY (${body}) TO ${quotePath(target)} ${copyOptions}`);
   });
   return ingestIntoDraft(access, stored(table), target, `${table.name}.parquet`);
+}
+
+/** Objects fetched from the bucket at the same time when a table is put together. */
+const DOWNLOADS_AT_A_TIME = 16;
+/** Parts read by one statement when a table is put together. */
+const PARTS_PER_STATEMENT = 200;
+
+/** `fn` over every item, a few at a time, results in the order of the items. */
+export async function inBatches<T, R>(items: readonly T[], size: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = new Array<R>(items.length);
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(Math.max(size, 1), items.length) }, async () => {
+    for (let i = next++; i < items.length; i = next++) results[i] = await fn(items[i]);
+  }));
+  return results;
+}
+
+/** Attempts a bucket request gets before its error is final. */
+const BUCKET_ATTEMPTS = 4;
+/** Wait before the second attempt; it doubles at each new one. */
+const RETRY_WAIT_MS = 2000;
+
+/** Runs `fn` again when it fails (a bucket answering with a temporary error), waiting longer each time. */
+export async function withRetries<R>(fn: () => Promise<R>, attempts = BUCKET_ATTEMPTS, waitMs = RETRY_WAIT_MS): Promise<R> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await fn();
+    } catch (e) {
+      if (attempt >= attempts) throw e;
+      console.warn(`[fiscal] attempt ${attempt} of ${attempts} failed, trying again:`, e instanceof Error ? e.message.slice(0, 200) : e);
+      await new Promise((r) => setTimeout(r, waitMs * 2 ** (attempt - 1)));
+    }
+  }
 }
 
 /** What the dashboard already has for a table: the draft's file, else the published one. */
@@ -441,7 +523,7 @@ export async function rebuildSpedFromParts(
     }));
     return await assemble(
       access, importer, template,
-      { plan, justRead, skipped, dimensionsFrom: options.rereadAll ? "read" : "dashboard", only: options.only, tracker }, work,
+      { plan, justRead, skipped, dimensionsFrom: options.rereadAll || options.dimensionsFromParts ? "read" : "dashboard", only: options.only, tracker }, work,
     );
   } catch (err) {
     await tracker.failed(err);

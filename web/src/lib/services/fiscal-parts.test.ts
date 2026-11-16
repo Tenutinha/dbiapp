@@ -47,7 +47,7 @@ const { partsFolderId } = await import("../fiscal/parts-plan");
 const { SPED_READER_VERSION } = await import("../fiscal/sped-kinds");
 const { templateSchema } = await import("../templates/schema");
 const {
-  assembleSpedFromParts, readBuildStatus, readConcurrency, readSpedFile, rebuildSpedFromParts, spedFilesOverview, spedPartsState,
+  assembleSpedFromParts, inBatches, withRetries, readBuildStatus, readConcurrency, readSpedFile, rebuildSpedFromParts, spedFilesOverview, spedPartsState,
 } = await import("./fiscal-parts");
 
 const template = templateSchema.parse(JSON.parse(await readFile(path.join(process.cwd(), "fiscal-templates", "efd-contribuicoes.json"), "utf8")));
@@ -234,5 +234,42 @@ describe("readConcurrency", () => {
   it("is one file at a time unless a sensible number is set", () => {
     expect([readConcurrency(undefined), readConcurrency("0"), readConcurrency("x"), readConcurrency("2.5")]).toEqual([1, 1, 1, 1]);
     expect([readConcurrency("6"), readConcurrency("99")]).toEqual([6, 16]);
+  });
+});
+
+describe("inBatches", () => {
+  it("keeps the order of the items and never runs more than the size at once", async () => {
+    let running = 0;
+    let peak = 0;
+    const out = await inBatches([5, 1, 4, 2, 3, 0], 2, async (n) => {
+      running += 1;
+      peak = Math.max(peak, running);
+      await new Promise((r) => setTimeout(r, n));
+      running -= 1;
+      return n * 10;
+    });
+    expect(out).toEqual([50, 10, 40, 20, 30, 0]);
+    expect(peak).toBe(2);
+    expect(await inBatches([], 4, async (n: number) => n)).toEqual([]);
+  });
+});
+
+describe("withRetries", () => {
+  it("tries again after a failure and gives up after the last attempt", async () => {
+    let calls = 0;
+    const flaky = async (): Promise<string> => {
+      calls += 1;
+      if (calls < 3) throw new Error("502");
+      return "ok";
+    };
+    expect(await withRetries(flaky, 4, 1)).toBe("ok");
+    expect(calls).toBe(3);
+
+    calls = 0;
+    await expect(withRetries(async () => {
+      calls += 1;
+      throw new Error("down");
+    }, 2, 1)).rejects.toThrow("down");
+    expect(calls).toBe(2);
   });
 });
