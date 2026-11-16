@@ -24,7 +24,7 @@ import { getDraft, listFiles } from "../data/repository";
 import { quotePath, readParquet, withConnection } from "../duck/engine";
 import { csvLine, toCsv } from "../fiscal/csv";
 import type { FiscalTables, SpedImporter } from "../fiscal/importers";
-import type { FileEvent, TableEvent } from "../fiscal/local-load";
+import type { FileEvent, StepEvent, TableEvent } from "../fiscal/local-load";
 import { indexLocalOriginals, localCandidates, matchingLocal, type LocalIndex } from "../fiscal/local-originals";
 import { parseBuildStatus, type BuildRunner, type BuildStatus } from "../fiscal/build-status";
 import { dimensionHow, factHow, sourcesOf, type Lineage, type TableLineage } from "../fiscal/lineage";
@@ -110,7 +110,19 @@ export interface PartsOptions {
   onFile?: (event: FileEvent) => void;
   /** Called after each table put together. */
   onTable?: (event: TableEvent) => void;
+  /** Called at each step inside the read of a file and inside the assembly of a table (see StepEvent). */
+  onStep?: (event: StepEvent) => void;
 }
+
+/** How the read of a file reports its steps: the callback and where the file stands in the run. */
+interface Narration {
+  onStep: (event: StepEvent) => void;
+  posicao: number;
+  total: number;
+}
+
+/** At most one count of lines per file in this time: a big file would otherwise write thousands. */
+const LINES_NOTICE_MS = 1000;
 
 const rowsOf = (marker: PartsMarker): Record<string, number> => Object.fromEntries(
   [...Object.entries(marker.tables), ...Object.entries(marker.dimensions)].map(([name, part]) => [name, part.rows]),
@@ -192,7 +204,7 @@ const MARKERS_AT_A_TIME = 32;
 
 /** Writes one CSV per table for one raw file; returns the files written, the lines of each and the dimensions. */
 async function readIntoCsv(
-  importer: SpedImporter, facts: readonly TemplateTable[], local: string, dir: string, keepMain: boolean,
+  importer: SpedImporter, facts: readonly TemplateTable[], local: string, dir: string, keepMain: boolean, onLines?: (lines: number) => void,
 ): Promise<{ csv: Record<string, string>; lines: Record<string, number>; dimensions: FiscalTables }> {
   const [main, ...blocks] = facts;
   const written = keepMain ? facts : blocks;
@@ -202,7 +214,7 @@ async function readIntoCsv(
     for (const out of Object.values(outs)) await writeChunk(out, csvLine(factColumns(importer.kind)));
     const read = await appendSpedFile(importer.kind, local, {
       fact: keepMain ? outs[main.name] : null, blocks: Object.fromEntries(blocks.map((t) => [t.name, outs[t.name]])),
-    });
+    }, onLines);
     return { csv, lines: { [main.name]: read.lines, ...read.blockLines }, dimensions: read.dimensions };
   } finally {
     for (const out of Object.values(outs)) out.end();
@@ -224,12 +236,22 @@ async function keepPart(table: TemplateTable, source: string, key: string): Prom
  */
 async function readFile(
   importer: SpedImporter, template: Template, facts: readonly TemplateTable[], file: RawFile, folder: string, dir: string, keepMain: boolean,
+  narration?: Narration,
 ): Promise<PartsMarker> {
   // A copy kept on this machine spares the download; it is never removed.
   const original = await localOriginal(file);
   const local = original ?? await storage.localPath(file.key);
+  const where = { cnpj: file.cnpj, periodo: file.periodo };
+  const step = narration?.onStep;
+  step?.({ etapa: "quebra", passo: "inicio", ...where, sizeBytes: file.sizeBytes, origem: original ? "disco" : "bucket", posicao: narration?.posicao ?? 1, total: narration?.total ?? 1 });
+  let lastNotice = Date.now();
+  const onLines = step && ((linhas: number): void => {
+    if (Date.now() - lastNotice < LINES_NOTICE_MS) return;
+    lastNotice = Date.now();
+    step({ etapa: "quebra", passo: "lendo", ...where, linhas });
+  });
   try {
-    const { csv, lines, dimensions } = await readIntoCsv(importer, facts, local, dir, keepMain);
+    const { csv, lines, dimensions } = await readIntoCsv(importer, facts, local, dir, keepMain, onLines);
     const marker: PartsMarker = {
       reader: SPED_READER_VERSION,
       source: { key: file.key, sizeBytes: file.sizeBytes, updatedAt: file.updatedAt },
@@ -248,6 +270,7 @@ async function readFile(
       }
       const key = `${folder}${table.name}.parquet`;
       marker.tables[table.name] = { key, rows: await keepPart(table, csv[table.name], key) };
+      step?.({ etapa: "quebra", passo: "bloco", ...where, tabela: table.name, linhas: marker.tables[table.name].rows });
     }
     for (const table of template.tables.filter((t) => t.kind === "dimension")) {
       const rows = dimensions[table.name] ?? [];
@@ -259,6 +282,7 @@ async function readFile(
       await writeFile(source, toCsv(table.columns.map((c) => c.name), rows), "utf8");
       const key = `${folder}${table.name}.parquet`;
       marker.dimensions[table.name] = { key, rows: await keepPart(table, source, key) };
+      step?.({ etapa: "quebra", passo: "bloco", ...where, tabela: table.name, linhas: marker.dimensions[table.name].rows });
     }
     await partsStore.replaceBytes(`${folder}${MARKER}`, new TextEncoder().encode(JSON.stringify(marker)), JSON_MIME);
     return marker;
@@ -307,10 +331,11 @@ function placeholderRow(table: TemplateTable): Row {
  * through the regular ingest. `latestWins`: a dimension keeps one line per key, the one of the last source.
  */
 async function assembleTable(
-  access: InstanceAccess, table: TemplateTable, sources: readonly string[], dir: string, latestWins: boolean,
+  access: InstanceAccess, table: TemplateTable, sources: readonly string[], dir: string, latestWins: boolean, onStep?: (event: StepEvent) => void,
 ): Promise<TableReport> {
   const target = path.join(dir, `${table.name}.parquet`);
-  await writeTable(table, sources, target, latestWins);
+  await writeTable(table, sources, target, latestWins, onStep);
+  onStep?.({ etapa: "uniao", passo: "validando", tabela: table.name });
   return ingestIntoDraft(access, stored(table), target, `${table.name}.parquet`);
 }
 
@@ -323,6 +348,7 @@ const yearsKey = (access: DashboardRef): string =>
  */
 async function assembleFactByYear(
   access: InstanceAccess, table: TemplateTable, keep: readonly { file: RawFile; marker: PartsMarker }[], dir: string,
+  onStep?: (event: StepEvent) => void,
 ): Promise<TableReport> {
   const record: YearsRecord = await readJson(yearsKey(access)).then(parseYears, () => ({}));
   const current = new Set(splitParts((await currentFile(access, table.name)) ?? ""));
@@ -339,10 +365,11 @@ async function assembleFactByYear(
     if (had && had.sources === digest && current.has(had.key)) {
       parts.push({ key: had.key, name });
       years[year] = had;
+      onStep?.({ etapa: "uniao", passo: "ano", tabela: table.name, ano: year, linhas: had.rows, reaproveitado: true });
       continue;
     }
     const target = path.join(dir, name);
-    await writeTable(table, sources, target, false);
+    await writeTable(table, sources, target, false, onStep, year);
     const part = await convertToPart(access, stored(table), target, name);
     if (!part.ok || !part.key) {
       await discardParts(access, stored(table), made);
@@ -351,6 +378,7 @@ async function assembleFactByYear(
     made.push(part.key);
     parts.push({ key: part.key, name });
     years[year] = { key: part.key, sources: digest, rows: part.rowCount };
+    onStep?.({ etapa: "uniao", passo: "ano", tabela: table.name, ano: year, linhas: part.rowCount, reaproveitado: false });
   }
   const report = await registerParts(access, stored(table), parts);
   if (report.ok) {
@@ -361,9 +389,19 @@ async function assembleFactByYear(
 }
 
 /** Writes a table's Parquet at `target` from Parquet sources (parts, or what the dashboard already has). */
-async function writeTable(table: TemplateTable, sources: readonly string[], target: string, latestWins: boolean): Promise<void> {
+async function writeTable(
+  table: TemplateTable, sources: readonly string[], target: string, latestWins: boolean, onStep?: (event: StepEvent) => void, year?: string,
+): Promise<void> {
+  const keys = sources.flatMap(splitParts);
+  let fetched = 0;
   // One temporary bucket error among thousands of downloads must not throw the whole table away.
-  const local = await inBatches(sources.flatMap(splitParts), DOWNLOADS_AT_A_TIME, (k) => withRetries(() => (isPartKey(k) ? partsStore : storage).localPath(k)));
+  const local = await inBatches(keys, DOWNLOADS_AT_A_TIME, async (k) => {
+    const file = await withRetries(() => (isPartKey(k) ? partsStore : storage).localPath(k));
+    fetched += 1;
+    if (fetched % PARTS_PER_NOTICE === 0 || fetched === keys.length) onStep?.({ etapa: "uniao", passo: "partes", tabela: table.name, feitas: fetched, total: keys.length });
+    return file;
+  });
+  onStep?.({ etapa: "uniao", passo: "juntando", tabela: table.name, ...(year ? { ano: year } : {}) });
   const columns = table.columns.map((c) => c.name).join(", ");
   const copyOptions = "(FORMAT parquet, COMPRESSION zstd, ROW_GROUP_SIZE 122880)";
   await withConnection(storage.workRoot, async (conn) => {
@@ -389,6 +427,8 @@ async function writeTable(table: TemplateTable, sources: readonly string[], targ
   });
 }
 
+/** How often the gathering of the parts of a table says how far it is. */
+const PARTS_PER_NOTICE = 100;
 /** Objects fetched from the bucket at the same time when a table is put together. */
 const DOWNLOADS_AT_A_TIME = 16;
 /** Parts read by one statement when a table is put together. */
@@ -463,14 +503,14 @@ const failureMessage = (err: unknown): string => (err instanceof FiscalFileError
  */
 async function readOne(
   access: InstanceAccess, importer: SpedImporter, template: Template, facts: readonly TemplateTable[], file: RawFile, work: string,
-  keepMain = true,
+  keepMain = true, narration?: Narration,
 ): Promise<{ ok: true; marker: PartsMarker } | { ok: false; error: string }> {
   const folder = folderOfFile(partsRoot(access), file);
   const dir = path.join(work, partsFolderId(file, SPED_READER_VERSION));
   await mkdir(dir, { recursive: true });
   try {
     await partsStore.removeFolder(folder);
-    return { ok: true, marker: await readFile(importer, template, facts, file, folder, dir, keepMain) };
+    return { ok: true, marker: await readFile(importer, template, facts, file, folder, dir, keepMain, narration) };
   } catch (err) {
     if (!(err instanceof FiscalFileError)) console.error("[fiscal] could not read", file.key, err);
     const failure: PartsFailure = { error: failureMessage(err), at: new Date().toISOString() };
@@ -599,14 +639,18 @@ export async function rebuildSpedFromParts(
     // A few files at a time (see readConcurrency); the order they end in does not matter, `ready` is sorted when assembling.
     const queue = [...plan.read];
     let done = 0;
+    let started = 0;
     await Promise.all(Array.from({ length: Math.min(readConcurrency(), queue.length) }, async () => {
       for (let file = queue.shift(); file; file = queue.shift()) {
-        const result = await readOne(access, importer, template, facts, file, work, keepsMainFact(file, files, importer.kind.mainFactPeriods));
+        started += 1;
+        const began = Date.now();
+        const narration = options.onStep ? { onStep: options.onStep, posicao: started, total: plan.read.length } : undefined;
+        const result = await readOne(access, importer, template, facts, file, work, keepsMainFact(file, files, importer.kind.mainFactPeriods), narration);
         if (result.ok) justRead.push({ file, marker: result.marker });
         else skipped.push({ path: relativeToOrg(access.org.slug, file.key), error: result.error });
         options.onFile?.({
           cnpj: file.cnpj, periodo: file.periodo, sizeBytes: file.sizeBytes, ok: result.ok,
-          rows: result.ok ? rowsOf(result.marker) : {}, ...(result.ok ? {} : { error: result.error }),
+          rows: result.ok ? rowsOf(result.marker) : {}, ...(result.ok ? {} : { error: result.error }), ms: Date.now() - began,
         });
         done += 1;
         options.onProgress?.(done, plan.read.length);
@@ -615,7 +659,7 @@ export async function rebuildSpedFromParts(
     }));
     return await assemble(
       access, importer, template,
-      { plan, justRead, skipped, dimensionsFrom: options.rereadAll || options.dimensionsFromParts ? "read" : "dashboard", only: options.only, tracker, onTable: options.onTable }, work,
+      { plan, justRead, skipped, dimensionsFrom: options.rereadAll || options.dimensionsFromParts ? "read" : "dashboard", only: options.only, tracker, onTable: options.onTable, onStep: options.onStep }, work,
     );
   } catch (err) {
     await tracker.failed(err);
@@ -666,6 +710,7 @@ interface AssembleInput {
   /** Keeps the panel informed of the table on its way. */
   tracker: BuildTracker;
   onTable?: (event: TableEvent) => void;
+  onStep?: (event: StepEvent) => void;
 }
 
 /** Drops obsolete parts, puts every table of the draft together from the parts, and keeps the lineage. */
@@ -700,9 +745,11 @@ async function assemble(
     // A big fact with more than one year goes as one Parquet per year (see yearlyMinRows).
     const lines = keep.reduce((s, r) => s + (r.marker.tables[table.name]?.key ? r.marker.tables[table.name].rows : 0), 0);
     const byYear = lines >= yearlyMinRows() && yearGroups(keep).length > 1;
-    const report = byYear ? await assembleFactByYear(access, table, keep, work) : await assembleTable(access, table, parts, work, false);
+    const began = Date.now();
+    input.onStep?.({ etapa: "uniao", passo: "inicio", tabela: table.name, partes: parts.length, posicao: step, total: steps });
+    const report = byYear ? await assembleFactByYear(access, table, keep, work, input.onStep) : await assembleTable(access, table, parts, work, false, input.onStep);
     tables.push(report);
-    input.onTable?.({ table: report.table, ok: report.ok, rows: report.rowCount, sizeBytes: report.sizeBytes });
+    input.onTable?.({ table: report.table, ok: report.ok, rows: report.rowCount, sizeBytes: report.sizeBytes, ms: Date.now() - began });
     lineage.push({
       table: table.name, kind: "fact", how: factHow(importer.kind, table.name, table === facts[0]),
       rows: report.ok ? report.rowCount : null, sources: sourcesOf(keep, table.name, "tables", relative),
@@ -721,9 +768,11 @@ async function assemble(
       tables.push(await ingestIntoDraft(access, table, source, `${table.name}.csv`));
       continue;
     }
-    const report = await assembleTable(access, table, sources, work, true);
+    const began = Date.now();
+    input.onStep?.({ etapa: "uniao", passo: "inicio", tabela: table.name, partes: sources.length, posicao: step, total: steps });
+    const report = await assembleTable(access, table, sources, work, true, input.onStep);
     tables.push(report);
-    input.onTable?.({ table: report.table, ok: report.ok, rows: report.rowCount, sizeBytes: report.sizeBytes });
+    input.onTable?.({ table: report.table, ok: report.ok, rows: report.rowCount, sizeBytes: report.sizeBytes, ms: Date.now() - began });
     lineage.push({
       table: table.name, kind: "dimension", how: dimensionHow(table.name), rows: report.ok ? report.rowCount : null,
       sources: sourcesOf(base ? justRead : ready, table.name, "dimensions", relative),

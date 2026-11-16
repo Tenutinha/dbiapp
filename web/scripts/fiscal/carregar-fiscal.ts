@@ -135,7 +135,11 @@ async function main(): Promise<void> {
     by: "script",
     // For the screen that follows the load ("Converter nesta máquina"): one line per file and per table.
     ...(process.argv.includes("--eventos")
-      ? { onFile: (arquivo) => console.log(eventLine({ arquivo })), onTable: (tabela) => console.log(eventLine({ tabela })) }
+      ? {
+        onFile: (arquivo) => console.log(eventLine({ arquivo })),
+        onTable: (tabela) => console.log(eventLine({ tabela })),
+        onStep: (passo) => console.log(eventLine({ passo })),
+      }
       : {}),
     // A line every 25 files, so a long load shows where it is.
     onProgress: (done, total) => {
@@ -155,9 +159,14 @@ async function main(): Promise<void> {
     throw new Error(`${result.skipped.length} arquivo(s) não puderam ser lidos; nada foi publicado (as tabelas ficaram no rascunho). Converta de novo.`);
   }
 
+  const events = process.argv.includes("--eventos");
+  if (events) console.log(eventLine({ passo: { etapa: "publicacao", passo: "inicio" } }));
   const published = await publishDraft(access);
   if (!published.ok) throw new Error(`publicação: ${published.errors.join(" | ")}`);
-  for (const o of published.orphans.filter((x) => x.orphans > 0)) console.log(`  aviso: ${o.orphans.toLocaleString("pt-BR")} linhas sem correspondência em ${o.relationship}`);
+  const warnings = published.orphans.filter((x) => x.orphans > 0)
+    .map((o) => `${o.orphans.toLocaleString("pt-BR")} linhas sem correspondência em ${o.relationship}`);
+  for (const warning of warnings) console.log(`  aviso: ${warning}`);
+  if (events) console.log(eventLine({ passo: { etapa: "publicacao", passo: "fim", avisos: warnings } }));
   console.log(`publicado: /${org.slug}/d/${inst.id}`);
 }
 

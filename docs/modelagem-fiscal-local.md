@@ -80,6 +80,25 @@ node --import tsx scripts/fiscal/gerar-moldes.ts
 `extrair.ts`, `preparar.py`, `molde.py`, `glossario.py` e `incluir-insumos.ts`: ver
 [auditoria-fiscal.md](auditoria-fiscal.md).
 
+## O que a carga narra (`--eventos`)
+
+Cada linha `@evento {...}` do log é um passo. `src/lib/fiscal/local-load.ts` define os tipos (`LoadEvent`),
+transforma cada um em frase (`describeEvent`) e soma o estado da rodada (`parseLoadLog`).
+
+| Etapa | Passo | O que diz |
+|---|---|---|
+| quebra | `inicio` | arquivo N de M, empresa, mês, tamanho, lido do disco ou baixado do bucket |
+| quebra | `lendo` | linhas lidas até agora (no máximo uma vez por segundo por arquivo) |
+| quebra | `bloco` | um Parquet do arquivo gravado: tabela e linhas |
+| quebra | `arquivo` (fim) | linhas por tabela, duração, ou o erro |
+| uniao | `inicio` | tabela N de M e quantas partes vai unir |
+| uniao | `partes` | partes reunidas (a cada 100 e no fim) |
+| uniao | `juntando` | junção e ordenação (com o ano, nas tabelas divididas por ano) |
+| uniao | `ano` | um ano gravado ou reaproveitado, com as linhas |
+| uniao | `validando` | conferência do contrato antes de entrar no rascunho |
+| uniao | `tabela` (fim) | linhas, tamanho, duração |
+| publicacao | `inicio`, `fim` | a publicação e os avisos |
+
 ## A tela: Converter nesta máquina
 
 Com o app rodando na máquina (não no hospedado), o painel **Dados fiscais** mostra, em cada dashboard SPED e só
