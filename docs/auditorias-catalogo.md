@@ -539,7 +539,7 @@ devoluções, além da mercadoria para revenda.
 - **Dificuldade:** alta · **Tributarista:** sim · **Resultado:** indicador
 
 #### CR17 · Inclusão de insumos: levar para a EFD Contribuições as entradas que só estão na EFD ICMS/IPI
-- **Confere:** as chaves de entrada da EFD ICMS/IPI que não estão em nenhum C100 da EFD Contribuições (a detecção é a O02, já implementada) e, para cada uma, monta os registros que faltam no arquivo da Contribuições da mesma competência: a nota e os itens **exatamente como estão na EFD ICMS/IPI**, mais os cadastros de que eles dependem.
+- **Confere:** as chaves de entrada da EFD ICMS/IPI, com CFOP que gera crédito, que não estão em nenhum C100 da EFD Contribuições (a detecção é a O02, já implementada, mais o filtro de CFOP) e, para cada uma, monta os registros que faltam no arquivo da Contribuições da mesma competência: a nota e os itens **exatamente como estão na EFD ICMS/IPI**, mais os cadastros de que eles dependem.
 - **Por que importa:** é a passagem do achado ao dinheiro: o arquivo corrigido, pronto para validar no PVA e transmitir como retificadora, com o crédito das entradas que ficaram de fora. É análise que a consultoria já faz (antes em QlikView); no DBI ela sai dos mesmos arquivos, sem remontar o modelo. Base legal do crédito: Leis 10.637/2002 e 10.833/2003, art. 3º; a retificadora do mês de origem é o caminho que a Receita aceita (SC Cosit 355/2017).
 - **Dados:** EFD ICMS/IPI: C100 (todos os campos), C170 (todos), 0150, 0200, 0190, 0400, 0450; EFD Contribuições do mesmo mês: 0140, 0150, 0200, 0190, 0400, 0450, C010, C100: `CHV_NFE`. **Temos.** Para gravar o arquivo é preciso o original inteiro da Contribuições (está no bucket).
 - **Dificuldade:** média (a regra é simples; o cuidado está em gerar um arquivo que o PVA aceite) · **Tributarista:** sim (quais entradas dão crédito e com que CST) · **Resultado:** oportunidade de recuperação
@@ -565,6 +565,12 @@ Cuidados:
 - **Estabelecimento sem C010 ou sem 0140 no mês.** É preciso criar o C010 (e o 0140), não só as notas.
 - **Notas sem C170 na EFD ICMS/IPI** (em regra, as de emissão própria) não têm itens para copiar: ficam numa lista à
   parte.
+- **Só CFOP que gera crédito.** Regra da análise original: a inclusão vale apenas para os itens cujo CFOP está na
+  tabela "CFOP – Operações Geradoras de Créditos" do SPED (compra para revenda ou industrialização, devolução de
+  venda, energia, frete e as demais da tabela). Entradas de uso e consumo, transferência, remessa e bonificação ficam
+  fora. A tabela é pública e entra como dado do gerador, com vigência. A confirmar com o responsável: numa nota com
+  itens dos dois tipos, se entra a nota inteira ou só os itens que geram crédito (neste caso os totais do C100 deixam
+  de bater com a soma dos itens, o que a regra C03 acusa).
 - **Não duplicar.** A chave não pode existir em nenhum outro mês da Contribuições (regra C12), e só entram notas
   regulares (modelo 55, situação 00, 01, 06, 07 ou 08).
 - **Totais e apuração.** Recontar os registros de encerramento (0990, C990, 9900, 9990, 9999), marcar o arquivo como
