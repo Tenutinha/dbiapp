@@ -1,6 +1,6 @@
 # Catálogo de auditorias fiscais e contábeis
 
-Tudo o que dá para auditar com os arquivos fiscais que o DBI já guarda de um cliente: **194 auditorias em 15 temas**,
+Tudo o que dá para auditar com os arquivos fiscais que o DBI já guarda de um cliente: **195 auditorias em 15 temas**,
 cada uma com o que confere, por que importa para o dono da empresa, os registros e campos necessários, o que já temos
 e o que falta, a dificuldade e o tipo de resultado.
 
@@ -35,7 +35,7 @@ Para ir direto ao ponto: [as 15 de maior valor](#18-as-15-de-maior-valor-para-o-
 - **Dificuldade:** baixa (uma consulta sobre tabelas que já existem), média (item a item, ou cruzamento de fontes),
   alta (volume grande, tabela externa por UF ou critério a definir).
 - **Tributarista:** "sim" quando o achado depende de **interpretação tributária** e só vira oportunidade ou risco
-  depois de validado por uma pessoa habilitada. São 70 das 194.
+  depois de validado por uma pessoa habilitada. São 71 das 195.
 - **Resultado:** erro (a escrituração está inconsistente), risco (pode virar autuação), oportunidade de recuperação
   (tributo pago a maior ou crédito não tomado) ou indicador (leitura do negócio).
 
@@ -64,7 +64,7 @@ lidas em portais, não no acórdão.
 | 1 | Consistência da EFD Contribuições | EC | 21 | erro |
 | 2 | Consistência da EFD ICMS/IPI | EI | 18 | erro |
 | 3 | Cruzamento entre obrigações | CZ | 15 | erro e risco |
-| 4 | Créditos de PIS/COFINS não aproveitados | CR | 16 | oportunidade de recuperação |
+| 4 | Créditos de PIS/COFINS não aproveitados | CR | 17 | oportunidade de recuperação |
 | 5 | PIS/COFINS pago a maior | PM | 15 | oportunidade de recuperação |
 | 6 | ICMS próprio | IC | 17 | risco e oportunidade |
 | 7 | ICMS-ST | ST | 10 | oportunidade e risco |
@@ -76,9 +76,9 @@ lidas em portais, não no acórdão.
 | 13 | Riscos de autuação e malha | RK | 12 | risco |
 | 14 | Indicadores gerenciais para o dono | IG | 13 | indicador |
 | 15 | Reforma tributária (transição) | RT | 4 | risco e indicador |
-| | **Total** | | **194** | |
+| | **Total** | | **195** | |
 
-Por tipo de resultado (uma auditoria pode ter mais de um): 59 trazem oportunidade de recuperação, 73 apontam risco,
+Por tipo de resultado (uma auditoria pode ter mais de um): 60 trazem oportunidade de recuperação, 73 apontam risco,
 73 apontam erro de escrituração e 40 são indicadores.
 
 Os prefixos têm duas letras para não se confundir com os códigos das regras já implementadas (C, X e O). Ao
@@ -433,7 +433,7 @@ da nota e podem vir duplicados (`NFe-<chave>.xml` e `procNFe<chave>.xml`): toda 
 
 ## 4. Créditos de PIS/COFINS não aproveitados (CR)
 
-Já implementadas: O02 e O03. Todo crédito abaixo é **interpretação tributária** até o tributarista validar o direito no
+Já implementadas: O02 e O03 (a CR17 leva a O02 até o arquivo corrigido). Todo crédito abaixo é **interpretação tributária** até o tributarista validar o direito no
 caso concreto. O prazo para aproveitar é de 5 anos (Lei 10.833/2003, art. 3º, § 4º, permite usar o crédito nos meses
 seguintes). A Receita exige a retificação da EFD Contribuições e da DCTF do mês de origem (SC Cosit 355/2017); o
 catálogo trata a retificadora como o caminho seguro.
@@ -537,6 +537,44 @@ devoluções, além da mercadoria para revenda.
 - **Por que importa:** o método é escolha anual do contribuinte e muda o volume de crédito ressarcível. É planejamento, não recuperação do passado.
 - **Dados:** 0110, 0111, M105/M505, documentos de entrada e de saída por CST. **Temos.**
 - **Dificuldade:** alta · **Tributarista:** sim · **Resultado:** indicador
+
+#### CR17 · Inclusão de insumos: levar para a EFD Contribuições as entradas que só estão na EFD ICMS/IPI
+- **Confere:** as chaves de entrada da EFD ICMS/IPI que não estão em nenhum C100 da EFD Contribuições (a detecção é a O02, já implementada) e, para cada uma, monta os registros que faltam no arquivo da Contribuições da mesma competência: a nota e os itens **exatamente como estão na EFD ICMS/IPI**, mais os cadastros de que eles dependem.
+- **Por que importa:** é a passagem do achado ao dinheiro: o arquivo corrigido, pronto para validar no PVA e transmitir como retificadora, com o crédito das entradas que ficaram de fora. É análise que a consultoria já faz (antes em QlikView); no DBI ela sai dos mesmos arquivos, sem remontar o modelo. Base legal do crédito: Leis 10.637/2002 e 10.833/2003, art. 3º; a retificadora do mês de origem é o caminho que a Receita aceita (SC Cosit 355/2017).
+- **Dados:** EFD ICMS/IPI: C100 (todos os campos), C170 (todos), 0150, 0200, 0190, 0400, 0450; EFD Contribuições do mesmo mês: 0140, 0150, 0200, 0190, 0400, 0450, C010, C100: `CHV_NFE`. **Temos.** Para gravar o arquivo é preciso o original inteiro da Contribuições (está no bucket).
+- **Dificuldade:** média (a regra é simples; o cuidado está em gerar um arquivo que o PVA aceite) · **Tributarista:** sim (quais entradas dão crédito e com que CST) · **Resultado:** oportunidade de recuperação
+
+**Como o arquivo corrigido é montado** (conferido nos layouts do repositório):
+
+| Registro | Na EFD ICMS/IPI | Na EFD Contribuições | O que fazer |
+|---|---|---|---|
+| C100 | 28 campos | os mesmos 28, na mesma ordem | copiar como está, sob o C010 do estabelecimento |
+| C170 | 37 campos | 36: os mesmos, sem o último (`VL_ABAT_NT`) | copiar sem o último campo |
+| 0150 (participante) | 12 campos | os mesmos 12 | incluir sob o 0140 do estabelecimento, se o `COD_PART` não existir ali |
+| 0200 (item) | 12 campos | 11: os mesmos, sem o último (`CEST`) | incluir sob o 0140, sem o `CEST`, se o `COD_ITEM` não existir ali |
+| 0190 (unidade), 0400 (natureza), 0450 (informação complementar) | 2 campos | os mesmos 2 | incluir se a `UNID`, o `COD_NAT` ou o `COD_INF` usados na nota não existirem |
+
+Cuidados:
+
+- **Cadastro por estabelecimento e por competência.** Na Contribuições, o 0150 e o 0200 são filhos do 0140: o
+  participante e o item têm de existir **no 0140 do estabelecimento da nota, no arquivo daquele mês**. Estar em outro
+  estabelecimento ou em outro mês não serve; sem isso o PVA recusa o arquivo. O mesmo vale, no nível do arquivo, para
+  0190, 0400 e 0450.
+- **Código já usado com outro conteúdo.** Se o `COD_PART` ou o `COD_ITEM` já existe no 0140 com CNPJ, descrição ou
+  NCM diferentes dos da EFD ICMS/IPI, não incluir de novo: listar o conflito para decisão.
+- **Estabelecimento sem C010 ou sem 0140 no mês.** É preciso criar o C010 (e o 0140), não só as notas.
+- **Notas sem C170 na EFD ICMS/IPI** (em regra, as de emissão própria) não têm itens para copiar: ficam numa lista à
+  parte.
+- **Não duplicar.** A chave não pode existir em nenhum outro mês da Contribuições (regra C12), e só entram notas
+  regulares (modelo 55, situação 00, 01, 06, 07 ou 08).
+- **Totais e apuração.** Recontar os registros de encerramento (0990, C990, 9900, 9990, 9999), marcar o arquivo como
+  retificador (`0000.TIPO_ESCRIT` = 1, com o `NUM_REC_ANTERIOR`) e refazer o bloco M no PVA: a inclusão muda o M105, o
+  M100 e o M200 (a função de gerar a apuração no PVA é a confirmar).
+- **Ponto a decidir com o tributarista:** "exatamente como está no ICMS" copia também o `CST_PIS`, o `CST_COFINS`, as
+  bases e as alíquotas do C170 da EFD ICMS/IPI. Se lá eles estiverem vazios ou com CST sem crédito, a nota entra na
+  Contribuições e não gera crédito. A regra tem de dizer se mantém o que veio ou se aplica o CST de crédito por CFOP.
+- A EFD ICMS/IPI começa em 2019 e a Contribuições em 2018: a análise vale para os meses e estabelecimentos que têm os
+  dois arquivos.
 
 ---
 
@@ -1451,7 +1489,7 @@ a ordem é a expectativa para uma rede de supermercados no lucro real.
 | 14 | **CZ11** Transferências: saída de uma loja × entrada da outra | débito sem crédito correspondente em milhares de notas internas | média |
 | 15 | **CZ01 + CZ02** Notas fora da EFD ICMS/IPI | não recupera dinheiro: evita a autuação mais comum das SEFAZ, e é barata | baixa |
 
-Logo depois: **ST01** (ressarcimento de ST na venda abaixo da base presumida, valor alto e rito difícil), **CP03**
+Logo depois: **CR17** (inclusão de insumos: a O02 já detecta; falta gerar o arquivo corrigido), **ST01** (ressarcimento de ST na venda abaixo da base presumida, valor alto e rito difícil), **CP03**
 (coeficiente do CIAP), **ES04** (levantamento de estoque, o maior risco), **EC09** e **EI06** (saldos que somem).
 
 ---
@@ -1466,7 +1504,7 @@ EI07, IC09, IC12, CP02, CP04, CP06, IG09, IG10. São regras leves, sem item a it
 ranking (7 e 8).
 
 **Onda 2, pago a maior por item na EFD Contribuições.** EC01, EC02, EC03, PM04, PM01, PM03, PM08, PM09, PM11, CR12,
-CD04, IG02. Usa o laço arquivo a arquivo que já existe; depende das tabelas 4.3.x. Entrega os itens 1, 2 e 3.
+CD04, IG02, CR17. Usa o laço arquivo a arquivo que já existe; depende das tabelas 4.3.x. Entrega os itens 1, 2 e 3.
 
 **Onda 3, créditos com a contabilidade.** CT12, CR02, CR03, CR04, CR06, CR08, CR09, CZ12, CZ13, CT09. Pede o
 mapeamento das contas do cliente. Entrega os itens 4 e 6.
