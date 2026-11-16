@@ -92,7 +92,7 @@ export default async function PublicSpacePage({ params, searchParams }: Props) {
       <SidebarShell
         title={spaceName}
         org={{ name: link.orgName, href: null }}
-        spaces={link.clientName ? [{ href: home, label: link.clientName, kind: "client", current: true }] : []}
+        spaces={link.clientName ? [{ href: home, label: link.clientName, kind: "client", current: true, logoUrl: null }] : []}
         logoUrl={branding.logoUrl}
         orgSlug={link.orgSlug}
         clientSlug={link.clientSlug}

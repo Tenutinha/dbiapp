@@ -17,7 +17,16 @@ describe("spaceOptions", () => {
 
   it("leaves the organization out for a client user who cannot view it", () => {
     const opts = spaceOptions(org, "c1", false, [clients[0]]);
-    expect(opts).toEqual([{ href: "/mapa/estadual", label: "Deputado Estadual", kind: "client", current: true }]);
+    expect(opts).toEqual([{ href: "/mapa/estadual", label: "Deputado Estadual", kind: "client", current: true, logoUrl: null }]);
+  });
+
+  it("gives each space its own logo, and none to the spaces that did not set one", () => {
+    const logos = new Map<string | null, string>([
+      [null, "/api/branding/logo/org"],
+      ["c2", "/api/branding/logo/federal"],
+    ]);
+    const opts = spaceOptions(org, "c1", true, clients, logos);
+    expect(opts.map((o) => o.logoUrl)).toEqual(["/api/branding/logo/org", null, "/api/branding/logo/federal"]);
   });
 
   it("filters by name ignoring accents and case, keeping the order", () => {
@@ -30,6 +39,6 @@ describe("spaceOptions", () => {
 
   it("keeps the organization when it is the current space", () => {
     const opts = spaceOptions(org, null, false, []);
-    expect(opts).toEqual([{ href: "/mapa", label: "Mapa da Votação", kind: "org", current: true }]);
+    expect(opts).toEqual([{ href: "/mapa", label: "Mapa da Votação", kind: "org", current: true, logoUrl: null }]);
   });
 });
