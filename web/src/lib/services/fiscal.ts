@@ -321,6 +321,8 @@ export interface RebuildOptions {
   /** SPED: called after each file read or refused, and after each table put together. */
   onFile?: PartsOptions["onFile"];
   onTable?: PartsOptions["onTable"];
+  /** SPED: called at each step inside the read of a file and the assembly of a table. */
+  onStep?: PartsOptions["onStep"];
 }
 
 /** NF-e and other documents: every stored file is parsed whole and the tables are gathered in memory. */

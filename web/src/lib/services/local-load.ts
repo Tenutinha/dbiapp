@@ -148,6 +148,8 @@ export async function startLocalLoad(access: InstanceAccess, folder: string): Pr
     "--dimensoes-das-partes",
     // One line per file read and per table, for the live count on the screen.
     "--eventos",
+    // And its own live page (see fiscal/live-server.ts): the address goes in the log.
+    "--ao-vivo",
     // A file that could not be read now (memory, a hiccup) must not leave its month out of what is published.
     "--exige-todos",
   ];

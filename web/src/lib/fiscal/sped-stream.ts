@@ -57,12 +57,17 @@ class Batch {
   }
 }
 
+/** How often a long read says how far it is (the caller decides how often to pass it on). */
+const LINES_PER_NOTICE = 10_000;
+
 /**
  * Appends the records of one file to the CSVs: every record to the main fact, and the records of the
  * blocks a block fact keeps to that fact's. Returns what the file said about the dimensions.
  * Without a main fact, reading stops once the wanted blocks are over (block 0, with the dimensions, comes first).
  */
-export async function appendSpedFile(kind: SpedKind, localPath: string, outputs: SpedOutputs): Promise<SpedFileRead> {
+export async function appendSpedFile(
+  kind: SpedKind, localPath: string, outputs: SpedOutputs, onLines?: (lines: number) => void,
+): Promise<SpedFileRead> {
   const lines = createInterface({ input: createReadStream(localPath, { encoding: "latin1" }), crlfDelay: Infinity });
   const fact = outputs.fact ? new Batch(outputs.fact) : null;
   const blockBatches = new Map<string, Batch>();
@@ -90,6 +95,7 @@ export async function appendSpedFile(kind: SpedKind, localPath: string, outputs:
     reader ??= new SpedReader(kind, record);
     const row = reader.push(record);
     total += 1;
+    if (onLines && total % LINES_PER_NOTICE === 0) onLines(total);
     const block = record[0][0] ?? "";
     const targets = tablesFor(record[0]);
     if (fact || targets.length > 0) {

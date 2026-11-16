@@ -253,6 +253,29 @@ describe("readConcurrency", () => {
   });
 });
 
+describe("steps of a load", () => {
+  it("reports each file being read and each table being put together", async () => {
+    const jan = await put("2025-01", monthOf("01"), "2026-11-10T10:00:00.000Z");
+    const steps: { etapa: string; passo: string; tabela?: string }[] = [];
+    const files: { ok: boolean; ms?: number }[] = [];
+    const result = await rebuildSpedFromParts(access, importer, template, [jan], {
+      rereadAll: true,
+      onStep: (e) => steps.push(e),
+      onFile: (e) => files.push(e),
+    });
+    expect(result.ok).toBe(true);
+    const of = (etapa: string, passo: string): typeof steps => steps.filter((s) => s.etapa === etapa && s.passo === passo);
+    expect(of("quebra", "inicio")).toEqual([expect.objectContaining({ cnpj: CNPJ, periodo: "2025-01", origem: "bucket", posicao: 1, total: 1 })]);
+    // One block event per Parquet the file wrote (facts and dimensions).
+    expect(of("quebra", "bloco").length).toBeGreaterThan(1);
+    expect(files).toEqual([expect.objectContaining({ ok: true, ms: expect.any(Number) })]);
+    // Every table that was put together started, gathered its parts, was joined and validated.
+    const started = of("uniao", "inicio").map((s) => s.tabela);
+    expect(started.length).toBe(result.tables.length);
+    for (const passo of ["partes", "juntando", "validando"]) expect(of("uniao", passo).map((s) => s.tabela)).toEqual(started);
+  });
+});
+
 describe("inBatches", () => {
   it("keeps the order of the items and never runs more than the size at once", async () => {
     let running = 0;

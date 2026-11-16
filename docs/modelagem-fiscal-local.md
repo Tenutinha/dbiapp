@@ -43,6 +43,7 @@ node --env-file=.env.vercel-production --conditions=react-server --import tsx sc
 | `--reler-tudo` | apaga as partes e lê todos os arquivos de novo |
 | `--dimensoes-das-partes` | monta os cadastros a partir de todos os arquivos já lidos (use depois de uma carga que parou no meio) |
 | `--exige-todos` | não publica se algum arquivo ficou sem ler nesta rodada (a tela usa: um mês que falhou por memória não some do dashboard) |
+| `--ao-vivo [porta]` | serve o andamento num navegador desta máquina (`http://localhost:3040`; se a porta estiver ocupada, a seguinte). Liga os eventos |
 | `--eventos` | imprime uma linha `@evento {...}` por arquivo lido e por tabela montada (é o que a tela usa) |
 
 Variáveis de ambiente da carga:
@@ -79,6 +80,59 @@ node --import tsx scripts/fiscal/gerar-moldes.ts
 
 `extrair.ts`, `preparar.py`, `molde.py`, `glossario.py` e `incluir-insumos.ts`: ver
 [auditoria-fiscal.md](auditoria-fiscal.md).
+
+## O que a carga narra (`--eventos`)
+
+Cada linha `@evento {...}` do log é um passo. `src/lib/fiscal/local-load.ts` define os tipos (`LoadEvent`),
+transforma cada um em frase (`describeEvent`) e soma o estado da rodada (`parseLoadLog`).
+
+| Etapa | Passo | O que diz |
+|---|---|---|
+| quebra | `inicio` | arquivo N de M, empresa, mês, tamanho, lido do disco ou baixado do bucket |
+| quebra | `lendo` | linhas lidas até agora (no máximo uma vez por segundo por arquivo) |
+| quebra | `bloco` | um Parquet do arquivo gravado: tabela e linhas |
+| quebra | `arquivo` (fim) | linhas por tabela, duração, ou o erro |
+| uniao | `inicio` | tabela N de M e quantas partes vai unir |
+| uniao | `partes` | partes reunidas (a cada 100 e no fim) |
+| uniao | `juntando` | junção e ordenação (com o ano, nas tabelas divididas por ano) |
+| uniao | `ano` | um ano gravado ou reaproveitado, com as linhas |
+| uniao | `validando` | conferência do contrato antes de entrar no rascunho |
+| uniao | `tabela` (fim) | linhas, tamanho, duração |
+| publicacao | `inicio`, `fim` | a publicação e os avisos |
+
+## A página ao vivo da própria carga (`--ao-vivo`)
+
+Com `--ao-vivo`, a carga abre um servidor mínimo na própria máquina (só `127.0.0.1`) e imprime o endereço
+(`ao vivo: http://localhost:3040`). Não depende do servidor do app, que ocupa a memória de que a carga precisa.
+
+| Endereço | O que entrega |
+|---|---|
+| `/` | a página que acompanha a carga |
+| `/eventos` | cada linha no instante em que é escrita (Server-Sent Events); quem conecta depois, ou reconecta, recebe primeiro o que perdeu |
+| `/estado` | onde a carga está, em JSON: etapa, arquivo e tabela em andamento, contagens |
+
+O servidor fecha quando a carga termina; a página fica com o último estado recebido.
+
+A página (`src/lib/fiscal/live-page.ts`, um documento só, sem dependências):
+
+- **Trilha das quatro etapas**: envio (no admin), quebra em blocos, união por bloco e publicação, com o que cada
+  uma está fazendo e a barra de avanço.
+- **Totais da rodada**: arquivos lidos, linhas, volume e arquivos com erro.
+- **Arquivo em leitura**: empresa, mês, tamanho, de onde veio, linhas lidas subindo e os blocos já gravados.
+- **Tabela em união**: partes reunidas, fase (reunindo, juntando, validando) e os anos, quando a tabela é dividida.
+- **Linhas por bloco** somando a cada arquivo, e **tabelas finais prontas** com linhas, tamanho e tempo.
+- **Terminal**: cada mensagem no instante em que acontece, com busca, filtro de erros e pausa da rolagem.
+
+Para ver a tela sem rodar carga nenhuma (não fala com o banco nem com o bucket):
+
+```bash
+node --import tsx scripts/fiscal/ensaio-ao-vivo.ts
+```
+
+Com `--falha`, o ensaio mostra uma conversão que para antes de publicar; com um arquivo de log como argumento,
+reproduz as linhas de uma carga real que rodou com `--eventos`.
+
+Peças: `src/lib/fiscal/live-server.ts` e `src/lib/fiscal/live-page.ts`.
 
 ## A tela: Converter nesta máquina
 
