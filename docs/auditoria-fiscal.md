@@ -49,7 +49,8 @@ Colunas de `achados`: `regra`, `fonte` (EFD Contribuições, EFD ICMS/IPI, NF-e 
 
 ## O glossário
 
-A primeira seção da tela é o **Glossário**: todas as auditorias, por tema, com a situação de cada uma.
+A primeira seção da tela é o **Glossário**: todas as auditorias numa listagem só, com a situação de cada uma. Cada
+tema do catálogo é um tópico (uma linha de título com a contagem) e as suas auditorias vêm logo abaixo.
 
 - **Ativa**: já roda. São as regras C, X e O (os achados estão nas seções seguintes) e a inclusão de insumos (CR17),
   que gera o arquivo corrigido por script.
@@ -72,9 +73,10 @@ Quando uma auditoria do catálogo for implementada:
   como está (ele continua aparecendo como Planejada, com o código do catálogo), conforme a regra cubra tudo ou só parte;
 - fora da tela (por script, como a CR17): acrescente o código a `ATIVAS_DO_CATALOGO`, em `glossario.py`.
 
-A seção não segue os filtros da página. As colunas de texto usam a opção `wrap` do visual `rows` (o texto quebra em
-linhas em vez de ser cortado): o código com essa opção tem de estar **no ar antes** de o molde ser carregado, senão
-o molde é recusado.
+A seção não segue os filtros da página. A listagem usa duas opções do visual `rows`: `wrap` nas colunas de texto (o
+texto quebra em linhas em vez de ser cortado) e `groupBy` (o tópico de cada linha: onde ele muda, a tela abre uma
+linha de título). O código com essas opções tem de estar **no ar antes** de o molde ser carregado. Ao classificar por
+uma coluna, os títulos dos tópicos somem, porque a ordem deixa de ser a dos temas.
 
 ## As regras
 

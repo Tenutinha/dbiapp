@@ -58,6 +58,18 @@ describe("ScrollTable", () => {
     expect(html).toContain("25 de 60 linhas");
   });
 
+  it("com tópicos, abre cada um com uma linha de título e a contagem dos seus itens", () => {
+    const groups = ["Frutas", "Frutas", "Verduras"];
+    const html = renderToStaticMarkup(createElement(ScrollTable, { columns, rows: rowsOf(3), groups }));
+    expect(html).toContain('<th scope="colgroup" colSpan="2"');
+    expect(html.indexOf("Frutas")).toBeLessThan(html.indexOf("cliente-1"));
+    expect(html.indexOf("Verduras")).toBeGreaterThan(html.indexOf("cliente-2"));
+    expect(html.indexOf("Verduras")).toBeLessThan(html.indexOf("cliente-3"));
+    expect(html.match(/Frutas/g)).toHaveLength(1);
+    expect(html).toMatch(/Frutas[\s\S]*?>2 itens</);
+    expect(html).toMatch(/Verduras[\s\S]*?>1 item</);
+  });
+
   it("com poucas linhas mostra todas, sem contador", () => {
     const html = renderToStaticMarkup(createElement(ScrollTable, { columns, rows: rowsOf(7) }));
     expect(html).toContain("cliente-7");

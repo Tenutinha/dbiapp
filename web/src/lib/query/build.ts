@@ -240,7 +240,11 @@ function selectFor(t: Template, visual: QueryVisual, filters: FilterSelection): 
     case "rows":
       return {
         // Listed as text, exactly as stored; columns are named by position (labels live in the template).
-        select: visual.columns.map((c, i) => `CAST((${c.sql}) AS VARCHAR) AS c${i}`),
+        select: [
+          ...visual.columns.map((c, i) => `CAST((${c.sql}) AS VARCHAR) AS c${i}`),
+          // The topic of the row, when the listing has topics: the page draws a title line where it changes.
+          ...(visual.groupBy ? [`CAST((${visual.groupBy}) AS VARCHAR) AS g`] : []),
+        ],
         groupBy: [],
         tail: `${visual.orderBy ? `ORDER BY ${visual.orderBy} ASC ` : ""}LIMIT ${rowsLimit(visual, filters)}`,
       };

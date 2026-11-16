@@ -74,6 +74,16 @@ describe("buildVisualQuery", () => {
     expect(q.sql).toContain("AS dim_loja ON");
   });
 
+  it("brings the topic of each row of a listing with groupBy, after its columns", () => {
+    const rows: QueryVisual = {
+      id: "r", type: "rows", title: "Linhas", span: 12, limit: 50, orderBy: "fato_vendas.id_venda", groupBy: "dim_loja.loja",
+      columns: [{ label: "Pedido", sql: "fato_vendas.id_venda" }],
+    };
+    const q = buildVisualQuery(t, files, rows, {});
+    expect(q.sql).toContain("SELECT CAST((fato_vendas.id_venda) AS VARCHAR) AS c0, CAST((dim_loja.loja) AS VARCHAR) AS g");
+    expect(q.sql).not.toContain("GROUP BY");
+  });
+
   it("groups and orders bar charts by the first measure", () => {
     const q = buildVisualQuery(t, files, visual("receita_categoria"), { ano: ["2025"] });
     expect(q.sql).toMatch(/GROUP BY 1\nORDER BY receita DESC NULLS LAST LIMIT 100$/);

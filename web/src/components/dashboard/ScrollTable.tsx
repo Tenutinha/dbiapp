@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 
 /** Rows drawn at first and added each time the reader reaches the end of the list. */
 export const PAGE_SIZE = 25;
@@ -41,6 +41,18 @@ interface ScrollTableProps {
   initialSort?: TableSort;
   /** A last line that stays in view under the rows and does not sort with them (the totals), in column order. */
   footer?: readonly string[];
+  /**
+   * Topic of each row (same length as `rows`): a title line opens each run of rows of the same topic.
+   * The titles show while the rows are in the order they came; sorting by a column mixes the topics.
+   */
+  groups?: readonly string[];
+}
+
+/** How many rows each topic has. */
+export function groupSizes(groups: readonly string[]): ReadonlyMap<string, number> {
+  const sizes = new Map<string, number>();
+  for (const g of groups) sizes.set(g, (sizes.get(g) ?? 0) + 1);
+  return sizes;
 }
 
 export function nextVisible(current: number, total: number): number {
@@ -87,7 +99,7 @@ interface Shown {
  * table neither stretches the page nor puts hundreds of rows in the DOM before anyone looks at them.
  * A click on a column header sorts by it.
  */
-export function ScrollTable({ columns, rows, sortValues, dense = false, note, selectedRows, onRowClick, initialSort, footer }: ScrollTableProps) {
+export function ScrollTable({ columns, rows, sortValues, dense = false, note, selectedRows, onRowClick, initialSort, footer, groups }: ScrollTableProps) {
   const [shown, setShown] = useState<Shown>({ rows, count: PAGE_SIZE });
   // New data (a filter changed): start again from the top.
   if (shown.rows !== rows) setShown({ rows, count: PAGE_SIZE });
@@ -135,6 +147,8 @@ export function ScrollTable({ columns, rows, sortValues, dense = false, note, se
   const pad = dense ? "px-1.5 py-1.5" : "px-1 py-2";
   const total = rows.length.toLocaleString("pt-BR");
   const anySelected = (selectedRows?.size ?? 0) > 0;
+  const sizes = useMemo(() => groupSizes(groups ?? []), [groups]);
+  const topics = groups && !sort ? groups : null;
   return (
     <div ref={box} tabIndex={0} role="region" aria-label="Tabela com rolagem" className="-mx-1 max-h-[28rem] overflow-auto focus-visible:outline focus-visible:outline-1 focus-visible:outline-brand">
       <table className={`w-full ${dense ? "text-xs" : "text-sm"}`}>
@@ -161,12 +175,22 @@ export function ScrollTable({ columns, rows, sortValues, dense = false, note, se
           </tr>
         </thead>
         <tbody>
-          {order.slice(0, count).map((i) => {
+          {order.slice(0, count).map((i, position, drawn) => {
             const r = rows[i];
             const selected = selectedRows?.has(i) ?? false;
+            const opens = topics !== null && (position === 0 || topics[i] !== topics[drawn[position - 1]]);
+            const size = topics ? sizes.get(topics[i]) ?? 0 : 0;
             return (
+              <Fragment key={i}>
+              {opens && topics && (
+                <tr className="border-b border-line bg-text/5">
+                  <th scope="colgroup" colSpan={columns.length} className={`${dense ? "px-1.5" : "px-1"} py-2 text-left text-sm font-semibold`}>
+                    {topics[i]}
+                    <span className="ml-2 text-xs font-normal text-muted">{size.toLocaleString("pt-BR")} {size === 1 ? "item" : "itens"}</span>
+                  </th>
+                </tr>
+              )}
               <tr
-                key={i}
                 onClick={onRowClick ? (e) => onRowClick(i, e.ctrlKey || e.metaKey || e.shiftKey) : undefined}
                 aria-selected={onRowClick ? selected : undefined}
                 className={`border-b border-line/50 last:border-0 ${onRowClick ? "cursor-pointer hover:bg-text/5" : ""} ${
@@ -177,6 +201,7 @@ export function ScrollTable({ columns, rows, sortValues, dense = false, note, se
                   <td key={j} className={`${pad} ${c.cellClass} ${c.tones?.[r[j]] ?? ""}`} title={c.hint ? r[j] : undefined}>{r[j]}</td>
                 ))}
               </tr>
+              </Fragment>
             );
           })}
         </tbody>
