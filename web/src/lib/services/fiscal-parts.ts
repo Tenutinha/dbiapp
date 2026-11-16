@@ -105,13 +105,18 @@ async function listPartsFolders(root: string): Promise<PartsFolder[]> {
     if (name === FAILURE) entry.failure = true;
     found.set(place, entry);
   }
-  return Promise.all([...found.values()].map(async (f) => {
+  // A few at a time: thousands of requests at once make the bucket client fail some of them, and a marker
+  // that could not be read would send its file to be read again.
+  return inBatches([...found.values()], MARKERS_AT_A_TIME, async (f) => {
     const folder = `${root}${f.cnpj}/${f.periodo}/${f.id}/`;
     const marker = f.marker ? await readJson(`${folder}${MARKER}`).then(parseMarker, () => null) : null;
     const failure = !marker && f.failure ? await readJson(`${folder}${FAILURE}`).then(parseFailure, () => null) : null;
     return { cnpj: f.cnpj, periodo: f.periodo, id: f.id, marker, failure };
-  }));
+  });
 }
+
+/** Markers read from the bucket at the same time. */
+const MARKERS_AT_A_TIME = 32;
 
 /** Writes one CSV per table for one raw file; returns the files written, the lines of each and the dimensions. */
 async function readIntoCsv(
@@ -201,18 +206,39 @@ function placeholderRow(table: TemplateTable): Row {
 async function assembleTable(
   access: InstanceAccess, table: TemplateTable, sources: readonly string[], dir: string, latestWins: boolean,
 ): Promise<TableReport> {
-  const local = await Promise.all(sources.flatMap(splitParts).map((k) => storage.localPath(k)));
+  const local = await inBatches(sources.flatMap(splitParts), DOWNLOADS_AT_A_TIME, (k) => storage.localPath(k));
   const target = path.join(dir, `${table.name}.parquet`);
   const columns = table.columns.map((c) => c.name).join(", ");
   await withConnection(storage.workRoot, async (conn) => {
-    const union = local.map((file, i) => `SELECT ${columns}, ${i} AS __ordem FROM ${readParquet(file)}`).join(" UNION ALL ");
+    // A chain of stores has thousands of parts: they go in a few hundred at a time, not in one statement.
+    await conn.run(`CREATE TEMP TABLE __partes AS SELECT ${columns}, 0 AS __ordem FROM ${readParquet(local[0])} LIMIT 0`);
+    for (let start = 0; start < local.length; start += PARTS_PER_STATEMENT) {
+      const union = local.slice(start, start + PARTS_PER_STATEMENT)
+        .map((file, i) => `SELECT ${columns}, ${start + i} AS __ordem FROM ${readParquet(file)}`).join(" UNION ALL ");
+      await conn.run(`INSERT INTO __partes ${union}`);
+    }
     const order = sortColumns(table);
     const body = latestWins && table.key
-      ? `SELECT ${columns} FROM (${union}) QUALIFY row_number() OVER (PARTITION BY ${table.key} ORDER BY __ordem DESC) = 1`
-      : `SELECT ${columns} FROM (${union})${order.length > 0 ? ` ORDER BY ${order.join(", ")}` : ""}`;
+      ? `SELECT ${columns} FROM __partes QUALIFY row_number() OVER (PARTITION BY ${table.key} ORDER BY __ordem DESC) = 1`
+      : `SELECT ${columns} FROM __partes${order.length > 0 ? ` ORDER BY ${order.join(", ")}` : ""}`;
     await conn.run(`COPY (${body}) TO ${quotePath(target)} (FORMAT parquet, COMPRESSION zstd, ROW_GROUP_SIZE 122880)`);
   });
   return ingestIntoDraft(access, stored(table), target, `${table.name}.parquet`);
+}
+
+/** Objects fetched from the bucket at the same time when a table is put together. */
+const DOWNLOADS_AT_A_TIME = 16;
+/** Parts read by one statement when a table is put together. */
+const PARTS_PER_STATEMENT = 200;
+
+/** `fn` over every item, a few at a time, results in the order of the items. */
+export async function inBatches<T, R>(items: readonly T[], size: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = new Array<R>(items.length);
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(Math.max(size, 1), items.length) }, async () => {
+    for (let i = next++; i < items.length; i = next++) results[i] = await fn(items[i]);
+  }));
+  return results;
 }
 
 /** What the dashboard already has for a table: the draft's file, else the published one. */
