@@ -300,6 +300,8 @@ export interface RebuildOptions {
   only?: "blocks";
   /** SPED: reads every file again, also the ones already read. */
   rereadAll?: boolean;
+  /** SPED: dimensions from the parts of every file (a load that stopped after reading left them out). */
+  dimensionsFromParts?: boolean;
   /** SPED: called after each file read (files done, files to read). */
   onProgress?: (done: number, total: number) => void;
 }

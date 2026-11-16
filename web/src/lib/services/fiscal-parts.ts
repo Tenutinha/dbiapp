@@ -77,6 +77,11 @@ export interface PartsOptions {
   only?: "blocks";
   /** Reads every file again, even the ones already read. */
   rereadAll?: boolean;
+  /**
+   * Dimensions from the parts of every file, not from what the dashboard has: for a load that stopped after
+   * reading (those files' parts never reached the dashboard).
+   */
+  dimensionsFromParts?: boolean;
   /** Called after each file read (or skipped): files done, files to read. */
   onProgress?: (done: number, total: number) => void;
 }
@@ -448,7 +453,7 @@ export async function rebuildSpedFromParts(
     }));
     return await assemble(
       access, importer, template,
-      { plan, justRead, skipped, dimensionsFrom: options.rereadAll ? "read" : "dashboard", only: options.only }, work,
+      { plan, justRead, skipped, dimensionsFrom: options.rereadAll || options.dimensionsFromParts ? "read" : "dashboard", only: options.only }, work,
     );
   } finally {
     await rm(work, { recursive: true, force: true });

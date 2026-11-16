@@ -129,6 +129,7 @@ async function main(): Promise<void> {
   const result = await rebuildFiscal(access, {
     ...(process.argv.includes("--so-blocos") ? { only: "blocks" as const } : {}),
     rereadAll: process.argv.includes("--reler-tudo"),
+    dimensionsFromParts: process.argv.includes("--dimensoes-das-partes"),
     // A line every 25 files, so a long load shows where it is.
     onProgress: (done, total) => {
       if (done % 25 === 0 || done === total) console.log(`  lidos ${done} de ${total} (${((Date.now() - started) / 60000).toFixed(1)} min)`);
