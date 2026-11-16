@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { filesForFact, parseFailure, parseMarker, partsFolderId, planParts, type PartsFolder, type PartsMarker, type RawFile } from "./parts-plan";
+import { filesForFact, keepsMainFact, parseFailure, parseMarker, partsFolderId, planParts, type PartsFolder, type PartsMarker, type RawFile } from "./parts-plan";
 
 const file = (periodo: string, over: Partial<RawFile> = {}): RawFile => ({
   key: `orgs/acme/fiscal/efd-contribuicoes/11222333000181/${periodo}/PISCOFINS.txt`,
@@ -111,5 +111,47 @@ describe("parseFailure", () => {
     expect(parseFailure({ error: "x".repeat(900), at: "t" })?.error).toHaveLength(500);
     expect(parseFailure({ error: 1, at: "t" })).toBeNull();
     expect(parseFailure("erro")).toBeNull();
+  });
+});
+
+describe("main fact kept for the latest period only", () => {
+  const tables = ["registros", "bloco_a"];
+  const latestOnly = { table: "registros" };
+  /** A folder whose main fact was not kept (the file was not the latest period when it was read). */
+  const withoutMain = (f: RawFile): PartsFolder => {
+    const folder = folderOf(f, tables);
+    return { ...folder, marker: folder.marker && { ...folder.marker, tables: { ...folder.marker.tables, registros: { key: null, rows: 10, skipped: true } } } };
+  };
+
+  it("keeps the main fact of each company's latest period, or of every file when the kind keeps all", () => {
+    const june = file("2026-06");
+    const july = file("2026-07");
+    const other = file("2026-05", { cnpj: "99888777000166", key: "orgs/acme/fiscal/x/99888777000166/2026-05/a.txt" });
+    const files = [june, july, other];
+    expect(keepsMainFact(june, files, "latest")).toBe(false);
+    expect(keepsMainFact(july, files, "latest")).toBe(true);
+    expect(keepsMainFact(other, files, "latest")).toBe(true);
+    expect(keepsMainFact(june, files, "all")).toBe(true);
+  });
+
+  it("takes an older month read without its main fact as ready", () => {
+    const june = file("2026-06");
+    const july = file("2026-07");
+    const plan = planParts([june, july], [withoutMain(june), folderOf(july, tables)], tables, 1, latestOnly);
+    expect(plan.read).toEqual([]);
+    expect(plan.ready.map((r) => r.file.periodo)).toEqual(["2026-06", "2026-07"]);
+  });
+
+  it("reads a month again once it becomes the latest and its main fact was not kept", () => {
+    const june = file("2026-06");
+    const plan = planParts([june], [withoutMain(june)], tables, 1, latestOnly);
+    expect(plan.read).toEqual([june]);
+    expect(plan.obsolete).toEqual([]);
+  });
+
+  it("accepts the skipped flag in a marker read back", () => {
+    const m = withoutMain(file("2026-06")).marker;
+    expect(parseMarker(JSON.parse(JSON.stringify(m)))?.tables.registros).toEqual({ key: null, rows: 10, skipped: true });
+    expect(parseMarker({ ...m, tables: { registros: { key: null, rows: 1, skipped: "sim" } } })).toBeNull();
   });
 });

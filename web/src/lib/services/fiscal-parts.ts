@@ -28,7 +28,7 @@ import { indexLocalOriginals, localCandidates, matchingLocal, type LocalIndex } 
 import { parseBuildStatus, type BuildRunner, type BuildStatus } from "../fiscal/build-status";
 import { dimensionHow, factHow, sourcesOf, type Lineage, type TableLineage } from "../fiscal/lineage";
 import {
-  filesForFact, parseFailure, parseMarker, partsFolderId, planParts,
+  filesForFact, keepsMainFact, parseFailure, parseMarker, partsFolderId, planParts, type LatestOnlyFact,
   type PartsFailure, type PartsFolder, type PartsMarker, type PartsPlan, type RawFile,
 } from "../fiscal/parts-plan";
 import { FiscalFileError, type Row } from "../fiscal/sped";
@@ -169,15 +169,16 @@ const MARKERS_AT_A_TIME = 32;
 
 /** Writes one CSV per table for one raw file; returns the files written, the lines of each and the dimensions. */
 async function readIntoCsv(
-  importer: SpedImporter, facts: readonly TemplateTable[], local: string, dir: string,
+  importer: SpedImporter, facts: readonly TemplateTable[], local: string, dir: string, keepMain: boolean,
 ): Promise<{ csv: Record<string, string>; lines: Record<string, number>; dimensions: FiscalTables }> {
   const [main, ...blocks] = facts;
-  const csv = Object.fromEntries(facts.map((t) => [t.name, path.join(dir, `${t.name}.csv`)]));
-  const outs: Record<string, WriteStream> = Object.fromEntries(facts.map((t) => [t.name, createWriteStream(csv[t.name], { encoding: "utf8" })]));
+  const written = keepMain ? facts : blocks;
+  const csv = Object.fromEntries(written.map((t) => [t.name, path.join(dir, `${t.name}.csv`)]));
+  const outs: Record<string, WriteStream> = Object.fromEntries(written.map((t) => [t.name, createWriteStream(csv[t.name], { encoding: "utf8" })]));
   try {
     for (const out of Object.values(outs)) await writeChunk(out, csvLine(factColumns(importer.kind)));
     const read = await appendSpedFile(importer.kind, local, {
-      fact: outs[main.name], blocks: Object.fromEntries(blocks.map((t) => [t.name, outs[t.name]])),
+      fact: keepMain ? outs[main.name] : null, blocks: Object.fromEntries(blocks.map((t) => [t.name, outs[t.name]])),
     });
     return { csv, lines: { [main.name]: read.lines, ...read.blockLines }, dimensions: read.dimensions };
   } finally {
@@ -194,15 +195,18 @@ async function keepPart(table: TemplateTable, source: string, key: string): Prom
   return report.rowCount;
 }
 
-/** Reads one raw file into its parts folder; the marker goes last, so a folder without it is incomplete. */
+/**
+ * Reads one raw file into its parts folder; the marker goes last, so a folder without it is incomplete.
+ * `keepMain` false: the main fact (the whole file) is not kept — the file is not its company's latest period.
+ */
 async function readFile(
-  importer: SpedImporter, template: Template, facts: readonly TemplateTable[], file: RawFile, folder: string, dir: string,
+  importer: SpedImporter, template: Template, facts: readonly TemplateTable[], file: RawFile, folder: string, dir: string, keepMain: boolean,
 ): Promise<PartsMarker> {
   // A copy kept on this machine spares the download; it is never removed.
   const original = await localOriginal(file);
   const local = original ?? await storage.localPath(file.key);
   try {
-    const { csv, lines, dimensions } = await readIntoCsv(importer, facts, local, dir);
+    const { csv, lines, dimensions } = await readIntoCsv(importer, facts, local, dir, keepMain);
     const marker: PartsMarker = {
       reader: SPED_READER_VERSION,
       source: { key: file.key, sizeBytes: file.sizeBytes, updatedAt: file.updatedAt },
@@ -210,6 +214,10 @@ async function readFile(
       dimensions: {},
     };
     for (const table of facts) {
+      if (!keepMain && table === facts[0]) {
+        marker.tables[table.name] = { key: null, rows: lines[table.name] ?? 0, skipped: true };
+        continue;
+      }
       // The header line alone: the file brings nothing for this table (the ingest refuses empty files).
       if ((lines[table.name] ?? 0) === 0) {
         marker.tables[table.name] = { key: null, rows: 0 };
@@ -381,13 +389,14 @@ const failureMessage = (err: unknown): string => (err instanceof FiscalFileError
  */
 async function readOne(
   access: InstanceAccess, importer: SpedImporter, template: Template, facts: readonly TemplateTable[], file: RawFile, work: string,
+  keepMain = true,
 ): Promise<{ ok: true; marker: PartsMarker } | { ok: false; error: string }> {
   const folder = folderOfFile(partsRoot(access), file);
   const dir = path.join(work, partsFolderId(file, SPED_READER_VERSION));
   await mkdir(dir, { recursive: true });
   try {
     await storage.removeFolder(folder);
-    return { ok: true, marker: await readFile(importer, template, facts, file, folder, dir) };
+    return { ok: true, marker: await readFile(importer, template, facts, file, folder, dir, keepMain) };
   } catch (err) {
     if (!(err instanceof FiscalFileError)) console.error("[fiscal] could not read", file.key, err);
     const failure: PartsFailure = { error: failureMessage(err), at: new Date().toISOString() };
@@ -448,7 +457,7 @@ export async function spedPartsState(
   access: InstanceAccess, importer: SpedImporter, template: Template, files: readonly RawFile[],
 ): Promise<SpedPartsState> {
   const folders = await listPartsFolders(partsRoot(access));
-  const plan = planParts(files, folders, spedFacts(importer, template).map((t) => t.name), SPED_READER_VERSION);
+  const plan = planParts(files, folders, spedFacts(importer, template).map((t) => t.name), SPED_READER_VERSION, latestOnlyFact(importer, template));
   const byPlace = new Map(folders.map((f) => [`${f.cnpj}/${f.periodo}/${f.id}`, f]));
   const failures = new Map<string, PartsFailure>();
   for (const file of plan.read) {
@@ -456,6 +465,11 @@ export async function spedPartsState(
     if (failure) failures.set(file.key, failure);
   }
   return { plan, failures };
+}
+
+/** The main fact, when the kind keeps it for each company's latest period only (see planParts). */
+function latestOnlyFact(importer: SpedImporter, template: Template): LatestOnlyFact | null {
+  return importer.kind.mainFactPeriods === "latest" ? { table: mainFact(template).name } : null;
 }
 
 export type ReadFileResult = { ok: true; rows: number } | { ok: false; error: string };
@@ -492,7 +506,7 @@ export async function rebuildSpedFromParts(
     for (const f of folders) await storage.removeFolder(`${root}${f.cnpj}/${f.periodo}/${f.id}/`);
     folders = [];
   }
-  const plan = planParts(files, folders, facts.map((t) => t.name), SPED_READER_VERSION);
+  const plan = planParts(files, folders, facts.map((t) => t.name), SPED_READER_VERSION, latestOnlyFact(importer, template));
 
   const bytes = plan.read.reduce((s, f) => s + f.sizeBytes, 0);
   if (hostedLimits() && bytes > MAX_HOSTED_READ_BYTES) {
@@ -513,7 +527,7 @@ export async function rebuildSpedFromParts(
     let done = 0;
     await Promise.all(Array.from({ length: Math.min(readConcurrency(), queue.length) }, async () => {
       for (let file = queue.shift(); file; file = queue.shift()) {
-        const result = await readOne(access, importer, template, facts, file, work);
+        const result = await readOne(access, importer, template, facts, file, work, keepsMainFact(file, files, importer.kind.mainFactPeriods));
         if (result.ok) justRead.push({ file, marker: result.marker });
         else skipped.push({ path: relativeToOrg(access.org.slug, file.key), error: result.error });
         done += 1;

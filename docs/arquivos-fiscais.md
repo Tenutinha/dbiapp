@@ -79,9 +79,19 @@ servem para todas.
 
 ### ECD
 
-Uma ECD por empresa e por ano. A `registros` guarda o arquivo inteiro (quase tudo I250, as partidas dos
-lançamentos). As dimensões são `empresas` (0000) e `plano_contas` (I050 com a conta referencial do I051): os
-grupos de nível 1 a 3, a `conta_sintetica` (a conta logo acima, "código - nome") e a `cod_cta_ref`.
+Uma ECD por empresa e por período (anual, ou mensal em empresas grandes). Os lançamentos (I200) e as suas
+partidas (I250) são quase o arquivo todo: no cliente de referência, 5,7 milhões de linhas **por mês**, e 108 meses
+guardados. Por isso:
+
+| Tabela | O que guarda | Tamanho |
+|---|---|---|
+| `registros` | o arquivo **inteiro**, só do período mais recente de cada empresa | 5,7 mi de linhas, 75 MB |
+| `paineis_todos_periodos` | blocos I e J **sem** I200 e I250: plano de contas, saldos periódicos (I150/I155), saldos antes do encerramento (I350/I355) e demonstrações (J100, J150) | ~1,7 mil linhas por mês |
+| `bloco_j_demonstracoes` | o bloco J como veio, de todos os períodos | ~200 linhas por mês |
+
+Todos os painéis leem `paineis_todos_periodos`, menos "Lançamentos", que lê `registros` e por isso só mostra o
+período mais recente. As dimensões são `empresas` (0000) e `plano_contas` (I050 com a conta referencial do I051):
+os grupos de nível 1 a 3, a `conta_sintetica` (a conta logo acima, "código - nome") e a `cod_cta_ref`.
 
 **DRE** (seção "Demonstração do resultado"): um visual `statement`, ou seja, um demonstrativo com linhas fixas,
 subtotais, períodos em colunas e abertura até a conta.
@@ -184,6 +194,9 @@ tabela:
   (`SPED_READER_VERSION`, em `sped-kinds.ts`): muda quando o arquivo é trocado ou quando o leitor muda.
 - O **`pronto.json`** (o marcador) é gravado por último e diz o que a pasta tem: a origem, a versão do leitor e,
   por tabela, a parte e o número de linhas. Pasta sem marcador é leitura interrompida.
+- Quando o SPED só guarda a fato principal do período mais recente (`mainFactPeriods: "latest"`), a montagem
+  **não grava** a `registros.parquet` dos arquivos que não são o mês mais recente da empresa: o marcador a anota
+  como `skipped`, com o número de linhas lidas. A leitura de um arquivo só pelo painel sempre grava.
 - Código: `web/src/lib/fiscal/parts-plan.ts` (o plano, puro) e `web/src/lib/services/fiscal-parts.ts`.
 
 | Evento | O que acontece na próxima montagem |
@@ -191,6 +204,7 @@ tabela:
 | mês novo enviado | só esse arquivo é lido |
 | retificadora do mesmo mês | só o arquivo novo é lido; a pasta do antigo é apagada |
 | arquivo apagado | a pasta dele é apagada e suas linhas saem das tabelas |
+| o mês mais recente é apagado e o anterior foi lido sem a `registros` | o anterior é lido de novo, agora com ela |
 | leitura interrompida ou com erro | o arquivo é lido de novo, na mesma pasta, esvaziada antes; o erro fica em `erro.json` até o arquivo mudar |
 | molde ganha uma tabela | os arquivos são lidos de novo (o marcador não tem a tabela nova) |
 | leitor muda (`SPED_READER_VERSION` sobe) | todos os arquivos são lidos de novo |

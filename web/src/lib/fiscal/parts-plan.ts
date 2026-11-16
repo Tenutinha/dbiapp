@@ -24,8 +24,11 @@ export interface PartsMarker {
   /** SPED_READER_VERSION the parts were read with. */
   reader: number;
   source: { key: string; sizeBytes: number; updatedAt: string | null };
-  /** Table → its part (null when the file brings no line for it) and how many lines. */
-  tables: Record<string, { key: string | null; rows: number }>;
+  /**
+   * Table → its part (null when the file brings no line for it) and how many lines. `skipped`: the lines
+   * exist but the part was not kept — the main fact of a file that was not its company's latest period.
+   */
+  tables: Record<string, { key: string | null; rows: number; skipped?: boolean }>;
   /** Dimension rows the file brought, merged into the dimensions when publishing (table → part, lines). */
   dimensions: Record<string, { key: string | null; rows: number }>;
 }
@@ -68,15 +71,40 @@ export function partsFolderId(file: RawFile, reader: number): string {
   return digest.slice(0, 16);
 }
 
+/** The main fact of a kind that keeps the whole file for each company's latest period only. */
+export interface LatestOnlyFact {
+  table: string;
+}
+
+/** The latest period stored for each company. */
+export function latestPeriods(files: readonly RawFile[]): Map<string, string> {
+  const latest = new Map<string, string>();
+  for (const f of files) {
+    const seen = latest.get(f.cnpj);
+    if (!seen || f.periodo > seen) latest.set(f.cnpj, f.periodo);
+  }
+  return latest;
+}
+
+/** Whether the main fact of this file has to be kept: always, unless only the latest period of its company is. */
+export function keepsMainFact(file: RawFile, files: readonly RawFile[], periods: "all" | "latest"): boolean {
+  return periods === "all" || latestPeriods(files).get(file.cnpj) === file.periodo;
+}
+
 /**
  * The plan: a file is ready when its folder (same content, same reader) has a marker listing every table
  * the template now asks for; otherwise it is read again (into that same folder). Folders that match no
- * stored file are obsolete.
+ * stored file are obsolete. `latestOnly`: a file read without its main fact (it was not the latest period
+ * of its company then) is read again once it is the latest.
  */
 export function planParts(
   files: readonly RawFile[], folders: readonly PartsFolder[], tables: readonly string[], reader: number,
+  latestOnly: LatestOnlyFact | null = null,
 ): PartsPlan {
   const byPlace = new Map(folders.map((f) => [`${f.cnpj}/${f.periodo}/${f.id}`, f]));
+  const latest = latestOnly ? latestPeriods(files) : null;
+  const missesMain = (file: RawFile, marker: PartsMarker): boolean =>
+    !!latestOnly && !!marker.tables[latestOnly.table]?.skipped && latest?.get(file.cnpj) === file.periodo;
   const kept = new Set<string>();
   const read: RawFile[] = [];
   const ready: PartsPlan["ready"] = [];
@@ -84,7 +112,7 @@ export function planParts(
     const place = `${file.cnpj}/${file.periodo}/${partsFolderId(file, reader)}`;
     const folder = byPlace.get(place);
     const marker = folder?.marker;
-    if (marker && marker.reader === reader && tables.every((t) => t in marker.tables)) {
+    if (marker && marker.reader === reader && tables.every((t) => t in marker.tables) && !missesMain(file, marker)) {
       ready.push({ file, marker });
       kept.add(place);
     } else {
@@ -123,7 +151,8 @@ export function parseMarker(value: unknown): PartsMarker | null {
   const m = value as Partial<PartsMarker>;
   const isTableMap = (x: unknown): x is PartsMarker["tables"] =>
     !!x && typeof x === "object" && Object.values(x).every((t) =>
-      !!t && typeof t === "object" && (t.key === null || typeof t.key === "string") && typeof t.rows === "number");
+      !!t && typeof t === "object" && (t.key === null || typeof t.key === "string") && typeof t.rows === "number"
+      && (t.skipped === undefined || typeof t.skipped === "boolean"));
   if (typeof m.reader !== "number" || !m.source || typeof m.source.key !== "string") return null;
   if (!isTableMap(m.tables) || !isTableMap(m.dimensions)) return null;
   return m as PartsMarker;

@@ -237,8 +237,15 @@ export const SPED_KINDS: readonly SpedKind[] = [
     establishmentRecords: new Set(),
     identify: identifyEcd,
     dimensions: ["empresas", "plano_contas"],
-    blockFacts: {},
-    mainFactPeriods: "all",
+    blockFacts: {
+      bloco_j_demonstracoes: { blocks: ["J"] },
+      // Entries and their lines (I200, I250) are nearly the whole file — millions of lines a month. What the
+      // panels read for every period is the rest: the chart of accounts, the monthly balances (I150/I155), the
+      // balances before closing (I350/I355) and the statements (J).
+      paineis_todos_periodos: { blocks: ["I", "J"], skip: ["I200", "I250"] },
+    },
+    // The whole file (entry by entry) is kept for the latest period of each company only.
+    mainFactPeriods: "latest",
   },
 ];
 
