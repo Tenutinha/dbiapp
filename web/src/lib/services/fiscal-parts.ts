@@ -28,7 +28,8 @@ import { indexLocalOriginals, localCandidates, matchingLocal, type LocalIndex } 
 import { parseBuildStatus, type BuildRunner, type BuildStatus } from "../fiscal/build-status";
 import { dimensionHow, factHow, sourcesOf, type Lineage, type TableLineage } from "../fiscal/lineage";
 import {
-  filesForFact, keepsMainFact, parseFailure, parseMarker, partsFolderId, planParts, type LatestOnlyFact,
+  filesForFact, keepsMainFact, parseFailure, parseMarker, parseYears, partsFolderId, planParts, yearDigest, yearGroups,
+  type LatestOnlyFact, type YearPart, type YearsRecord,
   type PartsFailure, type PartsFolder, type PartsMarker, type PartsPlan, type RawFile,
 } from "../fiscal/parts-plan";
 import { FiscalFileError, type Row } from "../fiscal/sped";
@@ -40,7 +41,7 @@ import { relativeToOrg } from "../storage-browse";
 import { splitParts } from "../storage-parts";
 import { dashboardFolder, fiscalPartsFolder } from "../storage-keys";
 import { extraFacts, mainFact, sortColumns, type Template, type TemplateTable } from "../templates/schema";
-import { ingestIntoDraft, UserFacingError } from "./datasets";
+import { convertToPart, discardParts, ingestIntoDraft, registerParts, UserFacingError, type DraftPart } from "./datasets";
 import { isPartKey, partsStore } from "./fiscal-parts-store";
 
 const PARQUET_MIME = "application/vnd.apache.parquet";
@@ -48,6 +49,17 @@ const JSON_MIME = "application/json";
 const MARKER = "pronto.json";
 const FAILURE = "erro.json";
 export const LINEAGE_FILE = "linhagem.json";
+/** Which Parquet each year of a big fact is, and what it was made from, in the dashboard's folder. */
+export const YEARS_FILE = "anos.json";
+/**
+ * A fact with at least this many lines is published as one Parquet per year instead of a single file: a new
+ * month rewrites and sends only its year, and the server keeps the closed years it already has. Smaller
+ * tables stay in one file (fewer objects to fetch when a dashboard opens).
+ */
+export function yearlyMinRows(value = process.env.DBI_FISCAL_YEARLY_MIN_ROWS): number {
+  const n = Number(value);
+  return value !== undefined && value.trim() !== "" && Number.isInteger(n) && n >= 0 ? n : 1_000_000;
+}
 /** Where a build says how far it is (fiscal/build-status.ts), in the dashboard's folder. */
 export const BUILD_STATUS_FILE = "montagem.json";
 /** While reading, the status is written at most this often (thousands of files would mean thousands of writes). */
@@ -288,9 +300,61 @@ function placeholderRow(table: TemplateTable): Row {
 async function assembleTable(
   access: InstanceAccess, table: TemplateTable, sources: readonly string[], dir: string, latestWins: boolean,
 ): Promise<TableReport> {
+  const target = path.join(dir, `${table.name}.parquet`);
+  await writeTable(table, sources, target, latestWins);
+  return ingestIntoDraft(access, stored(table), target, `${table.name}.parquet`);
+}
+
+const yearsKey = (access: DashboardRef): string =>
+  `${dashboardFolder(access.org.slug, access.client?.slug || null, access.instanceId, access.templateId)}${YEARS_FILE}`;
+
+/**
+ * Puts a big fact of the draft together as one Parquet per year. A year whose files (and the table's
+ * contract) are the ones its Parquet was made from keeps that Parquet: nothing is rewritten or sent again.
+ */
+async function assembleFactByYear(
+  access: InstanceAccess, table: TemplateTable, keep: readonly { file: RawFile; marker: PartsMarker }[], dir: string,
+): Promise<TableReport> {
+  const record: YearsRecord = await readJson(yearsKey(access)).then(parseYears, () => ({}));
+  const current = new Set(splitParts((await currentFile(access, table.name)) ?? ""));
+  const contract = JSON.stringify([stored(table).columns, sortColumns(table)]);
+  const parts: DraftPart[] = [];
+  const made: string[] = [];
+  const years: Record<string, YearPart> = {};
+  for (const [year, items] of yearGroups(keep)) {
+    const sources = items.flatMap((r) => r.marker.tables[table.name]?.key ?? []);
+    if (sources.length === 0) continue;
+    const name = `${table.name}-${year}.parquet`;
+    const digest = yearDigest(contract, sources);
+    const had = record[table.name]?.[year];
+    if (had && had.sources === digest && current.has(had.key)) {
+      parts.push({ key: had.key, name });
+      years[year] = had;
+      continue;
+    }
+    const target = path.join(dir, name);
+    await writeTable(table, sources, target, false);
+    const part = await convertToPart(access, stored(table), target, name);
+    if (!part.ok || !part.key) {
+      await discardParts(access, stored(table), made);
+      return part;
+    }
+    made.push(part.key);
+    parts.push({ key: part.key, name });
+    years[year] = { key: part.key, sources: digest, rows: part.rowCount };
+  }
+  const report = await registerParts(access, stored(table), parts);
+  if (report.ok) {
+    await storage.replaceBytes(yearsKey(access), new TextEncoder().encode(JSON.stringify({ ...record, [table.name]: years })), JSON_MIME)
+      .catch((err: unknown) => console.error("[fiscal] could not keep the years of", table.name, err));
+  }
+  return report;
+}
+
+/** Writes a table's Parquet at `target` from Parquet sources (parts, or what the dashboard already has). */
+async function writeTable(table: TemplateTable, sources: readonly string[], target: string, latestWins: boolean): Promise<void> {
   // One temporary bucket error among thousands of downloads must not throw the whole table away.
   const local = await inBatches(sources.flatMap(splitParts), DOWNLOADS_AT_A_TIME, (k) => withRetries(() => (isPartKey(k) ? partsStore : storage).localPath(k)));
-  const target = path.join(dir, `${table.name}.parquet`);
   const columns = table.columns.map((c) => c.name).join(", ");
   const copyOptions = "(FORMAT parquet, COMPRESSION zstd, ROW_GROUP_SIZE 122880)";
   await withConnection(storage.workRoot, async (conn) => {
@@ -314,7 +378,6 @@ async function assembleTable(
       : `SELECT ${columns} FROM __partes`;
     await conn.run(`COPY (${body}) TO ${quotePath(target)} ${copyOptions}`);
   });
-  return ingestIntoDraft(access, stored(table), target, `${table.name}.parquet`);
 }
 
 /** Objects fetched from the bucket at the same time when a table is put together. */
@@ -620,7 +683,10 @@ async function assemble(
     const parts = keep.flatMap((r) => r.marker.tables[table.name]?.key ?? []);
     // A block the files do not bring (a company without services) stays out: an extra fact may be missing.
     if (parts.length === 0) continue;
-    const report = await assembleTable(access, table, parts, work, false);
+    // A big fact with more than one year goes as one Parquet per year (see yearlyMinRows).
+    const lines = keep.reduce((s, r) => s + (r.marker.tables[table.name]?.key ? r.marker.tables[table.name].rows : 0), 0);
+    const byYear = lines >= yearlyMinRows() && yearGroups(keep).length > 1;
+    const report = byYear ? await assembleFactByYear(access, table, keep, work) : await assembleTable(access, table, parts, work, false);
     tables.push(report);
     lineage.push({
       table: table.name, kind: "fact", how: factHow(importer.kind, table.name, table === facts[0]),

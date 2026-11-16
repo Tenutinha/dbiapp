@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { filesForFact, keepsMainFact, parseFailure, parseMarker, partsFolderId, planParts, type PartsFolder, type PartsMarker, type RawFile } from "./parts-plan";
+import { filesForFact, keepsMainFact, parseYears, yearDigest, yearGroups, parseFailure, parseMarker, partsFolderId, planParts, type PartsFolder, type PartsMarker, type RawFile } from "./parts-plan";
 
 const file = (periodo: string, over: Partial<RawFile> = {}): RawFile => ({
   key: `orgs/acme/fiscal/efd-contribuicoes/11222333000181/${periodo}/PISCOFINS.txt`,
@@ -153,5 +153,26 @@ describe("main fact kept for the latest period only", () => {
     const m = withoutMain(file("2026-06")).marker;
     expect(parseMarker(JSON.parse(JSON.stringify(m)))?.tables.registros).toEqual({ key: null, rows: 10, skipped: true });
     expect(parseMarker({ ...m, tables: { registros: { key: null, rows: 1, skipped: "sim" } } })).toBeNull();
+  });
+});
+
+describe("years of a fact", () => {
+  it("groups the files by year, in order", () => {
+    const items = [file("2026-01"), file("2025-12"), file("2025-03")].map((f) => ({ file: f }));
+    expect(yearGroups(items).map(([year, list]) => [year, list.map((i) => i.file.periodo)])).toEqual([
+      ["2025", ["2025-12", "2025-03"]], ["2026", ["2026-01"]],
+    ]);
+  });
+
+  it("gives the same digest to the same parts and contract, whatever the order", () => {
+    expect(yearDigest("c", ["a", "b"])).toBe(yearDigest("c", ["b", "a"]));
+    expect(yearDigest("c", ["a", "b"])).not.toBe(yearDigest("c", ["a"]));
+    expect(yearDigest("c", ["a"])).not.toBe(yearDigest("d", ["a"]));
+  });
+
+  it("reads back only well-formed years", () => {
+    const good = { key: "k.parquet", sources: "abc", rows: 3 };
+    expect(parseYears({ t: { "2025": good, "2026": { key: 1 } }, u: null })).toEqual({ t: { "2025": good } });
+    expect(parseYears("x")).toEqual({});
   });
 });

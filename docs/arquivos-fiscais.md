@@ -252,8 +252,15 @@ Depois da leitura, cada tabela do rascunho é **montada a partir das partes** (D
 os SPED) e passa pela ingestão de sempre:
 
 - **Fatos**: as partes de todos os arquivos; a principal (`registros`) só do período mais recente de cada empresa
-  quando o SPED declara `mainFactPeriods: "latest"` (EFD Contribuições). As tabelas publicadas continuam sendo um
-  Parquet por tabela, então abrir o dashboard não fica mais lento com o número de meses.
+  quando o SPED declara `mainFactPeriods: "latest"`.
+- **Um Parquet por ano nas fatos grandes**: uma fato com 1 milhão de linhas ou mais (`DBI_FISCAL_YEARLY_MIN_ROWS`)
+  e arquivos de mais de um ano é publicada como uma parte por ano (`<tabela>-<ano>`), lidas juntas como uma tabela
+  só. Um mês novo regrava e envia **só o ano dele**; o ano cujos arquivos não mudaram mantém o mesmo Parquet
+  (o registro `anos.json`, na pasta do dashboard, diz de que arquivos cada ano foi feito). As fatos menores e as
+  dimensões continuam num arquivo só: menos objetos para o servidor buscar ao abrir o dashboard.
+- Hoje o servidor baixa **todas** as partes de todas as tabelas ao abrir o dashboard; a divisão por ano poupa
+  regravação, envio e, no servidor que já abriu o dashboard, baixar de novo os anos fechados. Baixar só os anos
+  do filtro é um passo seguinte, no servidor.
 - **Dimensões**: o que o dashboard já tem (rascunho, senão o publicado) mais o que os arquivos lidos agora
   trouxeram; para cada código, fica o do período mais recente. Se todos os arquivos foram lidos agora, a dimensão
   é montada só deles. Códigos de arquivos retirados podem continuar no cadastro (não atrapalha).

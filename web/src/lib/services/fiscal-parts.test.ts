@@ -18,6 +18,8 @@ process.env.DBI_DEMO_USER_EMAIL ??= "teste@example.com";
 /** The draft: table → storage key of its Parquet and its lines. */
 const draft = new Map<string, { key: string; rows: number }>();
 let written = 0;
+/** Lines of each converted part (a table of several parts adds them up). */
+const partRows = new Map<string, number>();
 
 vi.mock("server-only", () => ({}));
 vi.mock("../data/repository", () => ({
@@ -39,6 +41,20 @@ vi.mock("./datasets", async () => {
       if (report.ok) draft.set(table.name, { key, rows: report.rowCount });
       return report;
     },
+    // A table of several parts (one per year): each part is converted, then the table is made of them.
+    convertToPart: async (_access: unknown, table: { name: string }, source: string) => {
+      written += 1;
+      const key = `orgs/acme/rascunho/${table.name}.${written}.parquet`;
+      const report = await ingestTable({ storageRoot: storage.workRoot, table: table as never, sourcePath: source, format: "parquet", targetPath: storage.pathFor(key) });
+      if (report.ok) partRows.set(key, report.rowCount);
+      return { ...report, key };
+    },
+    registerParts: async (_access: unknown, table: { name: string }, parts: { key: string }[]) => {
+      const rowCount = parts.reduce((s, p) => s + (partRows.get(p.key) ?? 0), 0);
+      draft.set(table.name, { key: parts.map((p) => p.key).join("\n"), rows: rowCount });
+      return { table: table.name, ok: true, rowCount, sizeBytes: 0, errors: [], warnings: [] };
+    },
+    discardParts: async () => undefined,
   };
 });
 
@@ -47,7 +63,7 @@ const { partsFolderId } = await import("../fiscal/parts-plan");
 const { SPED_READER_VERSION } = await import("../fiscal/sped-kinds");
 const { templateSchema } = await import("../templates/schema");
 const {
-  assembleSpedFromParts, inBatches, withRetries, readBuildStatus, readConcurrency, readSpedFile, rebuildSpedFromParts, spedFilesOverview, spedPartsState,
+  assembleSpedFromParts, inBatches, withRetries, yearlyMinRows, readBuildStatus, readConcurrency, readSpedFile, rebuildSpedFromParts, spedFilesOverview, spedPartsState,
 } = await import("./fiscal-parts");
 
 const template = templateSchema.parse(JSON.parse(await readFile(path.join(process.cwd(), "fiscal-templates", "efd-contribuicoes.json"), "utf8")));
@@ -69,8 +85,8 @@ const partsOf = (periodo: string): string[] => {
 };
 
 /** The sample file moved to another month (its 0000 says which). */
-function monthOf(month: string, extra = ""): Buffer {
-  const text = Buffer.from(EFD_CONTRIB).toString("latin1").replace("|01012025|31012025|", `|01${month}2025|28${month}2025|`);
+function monthOf(month: string, extra = "", year = "2025"): Buffer {
+  const text = Buffer.from(EFD_CONTRIB).toString("latin1").replace("|01012025|31012025|", `|01${month}${year}|28${month}${year}|`);
   return Buffer.from(text + extra, "latin1");
 }
 
@@ -307,6 +323,55 @@ describe("main fact of older periods and parts kept on this machine", () => {
       expect((await spedPartsState(access, importer, template, [jan, feb])).plan.read).toEqual([]);
     } finally {
       delete process.env.DBI_FISCAL_LOCAL_PARTS;
+    }
+  });
+});
+
+describe("a big fact as one Parquet per year", () => {
+  const partsOfTable = (table: string): string[] => (draft.get(table)?.key ?? "").split("\n").filter(Boolean);
+
+  it("splits by year, and a new month rewrites only its year", async () => {
+    process.env.DBI_FISCAL_YEARLY_MIN_ROWS = "1";
+    try {
+      const dec = await put("2024-12", monthOf("12", "", "2024"), "2026-11-10T10:00:00.000Z");
+      const jan = await put("2025-01", monthOf("01"), "2026-11-10T10:00:00.000Z");
+      const first = await rebuildSpedFromParts(access, importer, template, [dec, jan]);
+      expect(first.ok).toBe(true);
+      const before = partsOfTable("bloco_a_servicos");
+      expect(before).toHaveLength(2);
+      expect(rows("bloco_a_servicos")).toBe(12);
+      // The whole file is kept for the latest month only: one year, one file.
+      expect(partsOfTable("registros")).toHaveLength(1);
+
+      const feb = await put("2025-02", monthOf("02"), "2026-11-10T10:00:00.000Z");
+      const second = await rebuildSpedFromParts(access, importer, template, [dec, jan, feb]);
+      expect(second).toMatchObject({ ok: true, read: 1, reused: 2 });
+      const after = partsOfTable("bloco_a_servicos");
+      expect(after).toHaveLength(2);
+      expect(after[0]).toBe(before[0]); // 2024 did not change: the same Parquet
+      expect(after[1]).not.toBe(before[1]); // 2025 gained a month
+      expect(rows("bloco_a_servicos")).toBe(18);
+    } finally {
+      delete process.env.DBI_FISCAL_YEARLY_MIN_ROWS;
+    }
+  });
+
+  it("keeps a small fact, or a fact of a single year, in one file", async () => {
+    const dec = await put("2024-12", monthOf("12", "", "2024"), "2026-11-10T10:00:00.000Z");
+    const jan = await put("2025-01", monthOf("01"), "2026-11-10T10:00:00.000Z");
+    await rebuildSpedFromParts(access, importer, template, [dec, jan]);
+    expect(partsOfTable("bloco_a_servicos")).toHaveLength(1); // 12 lines: far below the default
+
+    process.env.DBI_FISCAL_YEARLY_MIN_ROWS = "1";
+    try {
+      draft.clear();
+      const feb = await put("2025-02", monthOf("02"), "2026-11-10T10:00:00.000Z");
+      await rebuildSpedFromParts(access, importer, template, [jan, feb]);
+      expect(partsOfTable("bloco_a_servicos")).toHaveLength(1);
+      expect(yearlyMinRows("abc")).toBe(1_000_000);
+      expect(yearlyMinRows("0")).toBe(0);
+    } finally {
+      delete process.env.DBI_FISCAL_YEARLY_MIN_ROWS;
     }
   });
 });

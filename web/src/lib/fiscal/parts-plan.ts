@@ -138,6 +138,50 @@ export function filesForFact<T extends { file: RawFile }>(ready: readonly T[], p
   return ready.filter((r) => latest.get(r.file.cnpj) === r.file.periodo);
 }
 
+/** The files of each year ("YYYY"), in year order: a big fact is published as one Parquet per year. */
+export function yearGroups<T extends { file: RawFile }>(items: readonly T[]): [string, T[]][] {
+  const years = new Map<string, T[]>();
+  for (const item of items) {
+    const year = item.file.periodo.slice(0, 4);
+    years.set(year, [...(years.get(year) ?? []), item]);
+  }
+  return [...years].sort(([a], [b]) => a.localeCompare(b));
+}
+
+/**
+ * What a year's Parquet was made from: the table's contract and its parts (a part's key carries its file's
+ * content and reader). The same digest means the year's Parquet can be kept as it is.
+ */
+export function yearDigest(contract: string, partKeys: readonly string[]): string {
+  return createHash("sha1").update(`${contract}\n${[...partKeys].sort().join("\n")}`).digest("hex");
+}
+
+/** One year of a fact, as published: its Parquet and what it was made from. */
+export interface YearPart {
+  key: string;
+  sources: string;
+  rows: number;
+}
+
+/** Table → year → its published part (kept next to the dashboard, see services/fiscal-parts.ts). */
+export type YearsRecord = Record<string, Record<string, YearPart>>;
+
+/** Checks a years record read back from storage (anything else: no year is reused). */
+export function parseYears(value: unknown): YearsRecord {
+  if (!value || typeof value !== "object") return {};
+  const out: YearsRecord = {};
+  for (const [table, years] of Object.entries(value as Record<string, unknown>)) {
+    if (!years || typeof years !== "object") continue;
+    for (const [year, part] of Object.entries(years as Record<string, unknown>)) {
+      const p = part as Partial<YearPart> | null;
+      if (p && typeof p.key === "string" && typeof p.sources === "string" && typeof p.rows === "number") {
+        (out[table] ??= {})[year] = { key: p.key, sources: p.sources, rows: p.rows };
+      }
+    }
+  }
+  return out;
+}
+
 /** Checks a failure record read back from storage. */
 export function parseFailure(value: unknown): PartsFailure | null {
   if (!value || typeof value !== "object") return null;
