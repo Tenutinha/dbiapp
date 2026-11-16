@@ -80,6 +80,11 @@ Na máquina que roda o script:
   `DBI_FISCAL_LOCAL_ORIGINALS` para a pasta (qualquer profundidade). A carga lê a cópia local em vez de baixar,
   desde que o tamanho e o MD5 sejam os do bucket; o que não bater é baixado como antes. A pasta fica fora do
   repositório ou no `.gitignore`: só os Parquet prontos sobem.
+- **Pela tela, na própria máquina**: com o app rodando localmente (não na hospedagem), o painel **Dados fiscais**
+  mostra em cada dashboard SPED o bloco **Converter nesta máquina**, só para o administrador da plataforma:
+  informe a pasta, **Conferir pasta** (quantos arquivos têm cópia local e quantos faltam ler) e **Converter e
+  publicar**. A conversão é este mesmo script, num processo à parte; a tela acompanha os arquivos lidos, cada
+  tabela e a publicação, e só deixa uma conversão por dashboard de cada vez.
 - **Cadastros depois de uma carga interrompida**: use `--dimensoes-das-partes` para montar as dimensões a
   partir de todos os arquivos já lidos, e não só dos lidos na rodada.
 - **Tempo de referência**: 103 meses de EFD Contribuições (≈8 GB) levaram ~25 min na primeira carga; um mês

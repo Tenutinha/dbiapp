@@ -10,6 +10,7 @@ import { HowItWorks } from "./HowItWorks";
 import { FileReaderProvider } from "./FileReader";
 import { count, periodLabel, STATE_LABEL, STATE_ORDER } from "./labels";
 import { LineagePanel } from "./LineagePanel";
+import { LocalLoad } from "./LocalLoad";
 import { PanelActions } from "./PanelActions";
 import { ReadableFileMap } from "./ReadableFileMap";
 
@@ -18,6 +19,8 @@ interface FiscalPanelProps {
   orgSlug: string;
   /** The space's folder in the file explorer (to send files). */
   filesFolder: string;
+  /** Local server only: the folder "Converter nesta máquina" suggests (null: not offered here). */
+  localFolder: string | null;
 }
 
 /** One of the three layers: a title, its main number and what it is. */
@@ -60,7 +63,7 @@ function FileList({ title, files, tone }: { title: string; files: PanelFile[]; t
   );
 }
 
-function ModelCard({ model, canManage, looseInSpace, now }: { model: PanelModel; canManage: boolean; looseInSpace: number; now: number }) {
+function ModelCard({ model, canManage, looseInSpace, now, localFolder }: { model: PanelModel; canManage: boolean; looseInSpace: number; now: number; localFolder: string | null }) {
   const d = model.dashboard;
   const months = model.map.periods;
   const publishedRows = d?.published.reduce((s, t) => s + t.rows, 0) ?? 0;
@@ -139,6 +142,7 @@ function ModelCard({ model, canManage, looseInSpace, now }: { model: PanelModel;
           hasDraft={d.draft !== null}
         />
       )}
+      {canManage && d && model.mode === "sped" && localFolder !== null && <LocalLoad dashboardId={d.id} defaultFolder={localFolder} />}
       {canManage && !d && model.files > 0 && (
         <p className="text-sm text-muted">Vincule o dashboard &ldquo;{model.title}&rdquo; a este espaço na Administração para ler estes arquivos e montar as tabelas.</p>
       )}
@@ -153,7 +157,7 @@ function ModelCard({ model, canManage, looseInSpace, now }: { model: PanelModel;
  * file to the published tables — the map (company × month), the lineage and, for who manages the data,
  * the steps to bring it up to date.
  */
-export function FiscalPanel({ view, orgSlug, filesFolder }: FiscalPanelProps) {
+export function FiscalPanel({ view, orgSlug, filesFolder, localFolder }: FiscalPanelProps) {
   // Rendered on the server at each refresh: "há 1 min" is counted from this moment.
   const now = Date.now();
   const running = view.models.some((m) => m.dashboard?.build && isActive(m.dashboard.build) && !isStale(m.dashboard.build, now));
@@ -178,7 +182,7 @@ export function FiscalPanel({ view, orgSlug, filesFolder }: FiscalPanelProps) {
       {view.models.length === 0 ? (
         <p className="card p-5 text-sm text-muted">Nenhum arquivo fiscal nem dashboard fiscal neste espaço ainda.</p>
       ) : (
-        view.models.map((m) => <ModelCard key={m.templateId} model={m} canManage={view.canManage} looseInSpace={view.looseInSpace} now={now} />)
+        view.models.map((m) => <ModelCard key={m.templateId} model={m} canManage={view.canManage} looseInSpace={view.looseInSpace} now={now} localFolder={localFolder} />)
       )}
     </div>
   );

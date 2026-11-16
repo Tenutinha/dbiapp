@@ -111,7 +111,7 @@ export async function SpaceHome({ org, client, membership, user, searchParams }:
           <div key={access.instanceId} className="dash-enter">
             <DashboardOpener />
             <Suspense fallback={<FiscalPanelFallback />}>
-              <FiscalPanelBody org={org} client={client} canManage={access.actions.has("manageData")} />
+              <FiscalPanelBody org={org} client={client} canManage={access.actions.has("manageData")} platformAdmin={access.user.isPlatformAdmin} />
             </Suspense>
           </div>
         </DashboardSwitch>
