@@ -10,7 +10,7 @@
  */
 import "server-only";
 import { randomUUID } from "node:crypto";
-import { mkdir, open, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, open, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { gcsBucket } from "./blob/gcs";
 import { supabaseBucket } from "./blob/supabase";
@@ -233,6 +233,19 @@ export const storage = {
     await mkdir(path.dirname(file), { recursive: true });
     await writeFile(file, bytes);
     await this.commit(key, contentType);
+  },
+
+  /** Stores a file of this machine at `key`, streamed (a raw fiscal file of hundreds of MB never fits in memory twice). */
+  async putFile(key: string, localPath: string, contentType: string): Promise<void> {
+    if (!isRemote()) {
+      await mkdir(path.dirname(workPath(key)), { recursive: true });
+      await copyFile(localPath, workPath(key));
+      return;
+    }
+    assertKey(key);
+    const remote = bucket();
+    if (remote.uploadFile) await remote.uploadFile(key, localPath, contentType);
+    else await remote.upload(key, new Uint8Array(await readFile(localPath)), contentType);
   },
 
   /** Local path with the object's content, downloading it into the cache if needed. */

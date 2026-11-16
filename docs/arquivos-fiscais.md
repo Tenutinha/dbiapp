@@ -142,6 +142,42 @@ ingestão). Depois: gerar moldes, testes, PR, deploy e carga (seção 4).
 
 ## 4. Carga pelo script (volumes grandes)
 
+### Preparo local (o caminho recomendado)
+
+A máquina que tem os arquivos originais transforma tudo em Parquet e manda ao armazenamento só as tabelas
+prontas. O dashboard lê o Parquet do armazenamento; os originais ficam lá como cópia de segurança.
+
+```bash
+node --env-file=<.env> --conditions=react-server --import tsx scripts/fiscal/preparar.ts \
+  --pasta <pasta dos originais> --molde <id> --org <org> --cliente <cliente>
+```
+
+O que faz, em ordem:
+
+1. **Confere os originais**: identifica cada `.txt` da pasta pelo `0000` e compara com o armazenamento, por
+   empresa e mês. Envia os meses que faltam (retificadora ou substituta antes da original; entre iguais, a mais
+   recente). **Nunca troca nem apaga** o que já está guardado: versão diferente ou desatualizada vira aviso.
+2. **Lê** cada arquivo novo ou trocado direto do disco e guarda as partes na pasta de trabalho local
+   (`<pasta-mãe dos originais>/.dbi-preparo`, ou `--trabalho`). Nada é baixado.
+3. **Monta** as tabelas a partir das partes locais e envia só elas.
+4. **Publica**.
+
+| Opção | O que faz |
+|---|---|
+| `--so-conferir` | só mostra o que falta enviar e o que falta ler; não altera nada |
+| `--sem-enviar-originais` | não envia originais (lê os que já estão guardados) |
+| `--sem-publicar` | deixa as tabelas no rascunho |
+| `--trabalho <pasta>` | outra pasta de trabalho |
+
+Com o preparo local as partes **não vão para o armazenamento** (`DBI_FISCAL_LOCAL_PARTS=1`, que o script liga;
+nunca vale na Vercel). Consequência: para esse dashboard, o painel de dados fiscais e o botão "Montar tabelas"
+da tela não enxergam o que foi lido; quem remonta é a máquina do preparo. Perdendo a pasta de trabalho, basta
+rodar de novo: tudo se refaz a partir dos originais.
+
+O molde do catálogo precisa estar atualizado antes (`carregar-fiscal.ts --so-molde`, depois do deploy).
+
+### Carga com as partes no armazenamento
+
 Em `web/`, com o `.env` de produção:
 
 ```bash

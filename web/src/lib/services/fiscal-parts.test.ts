@@ -273,3 +273,40 @@ describe("withRetries", () => {
     expect(calls).toBe(2);
   });
 });
+
+describe("main fact of older periods and parts kept on this machine", () => {
+  const filesIn = (periodo: string): string[] => partsOf(periodo).flatMap((id) => readdirSync(path.join(partsRoot, CNPJ, periodo, id)));
+
+  it("does not keep the whole file of a month that is not the latest, and reads it again when it becomes the latest", async () => {
+    const jan = await put("2025-01", monthOf("01"), "2026-11-10T10:00:00.000Z");
+    const feb = await put("2025-02", monthOf("02"), "2026-11-10T10:00:00.000Z");
+    await rebuildSpedFromParts(access, importer, template, [jan, feb]);
+    expect(filesIn("2025-01")).not.toContain("registros.parquet");
+    expect(filesIn("2025-01")).toContain("bloco_a_servicos.parquet");
+    expect(filesIn("2025-02")).toContain("registros.parquet");
+
+    // February is gone: January is now the latest, and its whole file is needed.
+    const again = await rebuildSpedFromParts(access, importer, template, [jan]);
+    expect(again).toMatchObject({ ok: true, files: 1, read: 1, reused: 0 });
+    expect(filesIn("2025-01")).toContain("registros.parquet");
+    expect(rows("registros")).toBe(20);
+  });
+
+  it("works the same with the parts kept on this machine only", async () => {
+    process.env.DBI_FISCAL_LOCAL_PARTS = "1";
+    try {
+      const jan = await put("2025-01", monthOf("01"), "2026-11-10T10:00:00.000Z");
+      const feb = await put("2025-02", monthOf("02"), "2026-11-10T10:00:00.000Z");
+      const first = await rebuildSpedFromParts(access, importer, template, [jan, feb]);
+      expect(first).toMatchObject({ ok: true, files: 2, read: 2, reused: 0, skipped: [] });
+      expect(rows("bloco_a_servicos")).toBe(12);
+      expect(filesIn("2025-02")).toContain("pronto.json");
+
+      const second = await rebuildSpedFromParts(access, importer, template, [jan, feb]);
+      expect(second).toMatchObject({ ok: true, read: 0, reused: 2 });
+      expect((await spedPartsState(access, importer, template, [jan, feb])).plan.read).toEqual([]);
+    } finally {
+      delete process.env.DBI_FISCAL_LOCAL_PARTS;
+    }
+  });
+});

@@ -41,6 +41,7 @@ import { splitParts } from "../storage-parts";
 import { dashboardFolder, fiscalPartsFolder } from "../storage-keys";
 import { extraFacts, mainFact, sortColumns, type Template, type TemplateTable } from "../templates/schema";
 import { ingestIntoDraft, UserFacingError } from "./datasets";
+import { isPartKey, partsStore } from "./fiscal-parts-store";
 
 const PARQUET_MIME = "application/vnd.apache.parquet";
 const JSON_MIME = "application/json";
@@ -138,13 +139,14 @@ function spedFacts(importer: SpedImporter, template: Template): TemplateTable[] 
 /** A table as stored (a block fact that sums lines on the way in is already summed in its parts). */
 const stored = (table: TemplateTable): TemplateTable => ({ ...table, source: undefined });
 
-const readJson = async (key: string): Promise<unknown> => JSON.parse(new TextDecoder().decode(await storage.readFresh(key)));
+const readJson = async (key: string): Promise<unknown> =>
+  JSON.parse(new TextDecoder().decode(await (isPartKey(key) ? partsStore : storage).readFresh(key)));
 
 /** The parts folders of a dashboard, with their markers (and failure records) read. */
 async function listPartsFolders(root: string): Promise<PartsFolder[]> {
   // One listing of the whole tree, not one per folder (thousands of folders in a big client).
   const found = new Map<string, { cnpj: string; periodo: string; id: string; marker: boolean; failure: boolean }>();
-  for (const f of await storage.listTree(root)) {
+  for (const f of await partsStore.listTree(root)) {
     const parts = f.key.slice(root.length).split("/");
     if (parts.length !== 4) continue;
     const [cnpj, periodo, id, name] = parts;
@@ -189,9 +191,9 @@ async function readIntoCsv(
 
 /** Converts a CSV to the table's contract and keeps it at `key`. */
 async function keepPart(table: TemplateTable, source: string, key: string): Promise<number> {
-  const report = await ingestTable({ storageRoot: storage.workRoot, table, sourcePath: source, format: "csv", targetPath: storage.pathFor(key) });
+  const report = await ingestTable({ storageRoot: storage.workRoot, table, sourcePath: source, format: "csv", targetPath: partsStore.pathFor(key) });
   if (!report.ok) throw new Error(`${table.name}: ${report.errors.join(" ")}`);
-  await storage.commit(key, PARQUET_MIME);
+  await partsStore.commit(key, PARQUET_MIME);
   return report.rowCount;
 }
 
@@ -237,7 +239,7 @@ async function readFile(
       const key = `${folder}${table.name}.parquet`;
       marker.dimensions[table.name] = { key, rows: await keepPart(table, source, key) };
     }
-    await storage.replaceBytes(`${folder}${MARKER}`, new TextEncoder().encode(JSON.stringify(marker)), JSON_MIME);
+    await partsStore.replaceBytes(`${folder}${MARKER}`, new TextEncoder().encode(JSON.stringify(marker)), JSON_MIME);
     return marker;
   } finally {
     // The cached copy of a remote object is only needed while it is read.
@@ -287,7 +289,7 @@ async function assembleTable(
   access: InstanceAccess, table: TemplateTable, sources: readonly string[], dir: string, latestWins: boolean,
 ): Promise<TableReport> {
   // One temporary bucket error among thousands of downloads must not throw the whole table away.
-  const local = await inBatches(sources.flatMap(splitParts), DOWNLOADS_AT_A_TIME, (k) => withRetries(() => storage.localPath(k)));
+  const local = await inBatches(sources.flatMap(splitParts), DOWNLOADS_AT_A_TIME, (k) => withRetries(() => (isPartKey(k) ? partsStore : storage).localPath(k)));
   const target = path.join(dir, `${table.name}.parquet`);
   const columns = table.columns.map((c) => c.name).join(", ");
   const copyOptions = "(FORMAT parquet, COMPRESSION zstd, ROW_GROUP_SIZE 122880)";
@@ -395,13 +397,13 @@ async function readOne(
   const dir = path.join(work, partsFolderId(file, SPED_READER_VERSION));
   await mkdir(dir, { recursive: true });
   try {
-    await storage.removeFolder(folder);
+    await partsStore.removeFolder(folder);
     return { ok: true, marker: await readFile(importer, template, facts, file, folder, dir, keepMain) };
   } catch (err) {
     if (!(err instanceof FiscalFileError)) console.error("[fiscal] could not read", file.key, err);
     const failure: PartsFailure = { error: failureMessage(err), at: new Date().toISOString() };
-    await storage.removeFolder(folder).catch(() => undefined);
-    await storage.replaceBytes(`${folder}${FAILURE}`, new TextEncoder().encode(JSON.stringify(failure)), JSON_MIME)
+    await partsStore.removeFolder(folder).catch(() => undefined);
+    await partsStore.replaceBytes(`${folder}${FAILURE}`, new TextEncoder().encode(JSON.stringify(failure)), JSON_MIME)
       .catch((e: unknown) => console.error("[fiscal] could not keep the failure of", file.key, e));
     return { ok: false, error: failure.error };
   } finally {
@@ -426,7 +428,7 @@ export interface SpedFilesOverview {
 export async function spedFilesOverview(access: DashboardRef, files: readonly RawFile[]): Promise<SpedFilesOverview> {
   const root = partsRoot(access);
   const records = new Map<string, Set<string>>();
-  for (const f of await storage.listTree(root, [MARKER, FAILURE])) {
+  for (const f of await partsStore.listTree(root, [MARKER, FAILURE])) {
     const place = f.key.slice(root.length, f.key.length - f.name.length);
     records.set(place, (records.get(place) ?? new Set()).add(f.name));
   }
@@ -503,7 +505,7 @@ export async function rebuildSpedFromParts(
   let folders = await listPartsFolders(root);
   if (options.rereadAll) {
     // Reading everything again starts from no parts at all (a file would land in the folder it had).
-    for (const f of folders) await storage.removeFolder(`${root}${f.cnpj}/${f.periodo}/${f.id}/`);
+    for (const f of folders) await partsStore.removeFolder(`${root}${f.cnpj}/${f.periodo}/${f.id}/`);
     folders = [];
   }
   const plan = planParts(files, folders, facts.map((t) => t.name), SPED_READER_VERSION, latestOnlyFact(importer, template));
@@ -597,7 +599,7 @@ async function assemble(
   const facts = spedFacts(importer, template);
   const { plan, justRead, skipped } = input;
   // Only now: replaced and deleted files' parts go.
-  for (const f of plan.obsolete) await storage.removeFolder(`${root}${f.cnpj}/${f.periodo}/${f.id}/`).catch(() => undefined);
+  for (const f of plan.obsolete) await partsStore.removeFolder(`${root}${f.cnpj}/${f.periodo}/${f.id}/`).catch(() => undefined);
 
   const ready = [...plan.ready, ...justRead].sort((a, b) => a.file.periodo.localeCompare(b.file.periodo) || a.file.key.localeCompare(b.file.key));
   if (ready.length === 0) {
