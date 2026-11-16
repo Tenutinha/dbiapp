@@ -565,12 +565,13 @@ Cuidados:
 - **Estabelecimento sem C010 ou sem 0140 no mês.** É preciso criar o C010 (e o 0140), não só as notas.
 - **Notas sem C170 na EFD ICMS/IPI** (em regra, as de emissão própria) não têm itens para copiar: ficam numa lista à
   parte.
-- **Só CFOP que gera crédito.** Regra da análise original: a inclusão vale apenas para os itens cujo CFOP está na
-  tabela "CFOP – Operações Geradoras de Créditos" do SPED (compra para revenda ou industrialização, devolução de
-  venda, energia, frete e as demais da tabela). Entradas de uso e consumo, transferência, remessa e bonificação ficam
-  fora. A tabela é pública e entra como dado do gerador, com vigência. A confirmar com o responsável: numa nota com
-  itens dos dois tipos, se entra a nota inteira ou só os itens que geram crédito (neste caso os totais do C100 deixam
-  de bater com a soma dos itens, o que a regra C03 acusa).
+- **Só CFOP que gera crédito.** Regra da análise original: a inclusão vale apenas para as notas com CFOP da tabela
+  "CFOP – Operações Geradoras de Créditos" do SPED (compra para revenda ou industrialização, devolução de venda,
+  energia, frete e as demais da tabela). Entradas de uso e consumo, transferência, remessa e bonificação ficam fora.
+  A tabela é pública e entra como dado do gerador, com vigência.
+- **Nota inteira.** Decisão do responsável pela análise (16/11/2026): a nota que tem pelo menos um item com CFOP que
+  gera crédito entra inteira, com todos os itens, inclusive os de CFOP sem crédito. Assim os totais do C100 continuam
+  batendo com a soma dos C170 (regra C03). Nota sem nenhum item com CFOP de crédito não entra.
 - **Não duplicar.** A chave não pode existir em nenhum outro mês da Contribuições (regra C12), e só entram notas
   regulares (modelo 55, situação 00, 01, 06, 07 ou 08).
 - **Totais e apuração.** Recontar os registros de encerramento (0990, C990, 9900, 9990, 9999), marcar o arquivo como
