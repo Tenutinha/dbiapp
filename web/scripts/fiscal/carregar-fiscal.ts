@@ -16,6 +16,9 @@
  *
  * Com --so-blocos, a fato principal fica como está publicada; só as tabelas por bloco (ex.: bloco_a_servicos)
  * e as dimensões entram no rascunho. Com --reler-tudo, todos os arquivos são lidos de novo.
+ *
+ * Com --ao-vivo [porta], a carga serve o próprio andamento num navegador desta máquina (http://localhost:3040
+ * por padrão): cada passo no instante em que acontece, sem depender do servidor do app.
  */
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -24,6 +27,7 @@ import { findTemplate, updateDefinition } from "../../src/lib/data/catalog";
 import { sql } from "../../src/lib/db";
 import { publishDraft } from "../../src/lib/services/datasets";
 import { rebuildFiscal } from "../../src/lib/services/fiscal";
+import { startLiveServer, type LiveServer } from "../../src/lib/fiscal/live-server";
 import { eventLine } from "../../src/lib/fiscal/local-load";
 import { extraFacts, templateSchema, type Template } from "../../src/lib/templates/schema";
 
@@ -31,6 +35,32 @@ const arg = (flag: string): string | undefined => {
   const i = process.argv.indexOf(flag);
   return i >= 0 ? process.argv[i + 1] : undefined;
 };
+
+/** The page that follows the load from a browser of this machine (--ao-vivo). */
+const LIVE = process.argv.includes("--ao-vivo");
+const LIVE_PORT = 3040;
+/** One line per step, for whoever follows the load: the app's screen reads the log, the live page gets them as they come. */
+const EVENTS = LIVE || process.argv.includes("--eventos");
+let live: LiveServer | null = null;
+
+/** Colors and cursor moves a terminal understands and a page does not. */
+const plain = (text: string): string => text.replace(/\u001b\[[0-9;]*m/g, "");
+
+/** Starts the live page and sends it every line the load prints from now on. */
+async function goLive(titulo: string): Promise<void> {
+  const asked = Number(arg("--ao-vivo"));
+  live = await startLiveServer({ port: Number.isInteger(asked) && asked > 0 ? asked : LIVE_PORT, titulo });
+  const server = live;
+  for (const method of ["log", "warn", "error"] as const) {
+    const print = console[method].bind(console);
+    console[method] = (...args: unknown[]): void => {
+      print(...args);
+      const text = plain(args.map((a) => (a instanceof Error ? a.message : typeof a === "string" ? a : JSON.stringify(a))).join(" "));
+      for (const line of text.split(/\r?\n/)) if (line.trim() !== "") server.publish(line);
+    };
+  }
+  console.log(`ao vivo: ${server.url}`);
+}
 
 /**
  * JSON of a value with the keys of every object in a fixed order. The database keeps a definition as jsonb,
@@ -69,6 +99,7 @@ async function main(): Promise<void> {
   const orgSlug = arg("--org");
   const clientSlug = arg("--cliente");
   if (!templateId || !orgSlug) throw new Error("uso: --molde <id> --org <slug> [--cliente <slug>] [--so-molde]");
+  if (LIVE) await goLive(`${templateId} · ${orgSlug}${clientSlug ? ` / ${clientSlug}` : ""}`);
 
   const fromFile = templateSchema.parse(JSON.parse(await readFile(path.join(process.cwd(), "fiscal-templates", `${templateId}.json`), "utf8")));
   const existing = await findTemplate(fromFile.id);
@@ -134,7 +165,7 @@ async function main(): Promise<void> {
     // The panel of fiscal data shows where the load is (montagem.json) and that it runs by the script.
     by: "script",
     // For the screen that follows the load ("Converter nesta máquina"): one line per file and per table.
-    ...(process.argv.includes("--eventos")
+    ...(EVENTS
       ? {
         onFile: (arquivo) => console.log(eventLine({ arquivo })),
         onTable: (tabela) => console.log(eventLine({ tabela })),
@@ -159,21 +190,24 @@ async function main(): Promise<void> {
     throw new Error(`${result.skipped.length} arquivo(s) não puderam ser lidos; nada foi publicado (as tabelas ficaram no rascunho). Converta de novo.`);
   }
 
-  const events = process.argv.includes("--eventos");
-  if (events) console.log(eventLine({ passo: { etapa: "publicacao", passo: "inicio" } }));
+  if (EVENTS) console.log(eventLine({ passo: { etapa: "publicacao", passo: "inicio" } }));
   const published = await publishDraft(access);
   if (!published.ok) throw new Error(`publicação: ${published.errors.join(" | ")}`);
   const warnings = published.orphans.filter((x) => x.orphans > 0)
     .map((o) => `${o.orphans.toLocaleString("pt-BR")} linhas sem correspondência em ${o.relationship}`);
   for (const warning of warnings) console.log(`  aviso: ${warning}`);
-  if (events) console.log(eventLine({ passo: { etapa: "publicacao", passo: "fim", avisos: warnings } }));
+  if (EVENTS) console.log(eventLine({ passo: { etapa: "publicacao", passo: "fim", avisos: warnings } }));
   console.log(`publicado: /${org.slug}/d/${inst.id}`);
 }
 
 main()
-  .then(() => sql.end())
+  .then(async () => {
+    await live?.finish(true);
+    await sql.end();
+  })
   .catch(async (err: unknown) => {
     console.error(err instanceof Error ? err.message : err);
+    await live?.finish(false).catch(() => undefined);
     await sql.end();
     process.exit(1);
   });

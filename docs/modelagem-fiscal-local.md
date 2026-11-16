@@ -43,6 +43,7 @@ node --env-file=.env.vercel-production --conditions=react-server --import tsx sc
 | `--reler-tudo` | apaga as partes e lê todos os arquivos de novo |
 | `--dimensoes-das-partes` | monta os cadastros a partir de todos os arquivos já lidos (use depois de uma carga que parou no meio) |
 | `--exige-todos` | não publica se algum arquivo ficou sem ler nesta rodada (a tela usa: um mês que falhou por memória não some do dashboard) |
+| `--ao-vivo [porta]` | serve o andamento num navegador desta máquina (`http://localhost:3040`; se a porta estiver ocupada, a seguinte). Liga os eventos |
 | `--eventos` | imprime uma linha `@evento {...}` por arquivo lido e por tabela montada (é o que a tela usa) |
 
 Variáveis de ambiente da carga:
@@ -98,6 +99,20 @@ transforma cada um em frase (`describeEvent`) e soma o estado da rodada (`parseL
 | uniao | `validando` | conferência do contrato antes de entrar no rascunho |
 | uniao | `tabela` (fim) | linhas, tamanho, duração |
 | publicacao | `inicio`, `fim` | a publicação e os avisos |
+
+## A página ao vivo da própria carga (`--ao-vivo`)
+
+Com `--ao-vivo`, a carga abre um servidor mínimo na própria máquina (só `127.0.0.1`) e imprime o endereço
+(`ao vivo: http://localhost:3040`). Não depende do servidor do app, que ocupa a memória de que a carga precisa.
+
+| Endereço | O que entrega |
+|---|---|
+| `/` | a página que acompanha a carga |
+| `/eventos` | cada linha no instante em que é escrita (Server-Sent Events); quem conecta depois, ou reconecta, recebe primeiro o que perdeu |
+| `/estado` | onde a carga está, em JSON: etapa, arquivo e tabela em andamento, contagens |
+
+O servidor fecha quando a carga termina; a página fica com o último estado recebido. Peça:
+`src/lib/fiscal/live-server.ts`.
 
 ## A tela: Converter nesta máquina
 
