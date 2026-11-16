@@ -42,6 +42,7 @@ node --env-file=.env.vercel-production --conditions=react-server --import tsx sc
 | `--so-blocos` | monta só as tabelas por bloco e os cadastros; a tabela principal fica como está |
 | `--reler-tudo` | apaga as partes e lê todos os arquivos de novo |
 | `--dimensoes-das-partes` | monta os cadastros a partir de todos os arquivos já lidos (use depois de uma carga que parou no meio) |
+| `--exige-todos` | não publica se algum arquivo ficou sem ler nesta rodada (a tela usa: um mês que falhou por memória não some do dashboard) |
 | `--eventos` | imprime uma linha `@evento {...}` por arquivo lido e por tabela montada (é o que a tela usa) |
 
 Variáveis de ambiente da carga:
@@ -87,7 +88,7 @@ para o administrador da plataforma:
 1. **Pasta dos arquivos originais** — sugerida por `DBI_FISCAL_LOCAL_ORIGINALS` ou pela última usada.
 2. **Conferir pasta** — `.txt` na pasta, arquivos do dashboard no bucket, quantos têm cópia local, quantos faltam
    ler e de onde virão (disco ou bucket).
-3. **Converter e publicar** — inicia `carregar-fiscal.ts --dimensoes-das-partes --eventos` como um processo à
+3. **Converter e publicar** — inicia `carregar-fiscal.ts --dimensoes-das-partes --eventos --exige-todos` como um processo à
    parte, com pasta de trabalho própria. Pode fechar a página: a conversão continua.
 4. **Ao vivo** — arquivos lidos e barra, linhas lidas, volume, erros; **linhas por tabela**, somando a cada
    arquivo; os últimos arquivos lidos; as tabelas finais conforme ficam prontas; e a publicação.

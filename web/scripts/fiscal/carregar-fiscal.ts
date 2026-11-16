@@ -149,6 +149,11 @@ async function main(): Promise<void> {
     console.log(`  ${table.table}: ${table.ok ? `${table.rowCount.toLocaleString("pt-BR")} linhas, ${(table.sizeBytes / 1024 ** 2).toFixed(1)} MB` : `ERRO ${table.errors.join(" | ")}`}`);
   }
   if (!result.ok) throw new Error("as tabelas não passaram na validação; nada foi publicado");
+  // With --exige-todos, a file left out (it failed now: memory, a broken read) holds the publication: the
+  // dashboard would lose that month. The tables stay in the draft; what was read is kept for the next run.
+  if (process.argv.includes("--exige-todos") && result.skipped.length > 0) {
+    throw new Error(`${result.skipped.length} arquivo(s) não puderam ser lidos; nada foi publicado (as tabelas ficaram no rascunho). Converta de novo.`);
+  }
 
   const published = await publishDraft(access);
   if (!published.ok) throw new Error(`publicação: ${published.errors.join(" | ")}`);

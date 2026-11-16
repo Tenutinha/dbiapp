@@ -26,8 +26,12 @@ import { hostedLimits, readBuildStatus, spedFilesOverview } from "./fiscal-parts
 const RUNS_DIR = path.join(os.tmpdir(), "dbi-carga-local");
 const LOAD_SCRIPT = path.join("scripts", "fiscal", "carregar-fiscal.ts");
 /** The load's memory, apart from the server's: the Node heap and DuckDB's cap. */
-const LOAD_HEAP_MB = 3072;
-const LOAD_DUCKDB_LIMIT = "2GB";
+const LOAD_HEAP_MB = 2048;
+const LOAD_DUCKDB_LIMIT = "1GB";
+/** Files read at the same time: the server that shows the screen is on the same machine, and memory is short. */
+const LOAD_READ_CONCURRENCY = "2";
+/** Kinds whose files reach hundreds of MB each: one at a time. */
+const ONE_AT_A_TIME: readonly string[] = ["ecd"];
 /** The most of a log the screen reads at each look (one line per file: a chain of stores writes a few MB). */
 const LOG_MAX_BYTES = 32 * 1024 * 1024;
 
@@ -144,6 +148,8 @@ export async function startLocalLoad(access: InstanceAccess, folder: string): Pr
     "--dimensoes-das-partes",
     // One line per file read and per table, for the live count on the screen.
     "--eventos",
+    // A file that could not be read now (memory, a hiccup) must not leave its month out of what is published.
+    "--exige-todos",
   ];
   const out = openSync(logFile, "a");
   try {
@@ -156,6 +162,7 @@ export async function startLocalLoad(access: InstanceAccess, folder: string): Pr
         ...process.env,
         DBI_FISCAL_LOCAL_ORIGINALS: resolved,
         DBI_DUCKDB_MEMORY_LIMIT: process.env.DBI_DUCKDB_MEMORY_LIMIT ?? LOAD_DUCKDB_LIMIT,
+        DBI_FISCAL_READ_CONCURRENCY: ONE_AT_A_TIME.includes(access.templateId) ? "1" : (process.env.DBI_FISCAL_READ_CONCURRENCY ?? LOAD_READ_CONCURRENCY),
         TEMP: temp,
         TMP: temp,
         TMPDIR: temp,
