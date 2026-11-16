@@ -24,6 +24,7 @@ import { getDraft, listFiles } from "../data/repository";
 import { quotePath, readParquet, withConnection } from "../duck/engine";
 import { csvLine, toCsv } from "../fiscal/csv";
 import type { FiscalTables, SpedImporter } from "../fiscal/importers";
+import type { FileEvent, TableEvent } from "../fiscal/local-load";
 import { indexLocalOriginals, localCandidates, matchingLocal, type LocalIndex } from "../fiscal/local-originals";
 import { parseBuildStatus, type BuildRunner, type BuildStatus } from "../fiscal/build-status";
 import { dimensionHow, factHow, sourcesOf, type Lineage, type TableLineage } from "../fiscal/lineage";
@@ -92,7 +93,15 @@ export interface PartsOptions {
   onProgress?: (done: number, total: number) => void;
   /** Who runs the build, for the panel ("script" or the app's screen). */
   by?: BuildRunner;
+  /** Called after each file read or refused, with the lines it brought to each table. */
+  onFile?: (event: FileEvent) => void;
+  /** Called after each table put together. */
+  onTable?: (event: TableEvent) => void;
 }
+
+const rowsOf = (marker: PartsMarker): Record<string, number> => Object.fromEntries(
+  [...Object.entries(marker.tables), ...Object.entries(marker.dimensions)].map(([name, part]) => [name, part.rows]),
+);
 
 const buildStatusKey = (access: DashboardRef): string =>
   `${dashboardFolder(access.org.slug, access.client?.slug || null, access.instanceId, access.templateId)}${BUILD_STATUS_FILE}`;
@@ -516,6 +525,10 @@ export async function rebuildSpedFromParts(
         const result = await readOne(access, importer, template, facts, file, work);
         if (result.ok) justRead.push({ file, marker: result.marker });
         else skipped.push({ path: relativeToOrg(access.org.slug, file.key), error: result.error });
+        options.onFile?.({
+          cnpj: file.cnpj, periodo: file.periodo, sizeBytes: file.sizeBytes, ok: result.ok,
+          rows: result.ok ? rowsOf(result.marker) : {}, ...(result.ok ? {} : { error: result.error }),
+        });
         done += 1;
         options.onProgress?.(done, plan.read.length);
         tracker.reading(done, plan.read.length);
@@ -523,7 +536,7 @@ export async function rebuildSpedFromParts(
     }));
     return await assemble(
       access, importer, template,
-      { plan, justRead, skipped, dimensionsFrom: options.rereadAll || options.dimensionsFromParts ? "read" : "dashboard", only: options.only, tracker }, work,
+      { plan, justRead, skipped, dimensionsFrom: options.rereadAll || options.dimensionsFromParts ? "read" : "dashboard", only: options.only, tracker, onTable: options.onTable }, work,
     );
   } catch (err) {
     await tracker.failed(err);
@@ -573,6 +586,7 @@ interface AssembleInput {
   only?: "blocks";
   /** Keeps the panel informed of the table on its way. */
   tracker: BuildTracker;
+  onTable?: (event: TableEvent) => void;
 }
 
 /** Drops obsolete parts, puts every table of the draft together from the parts, and keeps the lineage. */
@@ -606,6 +620,7 @@ async function assemble(
     if (parts.length === 0) continue;
     const report = await assembleTable(access, table, parts, work, false);
     tables.push(report);
+    input.onTable?.({ table: report.table, ok: report.ok, rows: report.rowCount, sizeBytes: report.sizeBytes });
     lineage.push({
       table: table.name, kind: "fact", how: factHow(importer.kind, table.name, table === facts[0]),
       rows: report.ok ? report.rowCount : null, sources: sourcesOf(keep, table.name, "tables", relative),
@@ -626,6 +641,7 @@ async function assemble(
     }
     const report = await assembleTable(access, table, sources, work, true);
     tables.push(report);
+    input.onTable?.({ table: report.table, ok: report.ok, rows: report.rowCount, sizeBytes: report.sizeBytes });
     lineage.push({
       table: table.name, kind: "dimension", how: dimensionHow(table.name), rows: report.ok ? report.rowCount : null,
       sources: sourcesOf(base ? justRead : ready, table.name, "dimensions", relative),

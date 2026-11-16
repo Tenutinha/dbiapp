@@ -21,6 +21,8 @@ interface FiscalImporterProps {
   initialPeriods: FiscalPeriodView[];
   /** Can build the tables (org staff who manage data). */
   canUpload: boolean;
+  /** The tables are put together here (a local server); on the hosted app only the files are sent. */
+  canBuild: boolean;
   /** Where the space's files live in the explorer (to send new ones there). */
   files: { orgSlug: string; folder: string };
 }
@@ -50,7 +52,7 @@ const taxIdLabel = (d: string): string =>
  * Raw fiscal files of a dashboard built on a fiscal template: what is stored per company and period, and
  * turning everything into the dashboard's tables (draft). Files are sent in the "Arquivos" explorer.
  */
-export function FiscalImporter({ instanceId, title, extensions, initialPeriods, canUpload, files }: FiscalImporterProps) {
+export function FiscalImporter({ instanceId, title, extensions, initialPeriods, canUpload, canBuild, files }: FiscalImporterProps) {
   const router = useRouter();
   const [periods, setPeriods] = useState(initialPeriods);
   const [progress, setProgress] = useState<string | null>(null);
@@ -84,12 +86,14 @@ export function FiscalImporter({ instanceId, title, extensions, initialPeriods, 
         <p className="text-sm text-muted">
           Envie os arquivos {extensions.join(" ou ")} como saem do sistema pelo explorador de{" "}
           <FilesLink orgSlug={files.orgSlug} folder={files.folder} className="font-semibold text-brand-2 hover:underline">📁 Arquivos</FilesLink>, na pasta
-          do espaço. Ao montar, cada um é reconhecido e organizado por empresa e período (o mesmo período ou a mesma nota
-          substitui o anterior). Nos SPED, só os arquivos novos ou trocados são lidos de novo. Depois, publique.
+          do espaço.{" "}
+          {canBuild
+            ? "Ao montar, cada um é reconhecido e organizado por empresa e período (o mesmo período ou a mesma nota substitui o anterior). Nos SPED, só os arquivos novos ou trocados são lidos de novo. Depois, publique."
+            : "A equipe da DBI organiza os arquivos por empresa e período, monta as tabelas e publica o dashboard."}
         </p>
       </div>
 
-      {canUpload && (
+      {canUpload && canBuild && (
         <div className="flex flex-wrap items-center gap-3">
           <button className="btn btn-primary" disabled={busy} onClick={build}>
             {busy && progress?.startsWith("Lendo") ? "Montando…" : "Montar tabelas"}

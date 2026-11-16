@@ -24,6 +24,7 @@ import { findTemplate, updateDefinition } from "../../src/lib/data/catalog";
 import { sql } from "../../src/lib/db";
 import { publishDraft } from "../../src/lib/services/datasets";
 import { rebuildFiscal } from "../../src/lib/services/fiscal";
+import { eventLine } from "../../src/lib/fiscal/local-load";
 import { extraFacts, templateSchema, type Template } from "../../src/lib/templates/schema";
 
 const arg = (flag: string): string | undefined => {
@@ -132,6 +133,10 @@ async function main(): Promise<void> {
     dimensionsFromParts: process.argv.includes("--dimensoes-das-partes"),
     // The panel of fiscal data shows where the load is (montagem.json) and that it runs by the script.
     by: "script",
+    // For the screen that follows the load ("Converter nesta máquina"): one line per file and per table.
+    ...(process.argv.includes("--eventos")
+      ? { onFile: (arquivo) => console.log(eventLine({ arquivo })), onTable: (tabela) => console.log(eventLine({ tabela })) }
+      : {}),
     // A line every 25 files, so a long load shows where it is.
     onProgress: (done, total) => {
       if (done % 25 === 0 || done === total) console.log(`  lidos ${done} de ${total} (${((Date.now() - started) / 60000).toFixed(1)} min)`);

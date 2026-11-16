@@ -56,6 +56,9 @@ cliente tem arquivos para: um dashboard por molde. Ativar não lê nada; o dashb
 
 ## 5. Montar as tabelas e publicar
 
+> No app hospedado só existe o envio dos arquivos. Ler, montar e publicar acontecem na máquina da DBI, pelo
+> script ou pela tela **Converter nesta máquina**: ver [modelagem-fiscal-local.md](modelagem-fiscal-local.md).
+
 **Pela tela** (gerenciador de dados do dashboard → Arquivos fiscais → **Montar tabelas**, depois **Publicar dados**):
 serve quando os arquivos **a ler** somam menos de 250 MB, o que vale para um ou poucos meses, para a NF-e de um ano
 e para a EFD ICMS/IPI de uma empresa pequena.

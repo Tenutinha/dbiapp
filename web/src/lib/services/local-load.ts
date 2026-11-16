@@ -28,8 +28,8 @@ const LOAD_SCRIPT = path.join("scripts", "fiscal", "carregar-fiscal.ts");
 /** The load's memory, apart from the server's: the Node heap and DuckDB's cap. */
 const LOAD_HEAP_MB = 3072;
 const LOAD_DUCKDB_LIMIT = "2GB";
-/** How much of the log's end the screen reads at each look. */
-const LOG_TAIL_BYTES = 64 * 1024;
+/** The most of a log the screen reads at each look (one line per file: a chain of stores writes a few MB). */
+const LOG_MAX_BYTES = 32 * 1024 * 1024;
 
 /** Only a server on the machine itself offers it. */
 export const localLoadAvailable = (): boolean => !hostedLimits();
@@ -97,8 +97,8 @@ function alive(pid: number): boolean {
 async function logTail(file: string): Promise<string> {
   try {
     const text = await readFile(file, "utf8");
-    // The reading progress is at the end; the tables and the publication too.
-    return text.length > LOG_TAIL_BYTES ? text.slice(text.indexOf("\n", text.length - LOG_TAIL_BYTES) + 1) : text;
+    // Whole, so the live count adds up every file; beyond the limit, the end (the progress and the publication).
+    return text.length > LOG_MAX_BYTES ? text.slice(text.indexOf("\n", text.length - LOG_MAX_BYTES) + 1) : text;
   } catch {
     return "";
   }
@@ -142,6 +142,8 @@ export async function startLocalLoad(access: InstanceAccess, folder: string): Pr
     ...(access.client ? ["--cliente", access.client.slug] : []),
     // Every file's parts: a load that stopped half way left parts the dashboard never got.
     "--dimensoes-das-partes",
+    // One line per file read and per table, for the live count on the screen.
+    "--eventos",
   ];
   const out = openSync(logFile, "a");
   try {

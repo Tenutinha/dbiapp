@@ -1,5 +1,6 @@
 import { DashboardSkeleton } from "@/components/dashboard/DashboardSkeleton";
 import type { ClientRef, OrgRef } from "@/lib/access";
+import { fiscalModelingHere } from "@/lib/services/fiscal";
 import { loadFiscalPanel } from "@/lib/services/fiscal-panel";
 import { defaultLocalFolder, localLoadAvailable } from "@/lib/services/local-load";
 import { CLIENTS_DIR } from "@/lib/storage-explorer";
@@ -17,7 +18,7 @@ interface FiscalPanelBodyProps {
 export async function FiscalPanelBody({ org, client, canManage, platformAdmin }: FiscalPanelBodyProps) {
   const view = await loadFiscalPanel(org, client, canManage);
   const localFolder = canManage && platformAdmin && localLoadAvailable() ? defaultLocalFolder() : null;
-  return <FiscalPanel view={view} orgSlug={org.slug} filesFolder={client ? `${CLIENTS_DIR}/${client.slug}` : ""} localFolder={localFolder} />;
+  return <FiscalPanel view={view} orgSlug={org.slug} filesFolder={client ? `${CLIENTS_DIR}/${client.slug}` : ""} localFolder={localFolder} modeling={fiscalModelingHere()} />;
 }
 
 export function FiscalPanelFallback() {

@@ -30,7 +30,7 @@ import { relativeToOrg } from "../storage-browse";
 import { isSameFiscalDocument } from "../storage-analysis";
 import { fiscalFolder, fiscalNamedKey, fiscalPeriodFolder, isIssuedFiscalUploadKey, spaceFolder } from "../storage-keys";
 import { checkSize, ingestIntoDraft, requireTemplate, UserFacingError, type UploadPlan } from "./datasets";
-import { rebuildSpedFromParts } from "./fiscal-parts";
+import { rebuildSpedFromParts, type PartsOptions } from "./fiscal-parts";
 
 /** Files listed per period folder (one month of NF-e can hold thousands of documents). */
 const MAX_FILES_PER_FOLDER = 20_000;
@@ -39,6 +39,18 @@ const TXT_MIME = "text/plain";
 
 export function fiscalImporter(access: Pick<InstanceAccess, "templateId">): FiscalImporter | null {
   return fiscalImporterFor(access.templateId);
+}
+
+/**
+ * Turning the raw files into the dashboards' tables ("modelagem": organize, read, put together, publish) is
+ * done on the DBI's machine, by the scripts or the local server. The hosted app only receives the files.
+ */
+export const fiscalModelingHere = (): boolean => !process.env.VERCEL;
+
+export function requireModelingHere(): void {
+  if (!fiscalModelingHere()) {
+    throw new UserFacingError("Aqui só o envio dos arquivos: a montagem das tabelas fiscais é feita pela equipe da DBI.");
+  }
 }
 
 export function requireImporter(access: InstanceAccess): FiscalImporter {
@@ -306,6 +318,9 @@ export interface RebuildOptions {
   onProgress?: (done: number, total: number) => void;
   /** SPED: who runs it, shown on the panel while it runs ("script", or the app's screen by default). */
   by?: "script" | "tela";
+  /** SPED: called after each file read or refused, and after each table put together. */
+  onFile?: PartsOptions["onFile"];
+  onTable?: PartsOptions["onTable"];
 }
 
 /** NF-e and other documents: every stored file is parsed whole and the tables are gathered in memory. */

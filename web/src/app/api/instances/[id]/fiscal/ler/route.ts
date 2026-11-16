@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireInstance } from "@/lib/access";
 import { requireTemplate, UserFacingError } from "@/lib/services/datasets";
-import { findStoredFile, requireImporter } from "@/lib/services/fiscal";
+import { findStoredFile, requireImporter, requireModelingHere } from "@/lib/services/fiscal";
 import { readSpedFile } from "@/lib/services/fiscal-parts";
 import { fail, handleError, instanceParams } from "../../upload/respond";
 
@@ -21,6 +21,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if (!params.success) return fail(404, "Dashboard não encontrado.");
   try {
     const access = await requireInstance(params.data.id, "manageData");
+    requireModelingHere();
     const importer = requireImporter(access);
     if (importer.mode !== "sped") throw new UserFacingError("Este dashboard lê os arquivos todos de uma vez: use Montar tabelas.");
     const input = body.parse(await req.json());

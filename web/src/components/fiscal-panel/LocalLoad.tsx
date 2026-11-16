@@ -3,9 +3,10 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { BuildStatus } from "@/lib/fiscal/build-status";
-import type { FolderCheck, LoadLog, LocalLoadPhase } from "@/lib/fiscal/local-load";
+import type { FolderCheck, LiveCount, LoadLog, LocalLoadPhase } from "@/lib/fiscal/local-load";
+import { formatBytes } from "@/lib/format";
 import { BuildBanner } from "./BuildBanner";
-import { count } from "./labels";
+import { count, periodLabel } from "./labels";
 
 interface LoadView {
   run: { folder: string; startedAt: string; phase: LocalLoadPhase } | null;
@@ -64,6 +65,91 @@ function Check({ check }: { check: FolderCheck }) {
   );
 }
 
+function Number({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-line bg-bg px-3 py-2">
+      <dt className="text-xs text-muted">{label}</dt>
+      <dd className="text-lg font-semibold tabular-nums">{value}</dd>
+    </div>
+  );
+}
+
+const cnpjLabel = (cnpj: string): string =>
+  cnpj.length === 14 ? `${cnpj.slice(0, 2)}.${cnpj.slice(2, 5)}.${cnpj.slice(5, 8)}/${cnpj.slice(8, 12)}-${cnpj.slice(12)}` : cnpj;
+
+/** The count as the load goes: what was read so far, the lines of each table, and the files as they end. */
+function Live({ live, running }: { live: LiveCount; running: boolean }) {
+  const biggest = live.byTable[0]?.rows ?? 0;
+  return (
+    <div className="flex flex-col gap-3" aria-live="off">
+      <dl className="grid grid-cols-2 gap-2 md:grid-cols-4">
+        <Number label="Arquivos lidos nesta rodada" value={count(live.files - live.failed)} />
+        <Number label="Linhas lidas" value={count(live.rows)} />
+        <Number label="Volume lido" value={formatBytes(live.bytes)} />
+        <Number label="Arquivos com erro" value={count(live.failed)} />
+      </dl>
+
+      {live.byTable.length > 0 && (
+        <div>
+          <p className="mb-1 text-xs font-semibold">Linhas por tabela {running ? "(somando enquanto lê)" : ""}</p>
+          <table className="w-full text-xs">
+            <thead className="text-left text-muted">
+              <tr>
+                <th className="py-1 pr-3 font-normal">Tabela</th>
+                <th className="py-1 pr-3 text-right font-normal">Linhas</th>
+                <th className="py-1 pr-3 text-right font-normal">Arquivos</th>
+                <th className="w-1/3 py-1 font-normal"><span className="sr-only">Proporção</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              {live.byTable.map((t) => (
+                <tr key={t.table} className="border-t border-line">
+                  <td className="py-1 pr-3 font-mono">{t.table}</td>
+                  <td className="py-1 pr-3 text-right tabular-nums">{count(t.rows)}</td>
+                  <td className="py-1 pr-3 text-right tabular-nums">{count(t.files)}</td>
+                  <td className="py-1">
+                    <div className="h-1.5 rounded-full bg-brand-2/70" style={{ width: `${biggest > 0 ? Math.max((t.rows / biggest) * 100, 1) : 0}%` }} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {live.assembled.length > 0 && (
+        <div>
+          <p className="mb-1 text-xs font-semibold">Tabelas finais já montadas</p>
+          <ul className="flex flex-col gap-0.5 text-xs">
+            {live.assembled.map((t) => (
+              <li key={t.table} className={t.ok ? "" : "text-danger"}>
+                {t.ok ? "✓" : "✕"} <span className="font-mono">{t.table}</span> · {count(t.rows)} linhas · {formatBytes(t.sizeBytes)}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {live.recent.length > 0 && (
+        <div>
+          <p className="mb-1 text-xs font-semibold">Últimos arquivos lidos</p>
+          <ul className="flex flex-col gap-0.5 text-xs">
+            {live.recent.map((f) => {
+              const rows = Object.values(f.rows).reduce((sum, n) => sum + n, 0);
+              return (
+                <li key={`${f.cnpj}/${f.periodo}/${f.sizeBytes}`} className={f.ok ? "" : "text-danger"}>
+                  {f.ok ? "✓" : "✕"} <span className="font-mono">{cnpjLabel(f.cnpj)}</span> · {periodLabel(f.periodo)} · {formatBytes(f.sizeBytes)}
+                  {f.ok ? ` · ${count(rows)} linhas` : ` — ${f.error ?? "não foi possível ler"}`}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Progress({ view, now }: { view: LoadView; now: number }) {
   const { run, log, build } = view;
   if (!run || !log) return null;
@@ -89,6 +175,7 @@ function Progress({ view, now }: { view: LoadView; now: number }) {
           <Bar value={log.read.total > 0 ? log.read.done / log.read.total : 0} />
         </div>
       )}
+      {log.live && <Live live={log.live} running={run.phase === "rodando"} />}
       {log.summary && <p className="text-xs">{log.summary}</p>}
       {log.tables.length > 0 && (
         <table className="w-full text-xs">
