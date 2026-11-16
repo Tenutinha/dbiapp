@@ -9,6 +9,7 @@ import type { ClientRef, InstanceAccess, OrgRef } from "../access";
 import { listSpaceDashboards, type SpaceDashboardRow } from "../data/instances";
 import { getDraft, getVersion, listFiles } from "../data/repository";
 import { FISCAL_IMPORTERS, fiscalImporterFor } from "../fiscal/importers";
+import type { BuildStatus } from "../fiscal/build-status";
 import type { Lineage } from "../fiscal/lineage";
 import {
   countStates, documentFileStatuses, fileMap, filesToRead, lineageSourcesPage, lineageTableView, parseLineage,
@@ -18,7 +19,7 @@ import type { LineageSource } from "../fiscal/lineage";
 import { storage } from "../storage";
 import { relativeToOrg } from "../storage-browse";
 import { dashboardFolder } from "../storage-keys";
-import { hostedLimits, LINEAGE_FILE, MAX_HOSTED_READ_BYTES, spedFilesOverview } from "./fiscal-parts";
+import { hostedLimits, LINEAGE_FILE, MAX_HOSTED_READ_BYTES, readBuildStatus, spedFilesOverview } from "./fiscal-parts";
 import { looseSpaceFiles, storedFiscalFiles } from "./fiscal";
 
 /** One table a dashboard has (published or in its draft). */
@@ -36,6 +37,8 @@ export interface PanelDashboard {
   published: PanelTable[];
   /** Tables put together and not published yet. */
   draft: PanelTable[] | null;
+  /** The last "Montar tabelas" (SPED): running now, done or failed, by the script or the screen. */
+  build: BuildStatus | null;
 }
 
 /** A file as the panel lists it (paths relative to the organization's folder). */
@@ -81,14 +84,15 @@ export interface FiscalPanelView {
 const asTables = (files: Awaited<ReturnType<typeof listFiles>>): PanelTable[] =>
   files.map((f) => ({ table: f.tableName, rows: f.rowCount, sizeBytes: f.sizeBytes }));
 
-async function dashboardOf(row: SpaceDashboardRow): Promise<PanelDashboard> {
-  const [published, draft] = await Promise.all([
+async function dashboardOf(org: OrgRef, client: ClientRef | null, row: SpaceDashboardRow, sped: boolean): Promise<PanelDashboard> {
+  const [published, draft, build] = await Promise.all([
     row.activeVersionId ? listFiles(row.activeVersionId) : Promise.resolve([]),
     row.draftId ? listFiles(row.draftId) : Promise.resolve(null),
+    sped ? readBuildStatus({ org, client, instanceId: row.id, templateId: row.templateId }) : Promise.resolve(null),
   ]);
   return {
     id: row.id, name: row.name, publishedAt: row.publishedAt ? row.publishedAt.toISOString() : null,
-    published: asTables(published), draft: draft && draft.length > 0 ? asTables(draft) : null,
+    published: asTables(published), draft: draft && draft.length > 0 ? asTables(draft) : null, build,
   };
 }
 
@@ -107,7 +111,7 @@ async function loadModel(
   try {
     const [stored, dashboard] = await Promise.all([
       storedFiscalFiles(org.slug, clientSlug, templateId),
-      row ? dashboardOf(row) : Promise.resolve(null),
+      row ? dashboardOf(org, client, row, importer.mode === "sped") : Promise.resolve(null),
     ]);
     if (!dashboard && stored.files.length === 0 && stored.loose.length === 0) return null;
     const accepted = stored.files.filter((f) => importer.extensions.some((ext) => f.name.toLowerCase().endsWith(ext)));
@@ -132,7 +136,7 @@ async function loadModel(
   } catch (err) {
     console.error("[fiscal-panel] could not list", org.slug, templateId, err);
     return {
-      ...base, dashboard: row ? await dashboardOf(row).catch(() => null) : null,
+      ...base, dashboard: row ? await dashboardOf(org, client, row, importer.mode === "sped").catch(() => null) : null,
       counts: countStates([]), files: 0, sizeBytes: 0, map: fileMap([]), toRead: [], failed: [], big: [], loose: 0,
       error: "Não foi possível listar os arquivos deste molde agora.",
     };
