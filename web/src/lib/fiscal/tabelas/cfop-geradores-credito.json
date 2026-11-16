@@ -1,0 +1,39 @@
+{
+  "tabela": "CFOP – Operações Geradoras de Créditos (EFD Contribuições)",
+  "situacao": "transcrita da planilha de parâmetros da análise original; não conferida contra a planilha oficial",
+  "fonte": "Aba CFOP da planilha de parâmetros da análise original (a que alimentava o QlikView), indicada pelo responsável pela análise em 16/11/2026: os grupos que lá trazem o código de base de cálculo do crédito da tabela do SPED (Tabela I: base de cálculo de créditos M105/M505 em função do CFOP informado no documento fiscal). O responsável confirmou em 16/11/2026 que o filtro é a tabela oficial.",
+  "fonte_oficial": "Tabela CFOP - Operações Geradoras de Créditos, versão 1.10, atualizada em 13.03.2020: http://sped.rfb.gov.br/arquivo/show/1681 (Tabela_CFOPOperacoesGeradorasCreditos.xls)",
+  "consulta": "2026-11-16",
+  "observacao": "A planilha oficial não pôde ser baixada em 16/11/2026 (o link antigo redireciona para a página inicial do portal novo, e o endereço novo pede autenticação), por isso a lista não foi conferida contra ela. Na planilha de parâmetros, 1551, 2551 e 3551 (imobilizado) estão com POSSIBILITA_CREDITO = NÃO e ficam fora; o crédito do imobilizado vai nos registros F120/F130.",
+  "grupos": [
+    {
+      "base_credito": "01",
+      "descricao": "Aquisição de bens para revenda",
+      "cfop": ["1102", "1113", "1117", "1118", "1121", "1159", "1251", "1403", "1652", "2102", "2113", "2117", "2118", "2121", "2159", "2251", "2403", "2652", "3102", "3251", "3652"]
+    },
+    {
+      "base_credito": "02",
+      "descricao": "Aquisição de bens utilizados como insumo",
+      "cfop": ["1101", "1111", "1116", "1120", "1122", "1126", "1128", "1132", "1135", "1401", "1407", "1456", "1556", "1651", "1653", "2101", "2111", "2116", "2120", "2122", "2126", "2128", "2132", "2135", "2401", "2407", "2456", "2556", "2651", "2653", "3101", "3126", "3128", "3556", "3651", "3653"]
+    },
+    {
+      "base_credito": "03",
+      "descricao": "Aquisição de serviços utilizados como insumo",
+      "cfop": ["1124", "1125", "1933", "2124", "2125", "2933"]
+    },
+    {
+      "base_credito": "12",
+      "descricao": "Devolução de vendas sujeitas à incidência não cumulativa",
+      "cfop": ["1201", "1202", "1203", "1204", "1206", "1207", "1215", "1216", "1410", "1411", "1660", "1661", "1662", "2201", "2202", "2206", "2207", "2215", "2216", "2410", "2411", "2660", "2661", "2662"]
+    },
+    {
+      "base_credito": "13",
+      "descricao": "Outras operações com direito a crédito",
+      "cfop": ["1922", "2922"]
+    }
+  ],
+  "fora_do_filtro": {
+    "descricao": "CFOP que a planilha de parâmetros marca com POSSIBILITA_CREDITO = SIM, mas sem código de base de crédito (acréscimo da análise, fora da tabela oficial): não entram no filtro. A confirmar com o responsável se devem entrar.",
+    "cfop": ["1212", "1553", "2203", "2204", "2212", "2553", "3201", "3202", "3211", "3212", "3553"]
+  }
+}
