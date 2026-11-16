@@ -206,7 +206,8 @@ function placeholderRow(table: TemplateTable): Row {
 async function assembleTable(
   access: InstanceAccess, table: TemplateTable, sources: readonly string[], dir: string, latestWins: boolean,
 ): Promise<TableReport> {
-  const local = await inBatches(sources.flatMap(splitParts), DOWNLOADS_AT_A_TIME, (k) => storage.localPath(k));
+  // One temporary bucket error among thousands of downloads must not throw the whole table away.
+  const local = await inBatches(sources.flatMap(splitParts), DOWNLOADS_AT_A_TIME, (k) => withRetries(() => storage.localPath(k)));
   const target = path.join(dir, `${table.name}.parquet`);
   const columns = table.columns.map((c) => c.name).join(", ");
   await withConnection(storage.workRoot, async (conn) => {
@@ -239,6 +240,24 @@ export async function inBatches<T, R>(items: readonly T[], size: number, fn: (it
     for (let i = next++; i < items.length; i = next++) results[i] = await fn(items[i]);
   }));
   return results;
+}
+
+/** Attempts a bucket request gets before its error is final. */
+const BUCKET_ATTEMPTS = 4;
+/** Wait before the second attempt; it doubles at each new one. */
+const RETRY_WAIT_MS = 2000;
+
+/** Runs `fn` again when it fails (a bucket answering with a temporary error), waiting longer each time. */
+export async function withRetries<R>(fn: () => Promise<R>, attempts = BUCKET_ATTEMPTS, waitMs = RETRY_WAIT_MS): Promise<R> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await fn();
+    } catch (e) {
+      if (attempt >= attempts) throw e;
+      console.warn(`[fiscal] attempt ${attempt} of ${attempts} failed, trying again:`, e instanceof Error ? e.message.slice(0, 200) : e);
+      await new Promise((r) => setTimeout(r, waitMs * 2 ** (attempt - 1)));
+    }
+  }
 }
 
 /** What the dashboard already has for a table: the draft's file, else the published one. */

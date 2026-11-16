@@ -46,7 +46,7 @@ const { fiscalImporterFor } = await import("../fiscal/importers");
 const { partsFolderId } = await import("../fiscal/parts-plan");
 const { SPED_READER_VERSION } = await import("../fiscal/sped-kinds");
 const { templateSchema } = await import("../templates/schema");
-const { assembleSpedFromParts, inBatches, readConcurrency, readSpedFile, rebuildSpedFromParts, spedFilesOverview, spedPartsState } = await import("./fiscal-parts");
+const { assembleSpedFromParts, inBatches, withRetries, readConcurrency, readSpedFile, rebuildSpedFromParts, spedFilesOverview, spedPartsState } = await import("./fiscal-parts");
 
 const template = templateSchema.parse(JSON.parse(await readFile(path.join(process.cwd(), "fiscal-templates", "efd-contribuicoes.json"), "utf8")));
 const importer = fiscalImporterFor("efd-contribuicoes");
@@ -235,5 +235,25 @@ describe("inBatches", () => {
     expect(out).toEqual([50, 10, 40, 20, 30, 0]);
     expect(peak).toBe(2);
     expect(await inBatches([], 4, async (n: number) => n)).toEqual([]);
+  });
+});
+
+describe("withRetries", () => {
+  it("tries again after a failure and gives up after the last attempt", async () => {
+    let calls = 0;
+    const flaky = async (): Promise<string> => {
+      calls += 1;
+      if (calls < 3) throw new Error("502");
+      return "ok";
+    };
+    expect(await withRetries(flaky, 4, 1)).toBe("ok");
+    expect(calls).toBe(3);
+
+    calls = 0;
+    await expect(withRetries(async () => {
+      calls += 1;
+      throw new Error("down");
+    }, 2, 1)).rejects.toThrow("down");
+    expect(calls).toBe(2);
   });
 });
