@@ -49,7 +49,7 @@ export function visualRefs(v: Visual): { fields: string[]; measures: string[]; s
       return { fields: [v.field, ...(v.labelField ? [v.labelField] : [])], measures: [...measures, ...v.tooltip], sql: where };
     }
     case "rows":
-      return { fields: [], measures: [], sql: [...where, ...v.columns.map((c) => c.sql), ...(v.orderBy ? [v.orderBy] : [])] };
+      return { fields: [], measures: [], sql: [...where, ...v.columns.map((c) => c.sql), ...(v.orderBy ? [v.orderBy] : []), ...(v.groupBy ? [v.groupBy] : [])] };
     case "text":
       return { fields: [], measures: [], sql: [] };
     case "statement":

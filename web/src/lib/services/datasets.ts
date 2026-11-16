@@ -147,7 +147,8 @@ async function unregistered(draftId: string, keys: readonly string[]): Promise<s
 /**
  * Makes a table of the draft out of the converted parts: the table becomes exactly those files, read
  * together (nothing is rewritten). Refused, and the parts dropped, when they do not go together — a
- * dimension key that is in two files.
+ * dimension key that is in two files. A part the table already has (in the draft or in the published
+ * version) may be given again: it is kept as it is — a year whose files did not change.
  */
 export async function registerParts(access: InstanceAccess, table: TemplateTable, parts: readonly DraftPart[]): Promise<TableReport> {
   const failed = (errors: string[], files?: TableReport["files"]): TableReport => ({
@@ -155,19 +156,26 @@ export async function registerParts(access: InstanceAccess, table: TemplateTable
   });
   const draft = await getDraft(access.instanceId);
   const keys = parts.map((p) => p.key);
-  const mine = draft !== null && keys.every((k) => isDatasetKey(k, access.org.slug, access.client?.slug ?? null, access.instanceId, access.templateId, draft.version, table.name));
+  // Parts this table already has; they are never dropped here, whatever happens to the new ones.
+  const carried = new Set<string>();
+  for (const versionId of [draft?.id, access.activeVersionId]) {
+    if (!versionId) continue;
+    for (const f of await listFiles(versionId)) if (f.tableName === table.name) for (const k of splitParts(f.storagePath)) carried.add(k);
+  }
+  const fresh = keys.filter((k) => !carried.has(k));
+  const mine = draft !== null && fresh.every((k) => isDatasetKey(k, access.org.slug, access.client?.slug ?? null, access.instanceId, access.templateId, draft.version, table.name));
   if (!draft || !mine || new Set(keys).size !== keys.length) return failed([NEW_VERSION]);
 
   let local: { name: string; path: string }[];
   try {
     local = await Promise.all(parts.map(async (p) => ({ name: p.name, path: await storage.localPath(p.key) })));
   } catch {
-    await storage.remove(await unregistered(draft.id, keys));
+    await storage.remove(await unregistered(draft.id, fresh));
     return failed(["Um dos arquivos convertidos não está mais disponível. Engate de novo."]);
   }
   const inspected = await inspectParts(storage.workRoot, table, local);
   if (inspected.errors.length > 0) {
-    await storage.remove(await unregistered(draft.id, keys));
+    await storage.remove(await unregistered(draft.id, fresh));
     return failed(inspected.errors, inspected.files);
   }
 
@@ -184,7 +192,7 @@ export async function registerParts(access: InstanceAccess, table: TemplateTable
     originalName: joinedName(parts.map((p) => p.name)),
   });
   if (!registered.ok) {
-    await storage.remove(keys);
+    await storage.remove(fresh);
     return failed([NEW_VERSION]);
   }
   const kept = new Set(keys);

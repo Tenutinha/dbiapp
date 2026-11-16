@@ -165,7 +165,7 @@ export function FiscalPanel({ view, orgSlug, filesFolder, localFolder, modeling 
   const running = view.models.some((m) => m.dashboard?.build && isActive(m.dashboard.build) && !isStale(m.dashboard.build, now));
   return (
     <div className="flex flex-col gap-5">
-      {running && <AutoRefresh />}
+      {running && <AutoRefresh renderedAt={now} />}
       <p className="max-w-3xl text-sm text-muted">
         O caminho dos arquivos fiscais deste espaço, do arquivo original às tabelas publicadas: o que foi enviado, por empresa e
         mês; o que já foi lido, o que falta e o que deu erro; e de quais arquivos vem cada tabela.

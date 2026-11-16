@@ -11,6 +11,8 @@ export interface RemoteBucket {
    */
   listTree?(prefix: string, names?: readonly string[]): Promise<BrowseEntryFile[]>;
   upload(key: string, body: Uint8Array, contentType: string): Promise<void>;
+  /** Uploads a file of this machine without holding it in memory (hundreds of MB). Optional: without it, `upload`. */
+  uploadFile?(key: string, localPath: string, contentType: string): Promise<void>;
   download(key: string): Promise<Uint8Array>;
   /** The first `bytes` of an object (to identify a big file without fetching it whole). */
   downloadHead(key: string, bytes: number): Promise<Uint8Array>;

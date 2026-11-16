@@ -246,6 +246,11 @@ const visualSchema = z.discriminatedUnion("type", [
     })).min(1).max(80),
     /** Expression the rows are ordered by, ascending (e.g. the line number in the file). */
     orderBy: sqlExpr.optional(),
+    /**
+     * Topic of each row: consecutive rows with the same value go under one title line (topic and its
+     * subtopics in a single listing). Order the rows by the topic first.
+     */
+    groupBy: sqlExpr.optional(),
     limit: z.number().int().min(1).max(1000).default(100),
     /** More rows while a screen filter is in use (e.g. a short sample of every record; many rows of the chosen one). */
     expand: z.object({ filter: ident, limit: z.number().int().min(1).max(5000) }).optional(),

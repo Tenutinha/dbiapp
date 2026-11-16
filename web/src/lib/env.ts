@@ -20,6 +20,8 @@ const envSchema = z
     DBI_STORAGE_DRIVER: z.enum(["local", "supabase", "gcs"]).default("local"),
     DBI_STORAGE_DIR: z.string().min(1).default("./storage"),
     DBI_STORAGE_BUCKET: z.string().regex(/^[a-z0-9-]+$/).default("dbi"),
+    /** Work folder for the cloud drivers (download cache, and the parts a preparing machine keeps): default, a temporary folder. */
+    DBI_WORK_DIR: z.string().min(1).optional(),
 
     /** Google Cloud Storage (DBI_STORAGE_DRIVER=gcs). */
     GCS_BUCKET: z.string().regex(/^[a-z0-9][a-z0-9._-]{1,220}[a-z0-9]$/).optional(),
@@ -82,7 +84,7 @@ function load(): Env {
   const workRoot =
     e.DBI_STORAGE_DRIVER === "local"
       ? path.resolve(process.cwd(), e.DBI_STORAGE_DIR)
-      : path.join(os.tmpdir(), "dbi-cache");
+      : e.DBI_WORK_DIR ? path.resolve(e.DBI_WORK_DIR) : path.join(os.tmpdir(), "dbi-cache");
   return { ...e, workRoot };
 }
 

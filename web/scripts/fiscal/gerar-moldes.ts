@@ -930,7 +930,8 @@ function ecd(): Json {
       ],
     },
     {
-      id: "lancamentos", title: "Lançamentos", description: "Lançamentos (I200) e suas partidas (I250) no mês escolhido.",
+      id: "lancamentos", title: "Lançamentos",
+      description: "Lançamentos (I200) e suas partidas (I250) do arquivo mais recente de cada empresa: os lançamentos dos outros períodos não ficam guardados no dashboard.",
       visuals: [
         kpi("k_lancamentos", "Lançamentos", "lancamentos", 3, i200), kpi("k_valor_lancado", "Valor lançado", "valor_lancado", 3, i200),
         kpi("k_partidas", "Partidas", "partidas", 3, i250), kpi("k_partidas_debito", "Débitos das partidas", "partidas_debito", 3, i250),
@@ -947,6 +948,10 @@ function ecd(): Json {
       ],
     },
   ];
+  // Every panel but the entries reads all the periods from the table made for them (the main fact holds one file whole).
+  const panelsAllPeriods = panels.map((s) => (s.id === "lancamentos"
+    ? s
+    : { ...s, visuals: s.visuals.map((v) => (v.fact ? v : { ...v, fact: "paineis_todos_periodos" })) }));
   measures.push({ id: "saldo_credor", label: "Saldo", sql: `0 - ${sumWhen(i155, fin)}`, format: "currency" });
   measures.push(...dreMeasures);
   /** Records that carry a month of their own follow the month filter; the others always show. */
@@ -954,7 +959,7 @@ function ecd(): Json {
   return build(k, {
     name: "ECD", area: "Contábil",
     description: "Escrituração contábil digital completa: balancete, lançamentos e demonstrações em painéis, e todos os registros do arquivo com todos os campos para consulta.",
-    fields, measures, filters: ["ano", "mes", "empresa", "natureza"], filterDefaults: { mes: "mais recente" }, panels, panelGroup: "Painéis",
+    fields, measures, filters: ["ano", "mes", "empresa", "natureza"], filterDefaults: { mes: "mais recente" }, panels: panelsAllPeriods, panelGroup: "Painéis",
     skipFilters: (reg) => (monthly.has(reg) ? ["natureza"] : ["mes", "natureza"]),
   });
 }

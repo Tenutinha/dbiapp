@@ -90,7 +90,7 @@ def ler_catalogo(markdown: str) -> list[Auditoria]:
         auditoria = Auditoria(
             ordem=len(auditorias) + 1, codigo=codigo, tema_ordem=0, tema=tema, auditoria=texto_puro(titulo.group(2)),
             situacao=ATIVA if codigo in ATIVAS_DO_CATALOGO else PLANEJADA,
-            confere=campo(linhas, "Confere"), importa=campo(linhas, "Por que importa"),
+            confere=maiuscula(campo(linhas, "Confere")), importa=maiuscula(campo(linhas, "Por que importa")),
             dificuldade=maiuscula(parte(classificacao, "Dificuldade")),
             tributarista=maiuscula(parte(classificacao, "Tributarista")) or "Não",
             resultado=maiuscula(parte(classificacao, "Resultado")),
