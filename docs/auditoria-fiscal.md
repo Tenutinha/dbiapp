@@ -171,6 +171,8 @@ Depois de atualizar os dashboards fiscais com o mês novo: `extrair.ts` (só o a
 
 - Levar o preparo para o app: montar as tabelas da Auditoria pelo "Montar tabelas", a partir das partes por arquivo
   da EFD Contribuições (ver [arquivos-fiscais.md](arquivos-fiscais.md#5-montagem-por-arquivo-fase-1-implementada)).
+- Regras novas: o levantamento de tudo o que dá para auditar com esses arquivos, com dados, dificuldade e ordem
+  proposta, está em [auditorias-catalogo.md](auditorias-catalogo.md).
 - Regras novas descritas pelo tributário de cada organização.
 - ECD: conciliação de receita contábil × fiscal, com o mapeamento das contas.
 - Situação das notas nos XML (canceladas, recusadas) para limpar a O03.
