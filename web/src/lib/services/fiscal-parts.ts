@@ -197,7 +197,7 @@ async function readIntoCsv(
 
 /** Converts a CSV to the table's contract and keeps it at `key`. */
 async function keepPart(table: TemplateTable, source: string, key: string): Promise<number> {
-  const report = await ingestTable({ storageRoot: storage.workRoot, table, sourcePath: source, format: "csv", targetPath: storage.pathFor(key) });
+  const report = await ingestTable({ storageRoot: storage.workRoot, table, sourcePath: source, format: "csv", ownCsv: true, targetPath: storage.pathFor(key) });
   if (!report.ok) throw new Error(`${table.name}: ${report.errors.join(" ")}`);
   await storage.commit(key, PARQUET_MIME);
   return report.rowCount;
