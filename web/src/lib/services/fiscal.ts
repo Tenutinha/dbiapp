@@ -302,6 +302,8 @@ export interface RebuildOptions {
   rereadAll?: boolean;
   /** SPED: called after each file read (files done, files to read). */
   onProgress?: (done: number, total: number) => void;
+  /** SPED: who runs it, shown on the panel while it runs ("script", or the app's screen by default). */
+  by?: "script" | "tela";
 }
 
 /** NF-e and other documents: every stored file is parsed whole and the tables are gathered in memory. */

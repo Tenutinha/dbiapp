@@ -24,6 +24,7 @@ import { getDraft, listFiles } from "../data/repository";
 import { quotePath, readParquet, withConnection } from "../duck/engine";
 import { csvLine, toCsv } from "../fiscal/csv";
 import type { FiscalTables, SpedImporter } from "../fiscal/importers";
+import { parseBuildStatus, type BuildRunner, type BuildStatus } from "../fiscal/build-status";
 import { dimensionHow, factHow, sourcesOf, type Lineage, type TableLineage } from "../fiscal/lineage";
 import {
   filesForFact, parseFailure, parseMarker, partsFolderId, planParts,
@@ -45,6 +46,10 @@ const JSON_MIME = "application/json";
 const MARKER = "pronto.json";
 const FAILURE = "erro.json";
 export const LINEAGE_FILE = "linhagem.json";
+/** Where a build says how far it is (fiscal/build-status.ts), in the dashboard's folder. */
+export const BUILD_STATUS_FILE = "montagem.json";
+/** While reading, the status is written at most this often (thousands of files would mean thousands of writes). */
+const STATUS_EVERY_MS = 15_000;
 /** Raw bytes one serverless request can read (disk and time are limited there); files already read do not count. */
 export const MAX_HOSTED_READ_BYTES = 250 * 1024 ** 2;
 /** Whether this server runs where a request has those limits (the hosted app, not a script or a local server). */
@@ -79,6 +84,44 @@ export interface PartsOptions {
   rereadAll?: boolean;
   /** Called after each file read (or skipped): files done, files to read. */
   onProgress?: (done: number, total: number) => void;
+  /** Who runs the build, for the panel ("script" or the app's screen). */
+  by?: BuildRunner;
+}
+
+const buildStatusKey = (access: DashboardRef): string =>
+  `${dashboardFolder(access.org.slug, access.client?.slug || null, access.instanceId, access.templateId)}${BUILD_STATUS_FILE}`;
+
+/** The build's status kept for the panel; a failure to write it never fails the build. */
+function trackBuild(access: DashboardRef, by: BuildRunner) {
+  const key = buildStatusKey(access);
+  const startedAt = new Date().toISOString();
+  let last = 0;
+  let writing: Promise<void> = Promise.resolve();
+  const write = (status: Omit<BuildStatus, "by" | "startedAt" | "updatedAt">): Promise<void> => {
+    last = Date.now();
+    const record: BuildStatus = { ...status, by, startedAt, updatedAt: new Date().toISOString() };
+    // One write after the other: the last word always lands last.
+    writing = writing.then(() => storage.replaceBytes(key, new TextEncoder().encode(JSON.stringify(record)), JSON_MIME))
+      .catch((err: unknown) => console.error("[fiscal] could not keep the build status", access.instanceId, err));
+    return writing;
+  };
+  return {
+    reading: (done: number, total: number): void => {
+      if (done === 0 || done === total || Date.now() - last >= STATUS_EVERY_MS) void write({ state: "lendo", read: { done, total } });
+    },
+    table: (name: string, index: number, total: number): Promise<void> => write({ state: "montando", table: { name, index, total } }),
+    done: (files: number): Promise<void> => write({ state: "concluida", files, finishedAt: new Date().toISOString() }),
+    failed: (err: unknown): Promise<void> => write({
+      state: "falhou", finishedAt: new Date().toISOString(),
+      error: err instanceof UserFacingError || err instanceof FiscalFileError ? err.message : "erro inesperado (veja o log)",
+    }),
+  };
+}
+type BuildTracker = ReturnType<typeof trackBuild>;
+
+/** The last build's status of a dashboard (null: never tracked, or unreadable). */
+export async function readBuildStatus(access: DashboardRef): Promise<BuildStatus | null> {
+  return readJson(buildStatusKey(access)).then(parseBuildStatus, () => null);
 }
 
 /** The facts this kind of SPED writes for the template: its main fact and the block facts it declares. */
@@ -380,6 +423,8 @@ export async function rebuildSpedFromParts(
   await mkdir(work, { recursive: true });
   const skipped: PartsRebuildResult["skipped"] = [];
   const justRead: { file: RawFile; marker: PartsMarker }[] = [];
+  const tracker = trackBuild(access, options.by ?? "tela");
+  tracker.reading(0, plan.read.length);
   try {
     // A few files at a time (see readConcurrency); the order they end in does not matter, `ready` is sorted when assembling.
     const queue = [...plan.read];
@@ -391,12 +436,16 @@ export async function rebuildSpedFromParts(
         else skipped.push({ path: relativeToOrg(access.org.slug, file.key), error: result.error });
         done += 1;
         options.onProgress?.(done, plan.read.length);
+        tracker.reading(done, plan.read.length);
       }
     }));
     return await assemble(
       access, importer, template,
-      { plan, justRead, skipped, dimensionsFrom: options.rereadAll ? "read" : "dashboard", only: options.only }, work,
+      { plan, justRead, skipped, dimensionsFrom: options.rereadAll ? "read" : "dashboard", only: options.only, tracker }, work,
     );
+  } catch (err) {
+    await tracker.failed(err);
+    throw err;
   } finally {
     await rm(work, { recursive: true, force: true });
   }
@@ -418,9 +467,13 @@ export async function assembleSpedFromParts(
   const skipped = plan.read.map((f) => ({ path: relativeToOrg(access.org.slug, f.key), error: failures.get(f.key)?.error ?? "" }));
   const work = path.join(storage.workRoot, "_fiscal", `${access.instanceId}-${Date.now()}-montar`);
   await mkdir(work, { recursive: true });
+  const tracker = trackBuild(access, "tela");
   try {
     // The files were read in earlier requests: the dimensions come from every file's parts.
-    return await assemble(access, importer, template, { plan, justRead: [], skipped, dimensionsFrom: "read" }, work);
+    return await assemble(access, importer, template, { plan, justRead: [], skipped, dimensionsFrom: "read", tracker }, work);
+  } catch (err) {
+    await tracker.failed(err);
+    throw err;
   } finally {
     await rm(work, { recursive: true, force: true });
   }
@@ -436,6 +489,8 @@ interface AssembleInput {
    */
   dimensionsFrom: "dashboard" | "read";
   only?: "blocks";
+  /** Keeps the panel informed of the table on its way. */
+  tracker: BuildTracker;
 }
 
 /** Drops obsolete parts, puts every table of the draft together from the parts, and keeps the lineage. */
@@ -456,8 +511,13 @@ async function assemble(
   const tables: TableReport[] = [];
   const lineage: TableLineage[] = [];
   const relative = (key: string): string => relativeToOrg(access.org.slug, key);
+  const dimensions = template.tables.filter((t) => t.kind === "dimension");
+  const steps = facts.length - (input.only === "blocks" ? 1 : 0) + dimensions.length;
+  let step = 0;
   for (const table of facts) {
     if (input.only === "blocks" && table === facts[0]) continue;
+    step += 1;
+    await input.tracker.table(table.name, step, steps);
     const keep = filesForFact(ready, table === facts[0] ? importer.kind.mainFactPeriods : "all");
     const parts = keep.flatMap((r) => r.marker.tables[table.name]?.key ?? []);
     // A block the files do not bring (a company without services) stays out: an extra fact may be missing.
@@ -469,7 +529,9 @@ async function assemble(
       rows: report.ok ? report.rowCount : null, sources: sourcesOf(keep, table.name, "tables", relative),
     });
   }
-  for (const table of template.tables.filter((t) => t.kind === "dimension")) {
+  for (const table of dimensions) {
+    step += 1;
+    await input.tracker.table(table.name, step, steps);
     // What the dashboard already has, then what was read now; when every file was read now, only them.
     const base = input.dimensionsFrom === "read" || justRead.length === ready.length ? null : await currentFile(access, table.name);
     const fresh = (base ? justRead : ready).flatMap((r) => r.marker.dimensions[table.name]?.key ?? []);
@@ -492,6 +554,7 @@ async function assemble(
     reader: SPED_READER_VERSION, tables: lineage,
   };
   await keepLineage(access, record);
+  await input.tracker.done(ready.length);
   return {
     ok: tables.every((t) => t.ok), lineage: record, files: ready.length, read: justRead.length, reused: plan.ready.length, skipped, tables,
   };

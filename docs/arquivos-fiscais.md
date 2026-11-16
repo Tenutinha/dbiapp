@@ -254,6 +254,12 @@ Quem só vê enxerga o mapa e a linhagem. Quem gerencia os dados (`manageData`) 
 | Montar tabelas | `POST /api/instances/<id>/fiscal/montar` | SPED: junta as partes no rascunho **sem ler nada** (recusa se faltar ler algum arquivo; os com erro ficam de fora); NF-e: a montagem de sempre |
 | Publicar | ação `publishAction` | publica o rascunho |
 
+**Andamento da montagem.** Toda montagem SPED (pela tela ou pelo script `carregar-fiscal.ts`) grava
+`<espaço>/dashboards/<molde>-<id>/montagem.json`: lendo (N de M, gravado no máximo a cada 15 s), montando (tabela X de Y),
+concluída ou com falha, e quem rodou. O painel mostra uma faixa com isso e se atualiza sozinho a cada 20 s enquanto
+algo roda; sem notícia há mais de 20 min, avisa que a montagem parece ter parado. No topo do painel, "Como os arquivos
+são tratados" explica as duas etapas (partes por arquivo, depois um Parquet por tabela).
+
 A linhagem vem de `GET /api/instances/<id>/fiscal/linhagem?versao=publicada|rascunho[&tabela=…&offset=…]`
 (o rascunho só para quem gerencia os dados). Se a página fechar no meio da leitura, os marcadores dizem onde parou.
 Arquivos acima de 250 MB (ECD) continuam pelo script (seção 4).

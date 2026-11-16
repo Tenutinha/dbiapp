@@ -46,7 +46,9 @@ const { fiscalImporterFor } = await import("../fiscal/importers");
 const { partsFolderId } = await import("../fiscal/parts-plan");
 const { SPED_READER_VERSION } = await import("../fiscal/sped-kinds");
 const { templateSchema } = await import("../templates/schema");
-const { assembleSpedFromParts, readConcurrency, readSpedFile, rebuildSpedFromParts, spedFilesOverview, spedPartsState } = await import("./fiscal-parts");
+const {
+  assembleSpedFromParts, readBuildStatus, readConcurrency, readSpedFile, rebuildSpedFromParts, spedFilesOverview, spedPartsState,
+} = await import("./fiscal-parts");
 
 const template = templateSchema.parse(JSON.parse(await readFile(path.join(process.cwd(), "fiscal-templates", "efd-contribuicoes.json"), "utf8")));
 const importer = fiscalImporterFor("efd-contribuicoes");
@@ -211,6 +213,20 @@ describe("one file at a time (the panel)", () => {
     expect(progress).toEqual([1, 2, 3, 4]);
     expect(rows("bloco_a_servicos")).toBe(24);
     expect(months.map((m) => partsOf(`2025-${m}`).length)).toEqual([1, 1, 1, 1]);
+  }, 120_000);
+});
+
+describe("the build's status (montagem.json, for the panel)", () => {
+  const ref = { org: { slug: "acme" }, client: { slug: "cliente" }, instanceId: "3f9a2c1b-7d2e-4c1a-9b0f-1e2d3c4b5a69", templateId: "efd-contribuicoes" } as never;
+
+  it("says who ran it and how it ended, also when it fails", async () => {
+    expect(await readBuildStatus(ref)).toBeNull();
+    const jan = await put("2025-01", monthOf("01"), "2026-11-10T10:00:00.000Z");
+    await rebuildSpedFromParts(access, importer, template, [jan], { by: "script" });
+    expect(await readBuildStatus(ref)).toMatchObject({ state: "concluida", by: "script", files: 1 });
+
+    await expect(rebuildSpedFromParts(access, importer, template, [])).rejects.toThrow(/Nenhum arquivo/);
+    expect(await readBuildStatus(ref)).toMatchObject({ state: "falhou", by: "tela", error: "Nenhum arquivo enviado ainda." });
   }, 120_000);
 });
 
