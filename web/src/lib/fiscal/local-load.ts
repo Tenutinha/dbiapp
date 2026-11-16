@@ -136,6 +136,10 @@ export interface LiveCount {
   assembled: TableEvent[];
   /** The step the load is in (null: it reports no steps). */
   stage: StepEvent["etapa"] | null;
+  /** Files this run has to read (null: it has not started reading, or has nothing to read). */
+  filesTotal: number | null;
+  /** Tables this run puts together (null: it has not got there yet). */
+  tablesTotal: number | null;
   /** The file being read now, with the lines read so far and the blocks already written. */
   file: { cnpj: string; periodo: string; sizeBytes: number; origem: "disco" | "bucket"; posicao: number; total: number; linhas: number; blocos: { tabela: string; linhas: number }[] } | null;
   /** The table being put together now. */
@@ -169,6 +173,8 @@ function countLive(events: readonly string[]): LiveCount | null {
   const assembled: TableEvent[] = [];
   const feed: string[] = [];
   let stage: LiveCount["stage"] = null;
+  let filesTotal: number | null = null;
+  let tablesTotal: number | null = null;
   let current: LiveCount["file"] = null;
   let table: LiveCount["table"] = null;
   /** Whether the last line of the feed is a count that the next count of the same thing replaces. */
@@ -185,6 +191,7 @@ function countLive(events: readonly string[]): LiveCount | null {
     if (step && typeof step.etapa === "string" && typeof step.passo === "string") {
       stage = step.etapa;
       if (step.etapa === "quebra") {
+        if (step.passo === "inicio") filesTotal = step.total;
         if (step.passo === "inicio") current = { cnpj: step.cnpj, periodo: step.periodo, sizeBytes: step.sizeBytes, origem: step.origem, posicao: step.posicao, total: step.total, linhas: 0, blocos: [] };
         else {
           const now = current as FileNow | null;
@@ -195,6 +202,7 @@ function countLive(events: readonly string[]): LiveCount | null {
         say({ passo: step }, step.passo === "lendo" ? `lendo ${step.cnpj} ${step.periodo}` : null);
       } else if (step.etapa === "uniao") {
         current = null;
+        if (step.passo === "inicio") tablesTotal = step.total;
         if (step.passo === "inicio") table = { tabela: step.tabela, posicao: step.posicao, total: step.total, partes: step.partes, feitas: 0, fase: "reunindo", anos: [] };
         else {
           const now = table as TableNow | null;
@@ -240,6 +248,8 @@ function countLive(events: readonly string[]): LiveCount | null {
     recent: files.slice(-RECENT_FILES).reverse(),
     assembled,
     stage,
+    filesTotal,
+    tablesTotal,
     file: current,
     table,
     feed: feed.slice(-FEED_LINES),

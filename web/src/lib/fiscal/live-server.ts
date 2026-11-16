@@ -12,6 +12,7 @@
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
+import { LIVE_PAGE } from "./live-page";
 import { describeEvent, EVENT_MARK, parseLoadLog, type LoadEvent, type LoadLog } from "./local-load";
 
 export interface LiveLine {
@@ -132,7 +133,7 @@ export async function startLiveServer(options: { port: number; titulo: string; p
       return;
     }
     if (url.pathname === "/") {
-      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" }).end(options.page ?? PLAIN_PAGE);
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" }).end(options.page ?? LIVE_PAGE);
       return;
     }
     res.writeHead(404, cors).end();
@@ -172,54 +173,3 @@ export async function startLiveServer(options: { port: number; titulo: string; p
     },
   };
 }
-
-/** The page until the load's own screen exists: the terminal, as plain text. */
-const PLAIN_PAGE = `<!doctype html>
-<html lang="pt-BR">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Conversão ao vivo</title>
-<style>
-  :root { color-scheme: light dark; }
-  body { margin: 0; padding: 16px; font: 14px/1.5 ui-monospace, Consolas, monospace; background: Canvas; color: CanvasText; }
-  h1 { font: 600 16px system-ui, sans-serif; margin: 0 0 4px; }
-  #resumo { font: 13px system-ui, sans-serif; opacity: .75; margin-bottom: 12px; }
-  #linhas { white-space: pre-wrap; word-break: break-word; }
-</style>
-</head>
-<body>
-<h1 id="titulo">Conversão ao vivo</h1>
-<div id="resumo" aria-live="polite">Conectando…</div>
-<div id="linhas" role="log"></div>
-<script>
-  const linhas = document.getElementById("linhas");
-  const resumo = document.getElementById("resumo");
-  let ultimaContagem = null;
-  const fonte = new EventSource("/eventos");
-  fonte.addEventListener("linha", (e) => {
-    const linha = JSON.parse(e.data);
-    const fim = window.innerHeight + window.scrollY >= document.body.scrollHeight - 40;
-    if (linha.tipo === "contagem" && ultimaContagem) ultimaContagem.textContent = linha.texto;
-    else {
-      const div = document.createElement("div");
-      div.textContent = linha.texto;
-      linhas.appendChild(div);
-      ultimaContagem = linha.tipo === "contagem" ? div : null;
-    }
-    if (fim) window.scrollTo(0, document.body.scrollHeight);
-  });
-  fonte.addEventListener("estado", (e) => {
-    const estado = JSON.parse(e.data);
-    document.getElementById("titulo").textContent = estado.titulo;
-    const vivo = estado.log.live;
-    const partes = [estado.fase === "rodando" ? "rodando" : estado.fase === "concluida" ? "concluída" : "parou antes de publicar"];
-    if (vivo) partes.push(vivo.files.toLocaleString("pt-BR") + " arquivo(s) lido(s)", vivo.rows.toLocaleString("pt-BR") + " linhas", vivo.assembled.length + " tabela(s) pronta(s)");
-    resumo.textContent = partes.join(" · ");
-  });
-  fonte.addEventListener("fim", () => fonte.close());
-  fonte.onerror = () => { if (fonte.readyState === EventSource.CLOSED) resumo.textContent += " · conexão encerrada"; };
-</script>
-</body>
-</html>
-`;

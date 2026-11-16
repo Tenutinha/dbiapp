@@ -55,7 +55,10 @@ describe("live server", () => {
 
       const page = await fetch(live.url);
       expect(page.headers.get("content-type")).toContain("text/html");
-      expect(await page.text()).toContain("EventSource");
+      const html = await page.text();
+      // The page of the four steps, fed by the stream; self-contained (nothing fetched from elsewhere).
+      for (const piece of ["new EventSource(\"/eventos\")", "Quebra em blocos", "União por bloco", "Publicação", "id=\"terminal\""]) expect(html).toContain(piece);
+      expect(html).not.toMatch(/<(script|link|img)[^>]+(src|href)=/);
 
       // A browser that connects now gets the two lines it missed, then what comes.
       const stream = await fetch(`${live.url}/eventos`);

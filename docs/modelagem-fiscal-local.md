@@ -111,8 +111,28 @@ Com `--ao-vivo`, a carga abre um servidor mínimo na própria máquina (só `127
 | `/eventos` | cada linha no instante em que é escrita (Server-Sent Events); quem conecta depois, ou reconecta, recebe primeiro o que perdeu |
 | `/estado` | onde a carga está, em JSON: etapa, arquivo e tabela em andamento, contagens |
 
-O servidor fecha quando a carga termina; a página fica com o último estado recebido. Peça:
-`src/lib/fiscal/live-server.ts`.
+O servidor fecha quando a carga termina; a página fica com o último estado recebido.
+
+A página (`src/lib/fiscal/live-page.ts`, um documento só, sem dependências):
+
+- **Trilha das quatro etapas**: envio (no admin), quebra em blocos, união por bloco e publicação, com o que cada
+  uma está fazendo e a barra de avanço.
+- **Totais da rodada**: arquivos lidos, linhas, volume e arquivos com erro.
+- **Arquivo em leitura**: empresa, mês, tamanho, de onde veio, linhas lidas subindo e os blocos já gravados.
+- **Tabela em união**: partes reunidas, fase (reunindo, juntando, validando) e os anos, quando a tabela é dividida.
+- **Linhas por bloco** somando a cada arquivo, e **tabelas finais prontas** com linhas, tamanho e tempo.
+- **Terminal**: cada mensagem no instante em que acontece, com busca, filtro de erros e pausa da rolagem.
+
+Para ver a tela sem rodar carga nenhuma (não fala com o banco nem com o bucket):
+
+```bash
+node --import tsx scripts/fiscal/ensaio-ao-vivo.ts
+```
+
+Com `--falha`, o ensaio mostra uma conversão que para antes de publicar; com um arquivo de log como argumento,
+reproduz as linhas de uma carga real que rodou com `--eventos`.
+
+Peças: `src/lib/fiscal/live-server.ts` e `src/lib/fiscal/live-page.ts`.
 
 ## A tela: Converter nesta máquina
 

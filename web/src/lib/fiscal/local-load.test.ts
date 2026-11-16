@@ -74,6 +74,7 @@ describe("parseLoadLog", () => {
     ];
     const reading = parseLoadLog(steps.map((passo) => eventLine({ passo })).join("\n")).live;
     expect(reading?.stage).toBe("quebra");
+    expect(reading).toMatchObject({ filesTotal: 5, tablesTotal: null });
     expect(reading?.file).toMatchObject({ ...file, origem: "disco", posicao: 2, total: 5, linhas: 20_000, blocos: [{ tabela: "bloco_c", linhas: 800 }] });
     // The counts of lines of one file take one line of the terminal, the last one.
     expect(reading?.feed).toEqual([
@@ -93,6 +94,7 @@ describe("parseLoadLog", () => {
     ];
     const joining = parseLoadLog(after.join("\n")).live;
     expect(joining?.stage).toBe("uniao");
+    expect(joining).toMatchObject({ filesTotal: 5, tablesTotal: 4 });
     expect(joining?.file).toBeNull();
     expect(joining?.table).toMatchObject({ tabela: "bloco_c", posicao: 1, total: 4, partes: 300, feitas: 300, fase: "juntando", anos: [{ ano: "2024", linhas: 900, reaproveitado: false }] });
     expect(joining?.feed.slice(3)).toEqual([
