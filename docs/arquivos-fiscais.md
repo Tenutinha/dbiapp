@@ -110,8 +110,16 @@ subtotais, períodos em colunas e abertura até a conta.
 - **O resultado financeiro** é reconhecido pela referencial (`3.01.01.05.01.05` e `3.01.01.09.01.08`) **ou** pelo
   nome do grupo no plano da empresa (contém "FINANCEIR"). Isso porque uma empresa pode ligar os juros a outra
   referencial.
-- **Uma linha "sem classificação"** recolhe o que sobrar, de modo que o lucro líquido sempre bate com o J150. O
-  cartão "Diferença para o J150" compara o resultado com as linhas de detalhe do J150 e deve dar zero.
+- **Uma linha "sem classificação"** recolhe o que sobrar, de modo que o total da DRE é sempre o das contas de
+  resultado do arquivo.
+- **Conferência com o J150, mês a mês** (tabela no fim da seção): lucro líquido da DRE, lucro líquido no J150 e a
+  diferença, que deve ser zero.
+  - Mês cujo arquivo **não traz J150** fica em branco: há empresas que só mandam as demonstrações em dezembro. Por
+    isso a conferência é por mês; um total de vários meses contaria como diferença todo mês sem J150.
+  - O J150 mudou no leiaute 7 (2019). No atual, somam-se as linhas de detalhe (`IND_COD_AGL = D`). No antigo
+    (`COD_AGL, NIVEL_AGL, DESCR_COD_AGL, VL_CTA, IND_VL…`) vale a linha de nível 1, com o sinal do `IND_VL`: as
+    linhas de detalhe de lá não podem ser somadas, o sinal nem sempre segue o `IND_VL`.
+  - Diferença que sobra é do arquivo: uma conta de resultado que o J150 da empresa deixou de fora.
 - **Linhas e somas** ficam em `dreLines()`, no gerador. O visual (`StatementTable`) monta a árvore em
   `web/src/lib/statement/tree.ts`.
 

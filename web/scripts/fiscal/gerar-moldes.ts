@@ -863,15 +863,29 @@ function ecd(): Json {
   };
   const linesOf = (...ids: string[]): string => ids.map((id) => `(${lines.find((l) => l.id === id)?.where ?? "FALSE"})`).join(" OR ");
   const j150 = isReg("J150");
-  // The J150's own net result: its detail lines (IND_COD_AGL = D) added up, revenues positive.
+  // The J150 changed in the leiaute 7 (2019). The current one says which lines are totals (IND_COD_AGL T/D);
+  // the old one — |J150|COD_AGL|NIVEL_AGL|DESCR_COD_AGL|VL_CTA|IND_VL|… — has no such field: there the third
+  // field is the line's description. A file in the old layout is read by position, so it is told apart here.
+  const j150Current = `${col(k, "J150", "IND_COD_AGL")} IN ('T', 'D')`;
+  const j150Old = `${j150} AND NOT COALESCE(${j150Current}, false)`;
+  const oldJ150 = { level: `${F}.${fieldColumn(2)}`, value: `${F}.${fieldColumn(4)}`, sign: `${F}.${fieldColumn(5)}` };
+  // The J150's own net result. Current layout: its detail lines (IND_COD_AGL = D) added up, revenues positive.
+  // Old layout: its top line (NIVEL_AGL 1, the net result), positive (P, R) or negative (N, D) — the detail
+  // lines cannot be added up there, their sign does not always follow IND_VL.
   const j150Value = `CASE WHEN ${col(k, "J150", "IND_DC_CTA_FIN")} = 'C' THEN ${num(col(k, "J150", "VL_CTA_FIN"))} ELSE 0 - ${num(col(k, "J150", "VL_CTA_FIN"))} END`;
-  const j150Result = `ROUND(COALESCE(${sumWhen(`${j150} AND ${col(k, "J150", "IND_COD_AGL")} = 'D'`, j150Value)}, 0), 2)`;
+  const j150OldValue = `CASE WHEN ${oldJ150.sign} IN ('N', 'D') THEN 0 - ${num(oldJ150.value)} ELSE ${num(oldJ150.value)} END`;
+  const j150Sum = `SUM(CASE WHEN ${j150} AND ${col(k, "J150", "IND_COD_AGL")} = 'D' THEN ${j150Value} WHEN ${j150Old} AND ${oldJ150.level} = '1' THEN ${j150OldValue} END)`;
+  // A file without the J150 (most months of a company that only sends the statements in December) has nothing
+  // to compare with: no value, instead of a result of zero and the whole month shown as a difference.
+  const hasJ150 = `${countWhen(j150)} > 0`;
+  const j150Result = `CASE WHEN ${hasJ150} THEN ROUND(COALESCE(${j150Sum}, 0), 2) END`;
   const dreMeasures: Measure[] = [
     { id: "valor_dre", label: "Valor", sql: dreValue(), format: "currency" },
     { id: "receita_liquida_dre", label: "Receita líquida", sql: dreValue(linesOf("receita_bruta", "deducoes")), format: "currency" },
     { id: "lucro_bruto_dre", label: "Lucro bruto", sql: dreValue(linesOf("receita_bruta", "deducoes", "custos")), format: "currency" },
     { id: "lucro_liquido_j150", label: "Lucro líquido no J150", sql: j150Result, format: "currency" },
-    { id: "diferenca_j150", label: "Diferença para o J150", sql: `${dreValue()} - ${j150Result}`, format: "currency" },
+    { id: "diferenca_j150", label: "Diferença para o J150", sql: `CASE WHEN ${hasJ150} THEN ROUND(${dreValue()} - ${j150Result}, 2) END`, format: "currency" },
+    { id: "meses_com_j150", label: "Meses com J150", sql: `COUNT(DISTINCT CASE WHEN ${j150} THEN ${F}.arquivo END)`, format: "integer" },
   ];
   const dreRegs = isReg("I155", "I355");
   const annual = { skipFilters: ["mes", "natureza"] };
@@ -879,23 +893,37 @@ function ecd(): Json {
     id: "dre", title: "Demonstração do resultado (DRE)",
     description: "Receitas, custos e despesas do período, mês a mês. Cada conta de resultado entra na linha da sua conta referencial (I051); "
       + "as financeiras também pelo nome do seu grupo no plano de contas. Abra uma linha para descer até o grupo, a conta sintética e a conta analítica. "
-      + "O lucro líquido é conferido com o J150 do arquivo.",
+      + "O lucro líquido é conferido com o J150, mês a mês, nos arquivos que trazem essa demonstração.",
     visuals: [
       { ...kpi("k_dre_receita_liquida", "Receita líquida", "receita_liquida_dre", 3, dreRegs), ...annual },
       { ...kpi("k_dre_lucro_bruto", "Lucro bruto", "lucro_bruto_dre", 3, dreRegs), ...annual },
       { ...kpi("k_dre_lucro_liquido", "Lucro líquido", "valor_dre", 3, dreRegs), ...annual },
-      { ...kpi("k_dre_diferenca_j150", "Diferença para o J150", "diferenca_j150", 3, isReg("I155", "I355", "J150")), ...annual },
+      { ...kpi("k_dre_meses_j150", "Meses com J150 no arquivo", "meses_com_j150", 3, j150), ...annual },
       {
         id: "s_dre", type: "statement", title: "DRE gerencial", span: 12, where: `${dreRegs} AND ${result}`, ...annual,
         measure: "valor_dre", column: "mes", yearly: true, levels: ["grupo_3", "conta_sintetica", "conta"], base: "receita_liquida", lines,
       },
+      // The check, month by month: a total over several months would count as a difference every month whose
+      // file has no J150 (a query cannot leave those months out of one sum).
+      {
+        id: "t_dre_j150", type: "table", title: "Conferência com o J150, mês a mês", span: 12, ...annual,
+        fields: ["mes"], measures: ["valor_dre", "lucro_liquido_j150", "diferenca_j150"], sort: "field", limit: 400,
+        where: isReg("I155", "I355", "J150"),
+      },
     ],
   };
-  const demo = (id: string, reg: string, title: string, names: string[]): Json => ({
-    id, type: "rows", title, span: 12, where: isReg(reg), hideEmpty: true, skipFilters: ["mes", "natureza"],
+  const demo = (id: string, reg: string, title: string, names: string[], where = isReg(reg)): Json => ({
+    id, type: "rows", title, span: 12, where, hideEmpty: true, skipFilters: ["mes", "natureza"],
     orderBy: `${F}.arquivo, ${F}.linha`, limit: 500,
     columns: names.map((n) => ({ label: n, sql: col(k, reg, n) })),
   });
+  // The J150 of the files in the old layout, with the fields where that layout has them.
+  const oldDre: Json = {
+    id: "r_dre_antigo", type: "rows", title: "Demonstração do resultado (J150, leiaute até 2018)", span: 12, where: j150Old,
+    hideEmpty: true, skipFilters: ["mes", "natureza"], orderBy: `${F}.arquivo, ${F}.linha`, limit: 500,
+    columns: ["COD_AGL", "NIVEL_AGL", "DESCR_COD_AGL", "VL_CTA", "IND_VL", "VL_CTA_ULT_DRE", "IND_VL_ULT_DRE"]
+      .map((label, i) => ({ label, sql: `${F}.${fieldColumn(i + 1)}` })),
+  };
   const panels: Section[] = [
     {
       id: "visao_geral", title: "Visão geral",
@@ -944,7 +972,8 @@ function ecd(): Json {
       id: "demonstracoes", title: "Demonstrações contábeis", description: "Balanço patrimonial (J100) e demonstração do resultado (J150), como estão no arquivo.",
       visuals: [
         demo("r_balanco", "J100", "Balanço patrimonial (J100)", ["COD_AGL", "NIVEL_AGL", "IND_GRP_BAL", "DESCR_COD_AGL", "VL_CTA_INI", "IND_DC_CTA_INI", "VL_CTA_FIN", "IND_DC_CTA_FIN"]),
-        demo("r_dre", "J150", "Demonstração do resultado (J150)", ["NU_ORDEM", "COD_AGL", "NIVEL_AGL", "DESCR_COD_AGL", "VL_CTA_INI", "IND_DC_CTA_INI", "VL_CTA_FIN", "IND_DC_CTA_FIN", "IND_GRP_DRE"]),
+        demo("r_dre", "J150", "Demonstração do resultado (J150)", ["NU_ORDEM", "COD_AGL", "NIVEL_AGL", "DESCR_COD_AGL", "VL_CTA_INI", "IND_DC_CTA_INI", "VL_CTA_FIN", "IND_DC_CTA_FIN", "IND_GRP_DRE"], `${j150} AND ${j150Current}`),
+        oldDre,
       ],
     },
   ];
