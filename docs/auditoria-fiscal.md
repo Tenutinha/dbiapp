@@ -21,8 +21,9 @@ NF-e (dashboard publicado) ────────────┘              
 | Etapa | Script (em `web/scripts/fiscal/auditoria/`) | O que faz |
 |---|---|---|
 | Extrair | `extrair.ts` | baixa os SPED de EFD Contribuições do espaço, um a um, e guarda só C010, C100 e C170 de cada um, linha a linha (`entrada/contrib_c/<cnpj>-<mês>-<n>.parquet`); copia a fato `registros` publicada da EFD ICMS/IPI e a `nfe_itens` da NF-e. Arquivo já extraído não é lido de novo. |
-| Preparar | `preparar.py` | roda as regras e grava `dados/achados.parquet`, `dados/regras.parquet` e `dados/cobertura.parquet` |
-| Molde | `molde.py` | gera o `template.json` (o texto da seção Regras vem da lista de regras do preparo) |
+| Preparar | `preparar.py` | roda as regras e grava `dados/achados.parquet`, `dados/regras.parquet`, `dados/cobertura.parquet` e `dados/glossario.parquet` |
+| Glossário | `glossario.py` | lê o [catálogo](auditorias-catalogo.md) e as regras do preparo e grava só `dados/glossario.parquet` (o preparo já faz isso; rodar sozinho serve para atualizar o glossário sem refazer as regras) |
+| Molde | `molde.py` | gera o `template.json` (o texto da seção Regras vem da lista de regras do preparo; os temas do Glossário, do catálogo) |
 | Carregar | `scripts/pbix/carregar-dashboard.ts` | cadastra o molde no catálogo (como rascunho), ativa o dashboard no espaço, sobe as tabelas e publica |
 
 A pasta de trabalho fica **fora do repositório** (dados de cliente nunca são commitados), por exemplo
@@ -39,11 +40,41 @@ fiscais só publicam o bloco C resumido. A auditoria precisa de cada item, entã
 | `achados` | fato | regra não cumprida por uma nota (regras de nota) ou um item (regras de item) | campos de item vazios nas regras de nota; `arquivo` e `linha` levam ao registro no arquivo original |
 | `cobertura` | fato extra | arquivo fiscal e mês | notas e valor de cada fonte; mostra onde cada cruzamento vale |
 | `regras` | dimensão (`regra`) | regra | grupo, título, gravidade, o que confere e o que fazer |
+| `glossario` | fato extra | auditoria (as 18 regras ativas e as do catálogo) | tema, situação (Ativa ou Planejada), o que confere, por que importa, dificuldade, tributarista e resultado |
 
 Colunas de `achados`: `regra`, `fonte` (EFD Contribuições, EFD ICMS/IPI, NF-e (XML)), `competencia` (AAAA-MM),
 `estabelecimento`, `chave`, `num_doc`, `operacao` (Entrada/Saída), `cod_part`, `num_item`, `cod_item`, `cfop`,
 `cst_pis`, `cst_cofins`, `campo` (o campo do layout conferido), `esperado`, `encontrado`, `diferenca`
 (encontrado − esperado, só quando há os dois), `arquivo`, `linha`.
+
+## O glossário
+
+A primeira seção da tela é o **Glossário**: todas as auditorias, por tema, com a situação de cada uma.
+
+- **Ativa**: já roda. São as regras C, X e O (os achados estão nas seções seguintes) e a inclusão de insumos (CR17),
+  que gera o arquivo corrigido por script.
+- **Planejada**: está no [catálogo](auditorias-catalogo.md) e ainda não foi implementada.
+
+De onde vem: `glossario.py` lê os títulos `#### XX00 · Nome` e os tópicos "Confere", "Por que importa" e
+"Dificuldade · Tributarista · Resultado" de `docs/auditorias-catalogo.md`, e junta as regras da lista `REGRAS` do
+preparo, cada uma no tema do catálogo em que se encaixa. Em cada tema as ativas vêm primeiro. O texto do glossário é o
+do catálogo: para mudar o que a tela diz, mude o catálogo e gere de novo.
+
+```bash
+uv run -q --no-project --python 3.11 --with duckdb python -I scripts/fiscal/auditoria/glossario.py --conferir
+```
+
+mostra a contagem por tema sem gravar nada. Se um item do catálogo estiver sem um dos tópicos, o script para e diz qual.
+
+Quando uma auditoria do catálogo for implementada:
+
+- como regra do dashboard (C, X ou O): ela entra em `REGRAS` e aparece como Ativa; tire o item do catálogo ou deixe-o
+  como está (ele continua aparecendo como Planejada, com o código do catálogo), conforme a regra cubra tudo ou só parte;
+- fora da tela (por script, como a CR17): acrescente o código a `ATIVAS_DO_CATALOGO`, em `glossario.py`.
+
+A seção não segue os filtros da página. As colunas de texto usam a opção `wrap` do visual `rows` (o texto quebra em
+linhas em vez de ser cortado): o código com essa opção tem de estar **no ar antes** de o molde ser carregado, senão
+o molde é recusado.
 
 ## As regras
 
@@ -155,8 +186,8 @@ carga 1 min.
      `xml`, `nfe`) ou depois do laço de `montar` (como a C12).
 
    A consulta devolve as colunas na ordem de `achados` (veja as regras existentes).
-3. `preparar.py --contar`, confira amostras no arquivo original, gere o molde (o texto da seção Regras se atualiza) e
-   carregue de novo.
+3. `preparar.py --contar`, confira amostras no arquivo original, gere o molde (o texto da seção Regras e o Glossário
+   se atualizam) e carregue de novo.
 4. Atualize a tabela de regras deste documento.
 
 Cuidado de desempenho: **nunca junte as notas com os itens de todos os arquivos de uma vez**. Numa tentativa, a
@@ -282,7 +313,7 @@ O portal do SPED não abriu o Guia Prático em 16/11/2026; o que segue foi confe
 ## Atualizar todo mês
 
 Depois de atualizar os dashboards fiscais com o mês novo: `extrair.ts` (só o arquivo novo é lido), `preparar.py`,
-`molde.py` (só se as regras mudaram) e `carregar-dashboard.ts`.
+`molde.py` (só se as regras ou o catálogo mudaram) e `carregar-dashboard.ts`.
 
 ## Próximos passos
 

@@ -13,6 +13,11 @@ import { FieldPicker } from "./FieldPicker";
 import { StatementTable } from "./StatementTable";
 import { VisualCard } from "./VisualCard";
 
+/** A cell of a rows listing: data as it came, cut at a fixed width (the whole value shows on hover). */
+const ROWS_CELL = "max-w-64 truncate whitespace-nowrap font-mono";
+/** A cell of a column marked `wrap`: prose, on as many lines as it takes. */
+const ROWS_WRAP_CELL = "min-w-64 max-w-md whitespace-normal";
+
 /** Classes of the tones a text measure gives its values (template `tones`). */
 const TONE_CLASS: Record<string, string> = { ok: "text-ok", warn: "text-accent", danger: "font-medium text-danger" };
 
@@ -105,8 +110,10 @@ function VisualBody({ template, result }: { template: Template; result: VisualRe
       return <StatementTable visual={visual} rows={rows} format={measure(visual.measure).format} baseLabel={base} />;
     }
     case "rows": {
+      // Beside a wrapped cell the others start at the top of the line, not at its middle.
+      const top = visual.columns.some((c) => c.wrap) ? " align-top" : "";
       const columns: ScrollColumn[] = visual.columns.map((c) => ({
-        label: c.label, headClass: "", cellClass: "max-w-64 truncate whitespace-nowrap font-mono", hint: true,
+        label: c.label, headClass: "", cellClass: (c.wrap ? ROWS_WRAP_CELL : ROWS_CELL) + top, hint: !c.wrap,
       }));
       const cut = rows.length >= visual.limit;
       const note = !cut

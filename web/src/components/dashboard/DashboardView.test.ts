@@ -145,3 +145,20 @@ describe("DashboardView with the descriptions in the summary", () => {
     expect(render()).toContain("Os números do período.");
   });
 });
+
+describe("DashboardView with a rows listing", () => {
+  it("truncates a column by default and wraps the text of a column marked wrap", () => {
+    const listing = {
+      id: "r", type: "rows" as const, title: "Glossário", span: 12, limit: 100,
+      columns: [{ label: "Código", sql: "registros.codigo" }, { label: "O que confere", sql: "registros.confere", wrap: true }],
+    };
+    const t = templateSchema.parse({ ...base, visuals: [listing], analyses: [], summary: [] });
+    const rows = { visual: t.visuals[0], rows: [{ c0: "EC01", c1: "Um texto longo que explica a regra." }] };
+    const html = renderToStaticMarkup(createElement(DashboardView, { template: t, data: { ...data, visuals: [rows] }, totalRows: 1 }));
+    const cell = (text: string): string => html.slice(html.lastIndexOf("<td", html.indexOf(`>${text}<`)), html.indexOf(`>${text}<`));
+    expect(cell("EC01")).toContain("truncate");
+    expect(cell("EC01")).toContain("align-top");
+    expect(cell("Um texto longo que explica a regra.")).toContain("whitespace-normal");
+    expect(cell("Um texto longo que explica a regra.")).not.toContain("truncate");
+  });
+});
