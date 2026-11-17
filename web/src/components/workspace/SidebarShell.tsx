@@ -14,6 +14,8 @@ interface SidebarShellProps {
   title: string;
   /** The organization, shown at the top of the panel; href null when this person can't open its own page. */
   org: { name: string; href: string | null };
+  /** Organizations this person can open: with more than one, the organization's name switches between them. */
+  orgs?: SpaceOption[];
   /** Spaces this person can open here (client switcher under the logo). */
   spaces: SpaceOption[];
   logoUrl: string | null;
@@ -73,7 +75,7 @@ export const ICON_BUTTON = "grid size-9 place-items-center rounded-lg border bor
  * mobile. The summary is organized in the admin (/<org>/admin?sumario=…), not here.
  */
 export function SidebarShell({
-  title, org, spaces, logoUrl, orgSlug, clientSlug, homeHref, footer, account = null, content, children,
+  title, org, orgs = [], spaces, logoUrl, orgSlug, clientSlug, homeHref, footer, account = null, content, children,
 }: SidebarShellProps) {
   const [open, setOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
@@ -161,7 +163,9 @@ export function SidebarShell({
 
         <div className="flex items-start justify-between gap-2 border-b border-paper-line px-5 py-3">
           <div className="min-w-0 pt-1">
-            {org.href ? (
+            {orgs.length > 1 ? (
+              <SpaceSwitcher spaces={orgs} variant="title" />
+            ) : org.href ? (
               <Link href={org.href} prefetch={false} className="block truncate text-base font-bold leading-tight tracking-tight hover:underline" title={org.name}>
                 {org.name}
               </Link>

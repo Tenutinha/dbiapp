@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { filterSpaces, spaceOptions } from "./space-options";
+import { filterSpaces, orgOptions, spaceOptions } from "./space-options";
 
 const org = { slug: "mapa", name: "Mapa da Votação" };
 const clients = [
@@ -40,5 +40,15 @@ describe("spaceOptions", () => {
   it("keeps the organization when it is the current space", () => {
     const opts = spaceOptions(org, null, false, []);
     expect(opts).toEqual([{ href: "/mapa", label: "Mapa da Votação", kind: "org", current: true, logoUrl: null }]);
+  });
+});
+
+describe("orgOptions", () => {
+  it("lists every organization of the person, marking the open one", () => {
+    const opts = orgOptions([{ slug: "davos", name: "Davos" }, { slug: "ntw", name: "NTW" }], "ntw");
+    expect(opts).toEqual([
+      { href: "/davos", label: "Davos", kind: "org", current: false, logoUrl: null },
+      { href: "/ntw", label: "NTW", kind: "org", current: true, logoUrl: null },
+    ]);
   });
 });

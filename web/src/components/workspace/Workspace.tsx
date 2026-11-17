@@ -1,7 +1,9 @@
 import Link from "next/link";
+import { listUserOrganizations } from "@/lib/access";
 import { getCurrentUser, supabaseAuthEnabled } from "@/lib/auth";
 import { avatarUrl } from "@/lib/data/users";
 import type { SpaceView } from "@/lib/services/space";
+import { orgOptions, type SpaceOption } from "@/lib/space-options";
 import { UserMenu, type UserMenuLink } from "../user-menu/UserMenu";
 import { SidebarNav, type Notes, type Outlines } from "./SidebarNav";
 import { DbiLogo, SidebarShell } from "./SidebarShell";
@@ -42,6 +44,16 @@ async function accountMenu(space: SpaceView, userName: string): Promise<React.Re
   }
 }
 
+/** The organizations of the signed-in person, for the switcher on the organization's name (none without a session). */
+async function myOrgs(currentSlug: string): Promise<SpaceOption[]> {
+  try {
+    const user = await getCurrentUser();
+    return orgOptions(await listUserOrganizations(user.id, user.isPlatformAdmin), currentSlug);
+  } catch {
+    return [];
+  }
+}
+
 /** Two-pane layout: light table of contents on the left, the dashboard on the right. */
 export async function Workspace({ space, currentId, userName, outlines = {}, notes = {}, top, children }: WorkspaceProps) {
   const { org, client } = space;
@@ -55,13 +67,14 @@ export async function Workspace({ space, currentId, userName, outlines = {}, not
       <DbiLogo />
     </Link>
   );
-  const account = await accountMenu(space, userName);
+  const [account, orgs] = await Promise.all([accountMenu(space, userName), myOrgs(org.slug)]);
 
   return (
     <ThemeScope theme={space.theme}>
       <SidebarShell
         title={client?.name ?? org.name}
         org={{ name: org.name, href: orgHref }}
+        orgs={orgs}
         spaces={space.spaces}
         logoUrl={space.logoUrl}
         orgSlug={org.slug}

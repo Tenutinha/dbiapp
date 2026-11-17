@@ -56,14 +56,24 @@ function SpaceBadge({ space }: { space: SpaceOption }) {
  * one of its segments/clients). With more than one accessible space it opens a small menu to switch —
  * a listbox styled like the sidebar, with arrow keys, Enter, Esc and a search when the list is long.
  */
-export function SpaceSwitcher({ spaces }: { spaces: SpaceOption[] }) {
+/** "subtitle": the space under the organization's name; "title": the organization's name itself, to switch organization. */
+type Variant = "subtitle" | "title";
+
+const WORDS: Record<Variant, { button: string; list: string; search: string; none: string }> = {
+  subtitle: { button: "Trocar de espaço", list: "Espaços", search: "Buscar espaço…", none: "Nenhum espaço encontrado" },
+  title: { button: "Trocar de organização", list: "Organizações", search: "Buscar organização…", none: "Nenhuma organização encontrada" },
+};
+
+export function SpaceSwitcher({ spaces, variant = "subtitle" }: { spaces: SpaceOption[]; variant?: Variant }) {
   const current = spaces.find((s) => s.current) ?? spaces[0];
   if (!current) return null;
-  if (spaces.length <= 1) return <span className={`${SUBTITLE} mt-0.5 text-ink-muted`}>{current.label}</span>;
-  return <SpaceMenu spaces={spaces} current={current} />;
+  if (spaces.length <= 1) return variant === "title" ? null : <span className={`${SUBTITLE} mt-0.5 text-ink-muted`}>{current.label}</span>;
+  return <SpaceMenu spaces={spaces} current={current} variant={variant} />;
 }
 
-function SpaceMenu({ spaces, current }: { spaces: SpaceOption[]; current: SpaceOption }) {
+function SpaceMenu({ spaces, current, variant }: { spaces: SpaceOption[]; current: SpaceOption; variant: Variant }) {
+  const words = WORDS[variant];
+  const title = variant === "title";
   const router = useRouter();
   const [pending, start] = useTransition();
   const [open, setOpen] = useState(false);
@@ -132,7 +142,7 @@ function SpaceMenu({ spaces, current }: { spaces: SpaceOption[]; current: SpaceO
   };
 
   return (
-    <div ref={rootRef} className="relative mt-0.5">
+    <div ref={rootRef} className={title ? "relative" : "relative mt-0.5"}>
       <button
         ref={buttonRef}
         type="button"
@@ -146,11 +156,11 @@ function SpaceMenu({ spaces, current }: { spaces: SpaceOption[]; current: SpaceO
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={open ? listId : undefined}
-        title="Trocar de espaço"
+        title={words.button}
         disabled={pending}
-        className={`-mx-1.5 flex max-w-[calc(100%+0.75rem)] items-center gap-1 rounded-md px-1.5 py-0.5 transition hover:bg-black/5 hover:text-ink disabled:cursor-wait ${open ? "bg-black/5 text-ink" : "text-ink-muted"}`}
+        className={`-mx-1.5 flex max-w-[calc(100%+0.75rem)] items-center gap-1 rounded-md px-1.5 py-0.5 transition hover:bg-black/5 hover:text-ink disabled:cursor-wait ${open || title ? "text-ink" : "text-ink-muted"} ${open ? "bg-black/5" : ""}`}
       >
-        <span className={`${SUBTITLE} min-w-0`}>{pending ? `Abrindo ${opening ?? ""}…` : current.label}</span>
+        <span className={`${title ? "block truncate text-base font-bold leading-tight tracking-tight" : SUBTITLE} min-w-0`}>{pending ? `Abrindo ${opening ?? ""}…` : current.label}</span>
         <ChevronIcon open={open} />
       </button>
 
@@ -168,8 +178,8 @@ function SpaceMenu({ spaces, current }: { spaces: SpaceOption[]; current: SpaceO
                 setQuery(e.target.value);
                 setActive(0);
               }}
-              placeholder="Buscar espaço…"
-              aria-label="Buscar espaço"
+              placeholder={words.search}
+              aria-label={words.search.replace("…", "")}
               aria-controls={listId}
               aria-activedescendant={shown[active] ? `${listId}-${active}` : undefined}
               className="mb-1.5 w-full rounded-lg border border-paper-line bg-transparent px-2.5 py-1.5 text-[13px] text-ink outline-none placeholder:text-ink-muted focus:border-ink-muted"
@@ -180,7 +190,7 @@ function SpaceMenu({ spaces, current }: { spaces: SpaceOption[]; current: SpaceO
             id={listId}
             role="listbox"
             tabIndex={-1}
-            aria-label="Espaços"
+            aria-label={words.list}
             aria-activedescendant={!withSearch && shown[active] ? `${listId}-${active}` : undefined}
             className="max-h-72 overflow-y-auto outline-none"
           >
@@ -200,7 +210,7 @@ function SpaceMenu({ spaces, current }: { spaces: SpaceOption[]; current: SpaceO
                 {space.current && <CheckIcon />}
               </li>
             ))}
-            {shown.length === 0 && <li className="px-2 py-3 text-center text-[13px] text-ink-muted">Nenhum espaço encontrado</li>}
+            {shown.length === 0 && <li className="px-2 py-3 text-center text-[13px] text-ink-muted">{words.none}</li>}
           </ul>
         </div>
       )}

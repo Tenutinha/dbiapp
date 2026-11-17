@@ -51,3 +51,11 @@ export function spaceOptions(
 export function filterSpaces(spaces: readonly SpaceOption[], query: string): SpaceOption[] {
   return spaces.filter((s) => matchesQuery(s.label, query));
 }
+
+/**
+ * The organizations a person can open, for the switcher on the organization's name in the sidebar (each
+ * opens on its own page, which takes them to the last space they used there). One entry = nothing to switch.
+ */
+export function orgOptions(orgs: readonly { slug: string; name: string }[], currentSlug: string): SpaceOption[] {
+  return orgs.map((o) => ({ href: `/${o.slug}`, label: o.name, kind: "org" as const, current: o.slug === currentSlug, logoUrl: null }));
+}
