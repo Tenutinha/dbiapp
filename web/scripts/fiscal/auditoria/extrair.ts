@@ -4,6 +4,8 @@
  *   <saída>/contrib_c/<cnpj>-<aaaa-mm>.parquet   C010, C100 e C170 de cada EFD Contribuições, linha a linha
  *   <saída>/icms_registros.parquet               fato "registros" publicada do dashboard EFD ICMS/IPI
  *   <saída>/nfe_itens_<n>.parquet                fato "nfe_itens" publicada do dashboard NF-e (uma por parte)
+ *   <saída>/icms_paineis.parquet                 resumo "paineis_todos_periodos" publicado da EFD ICMS/IPI
+ *   <saída>/contrib_paineis.parquet              resumo "paineis_todos_periodos" publicado da EFD Contribuições
  *
  * Os arquivos brutos são baixados um a um e apagados depois de lidos; um arquivo já extraído não é lido de
  * novo (apague o Parquet dele para forçar). Depois rode preparar.py com AUDITORIA_ENTRADA=<saída>.
@@ -125,6 +127,9 @@ async function main(): Promise<void> {
   await mkdir(outDir, { recursive: true });
   await copyPublished(s, "efd-icms-ipi", "registros", outDir, "icms_registros");
   await copyPublished(s, "nfe", "nfe_itens", outDir, "nfe_itens");
+  // Os resumos de todos os períodos, para a seção Reforma tributária (reforma.py).
+  await copyPublished(s, "efd-icms-ipi", "paineis_todos_periodos", outDir, "icms_paineis");
+  await copyPublished(s, "efd-contribuicoes", "paineis_todos_periodos", outDir, "contrib_paineis");
   await extractContrib(s, outDir);
 }
 

@@ -20,9 +20,10 @@ NF-e (dashboard publicado) ────────────┘              
 
 | Etapa | Script (em `web/scripts/fiscal/auditoria/`) | O que faz |
 |---|---|---|
-| Extrair | `extrair.ts` | baixa os SPED de EFD Contribuições do espaço, um a um, e guarda só C010, C100 e C170 de cada um, linha a linha (`entrada/contrib_c/<cnpj>-<mês>-<n>.parquet`); copia a fato `registros` publicada da EFD ICMS/IPI e a `nfe_itens` da NF-e. Arquivo já extraído não é lido de novo. |
+| Extrair | `extrair.ts` | baixa os SPED de EFD Contribuições do espaço, um a um, e guarda só C010, C100 e C170 de cada um, linha a linha (`entrada/contrib_c/<cnpj>-<mês>-<n>.parquet`); copia a fato `registros` publicada da EFD ICMS/IPI e a `nfe_itens` da NF-e, e os resumos `paineis_todos_periodos` das duas EFD (`icms_paineis.parquet` e `contrib_paineis.parquet`). Arquivo já extraído não é lido de novo. |
 | Preparar | `preparar.py` | roda as regras e grava `dados/achados.parquet`, `dados/regras.parquet`, `dados/cobertura.parquet` e `dados/glossario.parquet` |
 | Glossário | `glossario.py` | lê o [catálogo](auditorias-catalogo.md) e as regras do preparo e grava só `dados/glossario.parquet` (o preparo já faz isso; rodar sozinho serve para atualizar o glossário sem refazer as regras) |
+| Reforma | `reforma.py` | lê os resumos de todos os períodos da EFD ICMS/IPI e da EFD Contribuições e grava `dados/reforma.parquet`, `dados/reforma_apuracao.parquet` e `dados/reforma_transicao.parquet` (ver [Reforma tributária](#reforma-tributária)) |
 | Molde | `molde.py` | gera o `template.json` (o texto da seção Regras vem da lista de regras do preparo; os temas do Glossário, do catálogo) |
 | Carregar | `scripts/pbix/carregar-dashboard.ts` | cadastra o molde no catálogo (como rascunho), ativa o dashboard no espaço, sobe as tabelas e publica |
 
@@ -46,6 +47,8 @@ Colunas de `achados`: `regra`, `fonte` (EFD Contribuições, EFD ICMS/IPI, NF-e 
 `estabelecimento`, `chave`, `num_doc`, `operacao` (Entrada/Saída), `cod_part`, `num_item`, `cod_item`, `cfop`,
 `cst_pis`, `cst_cofins`, `campo` (o campo do layout conferido), `esperado`, `encontrado`, `diferenca`
 (encontrado − esperado, só quando há os dois), `arquivo`, `linha`.
+
+As tabelas `reforma`, `reforma_apuracao` e `reforma_transicao` (fatos extras) estão em [Reforma tributária](#reforma-tributária).
 
 ## O glossário
 
@@ -141,6 +144,10 @@ node --env-file=.env.vercel-production --conditions=react-server --import tsx sc
 
 ```bash
 AUDITORIA_PASTA="$PASTA" uv run -q --no-project --python 3.11 --with duckdb python -I scripts/fiscal/auditoria/preparar.py
+```
+
+```bash
+AUDITORIA_PASTA="$PASTA" uv run -q --no-project --python 3.11 --with duckdb python -I scripts/fiscal/auditoria/reforma.py
 ```
 
 ```bash
@@ -312,10 +319,81 @@ O portal do SPED não abriu o Guia Prático em 16/11/2026; o que segue foi confe
 | `C170.COD_CTA` copiado da EFD ICMS/IPI: se o PVA exige a conta no 0500 da Contribuições | **a confirmar** (o relatório avisa quantos itens entraram com conta que não está no 0500) |
 | Nome da função do PVA que refaz o bloco M | **a confirmar** |
 
+## Reforma tributária
+
+A seção **Reforma tributária** simula o efeito da reforma do consumo (EC 132/2023 e LC 214/2025: CBS e IBS no lugar de
+PIS, Cofins, ICMS e ISS) sobre o que a empresa já escriturou. É uma ordem de grandeza para conversar com o
+tributário, **não é aconselhamento tributário** nem projeção de preço ou de caixa. A própria tela diz o que é dado e
+o que é hipótese, e lista os parâmetros com a fonte.
+
+Ela lê só os resumos de todos os períodos (`paineis_todos_periodos`) dos dashboards EFD ICMS/IPI e EFD Contribuições
+publicados no espaço: não precisa dos arquivos brutos nem do `preparar.py`. Sem um dos dois, `reforma.py` avisa e a
+parte que depende dele fica vazia. A seção não segue os filtros da página, que são dos achados.
+
+### As tabelas
+
+| Tabela | Uma linha por | De onde vem |
+|---|---|---|
+| `reforma` | mês, estabelecimento, arquivo, operação, CFOP e CST | EFD ICMS/IPI: C190 e os pares de outros modelos (C490, C590, C850, D190, D590). EFD Contribuições: C170, A170 e F100 com valor; D101/D105 e C501/C505 só com os créditos (o valor dessas aquisições vem da EFD ICMS/IPI). Linhas de arquivo `Apuração`: o valor a recolher do E110, do M200 e do M600 |
+| `reforma_apuracao` | mês, estabelecimento e tributo | E110 (débitos, créditos, ajustes, a recolher e saldo credor a transportar), M200 e M600 |
+| `reforma_transicao` | ano (2026 a 2033), tributo e cenário | o ano-base levado ao cronograma: ICMS, PIS e Cofins a partir do valor a recolher; CBS e IBS simulados |
+
+O **ano-base** é o último ano com os doze meses e com receita (coluna `ano_base` com `Sim`): é o ano dos indicadores,
+das tabelas de crédito e de tratamento e da transição.
+
+A **natureza** de cada operação sai dos três últimos dígitos do CFOP (função `natureza`, em `reforma.py`): venda,
+compra para revenda ou produção, transferência, devolução, uso e consumo, ativo imobilizado, energia, comunicação e
+transporte, faturamento para entrega futura, prestação de serviço, remessas e outras.
+
+### A conta
+
+| Número | Como sai | Dado ou hipótese |
+|---|---|---|
+| Receita | saídas com CST de PIS 01 a 09 na EFD Contribuições (valor do item menos o desconto) | dado |
+| A recolher hoje | `VL_ICMS_RECOLHER` mais os débitos especiais do E110, e a contribuição a recolher do M200 e do M600 | dado |
+| Base dos débitos | receita − ICMS das vendas − PIS − Cofins, menos as devoluções de venda (CBS e IBS são calculados por fora: LC 214, art. 12, § 2º) | hipótese |
+| Base dos créditos | entradas de compra, uso e consumo, ativo, energia, comunicação, transporte, serviços tomados e demais aquisições (F100), sem o ICMS, o PIS e a Cofins creditados hoje, menos as devoluções de compra (crédito amplo: LC 214, art. 47) | hipótese |
+| CBS + IBS simulados | (base dos débitos − base dos créditos) × alíquota do cenário | hipótese |
+| Transição | 2026: como hoje (as alíquotas de teste são compensadas); 2027 e 2028: CBS calculada pelo TCU menos 0,1 ponto e IBS de 0,1%, com o ICMS inteiro; 2029 a 2032: ICMS a 90, 80, 70 e 60% e IBS a 10, 20, 30 e 40% da referência; 2033: CBS e IBS inteiros | hipótese |
+
+### Parâmetros
+
+Ficam em `CENARIOS`, `CBS_2027` e `TRANSICAO`, em `reforma.py`, cada um com a fonte e a data. As alíquotas de
+referência são fixadas por resolução do Senado; em 17/11/2026 nenhuma estava fixada (o TCU tinha calculado 11,3% para
+a CBS de 2027). **Ao mudar um parâmetro, mude a fonte e a data**, rode `reforma.py` e `molde.py` e carregue de novo:
+as alíquotas entram nas medidas do molde e nas linhas da transição. Não há parâmetro que se mude na tela.
+
+Conferência das fontes em 17/11/2026: os arts. 11, 12, 18, 19, 47, 57, 125 e 128 da LC 214 foram lidos no texto
+compilado do Planalto. O cronograma (ADCT, arts. 125 a 129) e o art. 475 da LC 214 **não foram lidos no texto
+literal** (as páginas são grandes demais para a ferramenta de leitura): vêm de resumo da página oficial e de fontes
+secundárias. A divisão CBS 8,8% + IBS 17,7% do cenário de 26,5% e a estimativa de 27,91% também são de fontes
+secundárias.
+
+### O que a simulação não vê
+
+- **Substituição tributária do ICMS.** O ICMS-ST pago antes na cadeia não aparece na escrituração de quem revende:
+  fica fora do "a recolher hoje" e dentro do custo das compras, o que aumenta a base de crédito simulada. Onde a
+  substituição pesa, a comparação subestima o que se paga hoje.
+- **Alíquota única.** Cesta básica com alíquota zero, reduções de 60%, regimes específicos e Imposto Seletivo dependem
+  do NCM de cada item, que os resumos por CFOP e CST não trazem.
+- **ISS e IPI.** Não entram no "hoje" (o ISS não está nesses arquivos).
+- **Fornecedores do Simples Nacional** dão crédito menor; a simulação trata todos como regime regular.
+- **Saldo credor de ICMS.** É mostrado mês a mês; o aproveitamento depois de 2032 (LC 227/2026) não é simulado.
+- **Receita em registros consolidados de cupom** (C175, C181/C185, C381/C385, C481/C485, C491/C495): só entra o que
+  está em C170, A170 e F100. `reforma.py` compara o PIS dos documentos com o M200 e avisa quando a diferença passa
+  de 2%.
+- **Preços.** A simulação mantém os preços sem tributos de hoje.
+
+### Conferir
+
+`reforma.py --conferir` mostra, por ano, sem gravar nada: o débito e o crédito de ICMS dos documentos contra o E110,
+o débito de PIS dos documentos contra o M200, a receita e as bases. O débito de ICMS dos documentos tem de ser igual
+ao total de débitos do dashboard EFD ICMS/IPI, e o de PIS ficar a menos de 2% da apuração.
+
 ## Atualizar todo mês
 
 Depois de atualizar os dashboards fiscais com o mês novo: `extrair.ts` (só o arquivo novo é lido), `preparar.py`,
-`molde.py` (só se as regras ou o catálogo mudaram) e `carregar-dashboard.ts`.
+`reforma.py`, `molde.py` (só se as regras ou o catálogo mudaram) e `carregar-dashboard.ts`.
 
 ## Próximos passos
 

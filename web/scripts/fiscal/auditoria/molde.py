@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import molde_reforma
 from preparar import REGRAS
 
 PASTA = Path(os.environ.get("AUDITORIA_PASTA", Path.cwd())).resolve()
@@ -231,6 +232,10 @@ for prefixo, sid, titulo, descricao, extra in (
     visuals += vis
     analyses.append(sec)
 
+vis_reforma, sec_reforma = molde_reforma.secao(FILTROS)
+visuals += vis_reforma
+analyses.append(sec_reforma)
+
 textos = []
 for grupo in dict.fromkeys(r[1] for r in REGRAS):
     corpo = "\n\n".join(f"{r[0]} - {r[2]} (gravidade {r[3].lower()}). {r[4]} O que fazer: {r[5]}" for r in REGRAS if r[1] == grupo)
@@ -252,10 +257,12 @@ analyses += [
 template = {
     "id": "auditoria-fiscal", "version": 1, "name": "Auditoria fiscal", "area": "Fiscal", "origin": "web",
     "description": "Regras de auditoria sobre os arquivos fiscais (EFD Contribuições, EFD ICMS/IPI e XML de NF-e): "
-                   "consistência de cada nota e item, cruzamento entre os arquivos e oportunidades a validar.",
-    "tables": tables,
+                   "consistência de cada nota e item, cruzamento entre os arquivos, oportunidades a validar e a simulação da "
+                   "reforma tributária.",
+    "density": "compact",
+    "tables": tables + molde_reforma.TABELAS,
     "relationships": [{"from": {"table": "achados", "column": "regra"}, "to": {"table": "regras", "column": "regra"}}],
-    "fields": fields, "measures": measures, "filters": FILTROS, "filterDefaults": {},
+    "fields": fields + molde_reforma.CAMPOS, "measures": measures + molde_reforma.MEDIDAS, "filters": FILTROS, "filterDefaults": {},
     "visuals": visuals, "analyses": analyses,
     "summary": [{"title": "Auditoria", "analyses": [a["id"] for a in analyses]}],
 }
