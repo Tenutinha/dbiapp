@@ -314,8 +314,10 @@ body {
   padding-bottom: 0.25rem;
 }
 .dash-compact .dash-kpi {
-  font-size: 1.375rem;
+  font-size: 1.125rem;
+  font-weight: 700;
 }
 .dash-compact .dash-kpi-fit {
-  font-size: clamp(1rem, 11cqw, 1.375rem);
+  font-size: clamp(0.9375rem, 10cqw, 1.125rem);
+  font-weight: 700;
 }

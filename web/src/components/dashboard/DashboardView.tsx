@@ -213,42 +213,61 @@ function visualTools(template: Template, visual: VisualResult["visual"]): React.
   return <FieldPicker visualId={visual.id} current={visual.fields[0]} options={options} />;
 }
 
-export function VisualGrid({ template, results: all, layout }: VisualGridProps) {
-  const results = visibleResults(all);
-  if (results.length === 0) return null;
-  if (layout === "row" && results.length > 1) {
-    // Each card a little narrower than the page, so the next one peeks in and says the strip goes on. Its
-    // scrollbar is the one in the dashboard header (always in sight); the native one stays only where no
-    // header drives the strip (a shared page).
-    return (
-      <div
-        role="region"
-        aria-label="Quadros lado a lado: role para o lado para ver os próximos"
-        tabIndex={0}
-        {...{ [CARD_STRIP_ATTR]: "" }}
-        className="relative -mx-1 flex snap-x snap-mandatory gap-4 overflow-x-auto px-1 pb-3 data-[header-scrollbar]:[scrollbar-width:none] data-[header-scrollbar]:[&::-webkit-scrollbar]:hidden focus-visible:outline focus-visible:outline-1 focus-visible:outline-brand"
-      >
-        {results.map((result) => (
-          <VisualCard key={result.visual.id} title={result.visual.title} tools={visualTools(template, result.visual)} className="w-[calc(100%-3rem)] shrink-0 snap-start">
-            <VisualBody template={template} result={result} />
-          </VisualCard>
-        ))}
-      </div>
-    );
-  }
+/**
+ * Visuals side by side in one strip that scrolls sideways. Each card a little narrower than the page, so the
+ * next one peeks in and says the strip goes on. Its scrollbar is the one in the dashboard header (always in
+ * sight); the native one stays only where no header drives the strip (a shared page).
+ */
+function VisualStrip({ template, results, className = "" }: { template: Template; results: readonly VisualResult[]; className?: string }) {
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-12">
+    <div
+      role="region"
+      aria-label="Quadros lado a lado: role para o lado para ver os próximos"
+      tabIndex={0}
+      {...{ [CARD_STRIP_ATTR]: "" }}
+      className={`relative -mx-1 flex snap-x snap-mandatory gap-4 overflow-x-auto px-1 pb-3 data-[header-scrollbar]:[scrollbar-width:none] data-[header-scrollbar]:[&::-webkit-scrollbar]:hidden focus-visible:outline focus-visible:outline-1 focus-visible:outline-brand ${className}`}
+    >
       {results.map((result) => (
-        <VisualCard
-          key={result.visual.id}
-          title={result.visual.title}
-          tools={visualTools(template, result.visual)}
-          className={`${SPAN[result.visual.span]} ${result.visual.type === "kpi" ? "" : "sm:col-span-2"} ${result.visual.type === "text" ? "border-l-4 border-l-brand" : ""}`}
-        >
+        <VisualCard key={result.visual.id} title={result.visual.title} tools={visualTools(template, result.visual)} className="w-[calc(100%-3rem)] shrink-0 snap-start">
           <VisualBody template={template} result={result} />
         </VisualCard>
       ))}
     </div>
+  );
+}
+
+/** The visuals of an analysis that go to its strip (the analysis' `strip`), when there are enough to scroll. */
+export function stripOf(template: Pick<Template, "analyses">, results: readonly VisualResult[]): ReadonlySet<string> {
+  const first = results[0]?.visual.id;
+  const wanted = new Set(template.analyses.find((a) => first !== undefined && a.visuals.includes(first))?.strip ?? []);
+  const there = results.filter((r) => wanted.has(r.visual.id)).map((r) => r.visual.id);
+  return new Set(there.length > 1 ? there : []);
+}
+
+export function VisualGrid({ template, results: all, layout }: VisualGridProps) {
+  const results = visibleResults(all);
+  if (results.length === 0) return null;
+  if (layout === "row" && results.length > 1) return <VisualStrip template={template} results={results} />;
+  const inStrip = stripOf(template, results);
+  const grid = results.filter((r) => !inStrip.has(r.visual.id));
+  return (
+    <>
+      {grid.length > 0 && (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-12">
+          {grid.map((result) => (
+            <VisualCard
+              key={result.visual.id}
+              title={result.visual.title}
+              tools={visualTools(template, result.visual)}
+              className={`${SPAN[result.visual.span]} ${result.visual.type === "kpi" ? "" : "sm:col-span-2"} ${result.visual.type === "text" ? "border-l-4 border-l-brand" : ""}`}
+            >
+              <VisualBody template={template} result={result} />
+            </VisualCard>
+          ))}
+        </div>
+      )}
+      {inStrip.size > 0 && <VisualStrip template={template} results={results.filter((r) => inStrip.has(r.visual.id))} className={grid.length > 0 ? "mt-4" : ""} />}
+    </>
   );
 }
 

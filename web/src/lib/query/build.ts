@@ -165,13 +165,14 @@ export function buildWhere(
     });
     clauses.push(`${fieldValue(field)} IN (${placeholders.join(", ")})`);
   };
+  const picked = cross.selection.filter((entry) => entry.visualId !== cross.visualId && !cross.skipFields?.includes(entry.fieldId));
+  // A filter that always holds one value (filterDefaults: the month a balance is read at) would leave nothing
+  // when another value of it is picked in a visual: the picked one takes its place instead of adding to it.
+  const replaced = new Set(picked.filter((entry) => entry.fieldId in t.filterDefaults && entry.values.length > 0).map((entry) => entry.fieldId));
   for (const fieldId of t.filters) {
-    if (!excluded.includes(fieldId)) add(fieldId, filters[fieldId] ?? []);
+    if (!excluded.includes(fieldId) && !replaced.has(fieldId)) add(fieldId, filters[fieldId] ?? []);
   }
-  for (const entry of cross.selection) {
-    if (entry.visualId === cross.visualId || cross.skipFields?.includes(entry.fieldId)) continue;
-    add(entry.fieldId, entry.values);
-  }
+  for (const entry of picked) add(entry.fieldId, entry.values);
   return { sql: clauses.length ? `WHERE ${clauses.join(" AND ")}` : "", params };
 }
 
