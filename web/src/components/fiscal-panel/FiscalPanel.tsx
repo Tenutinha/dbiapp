@@ -8,6 +8,7 @@ import { BuildBanner } from "./BuildBanner";
 import { FileMapGrid } from "./FileMapGrid";
 import { HowItWorks } from "./HowItWorks";
 import { FileReaderProvider } from "./FileReader";
+import { FlowDiagram } from "./FlowDiagram";
 import { count, periodLabel, STATE_LABEL, STATE_ORDER } from "./labels";
 import { LineagePanel } from "./LineagePanel";
 import { LocalLoad } from "./LocalLoad";
@@ -102,6 +103,26 @@ function ModelCard({ model, canManage, canModel, looseInSpace, now, localFolder 
           {d?.draft ? ` · rascunho com ${count(d.draft.length)} tabela(s) esperando publicação` : ""}
         </Layer>
       </div>
+
+      {model.flow && (
+        <details className="text-sm" open>
+          <summary className="cursor-pointer font-semibold">Fluxo dos dados: dos arquivos originais ao dashboard</summary>
+          <div className="mt-3">
+            <FlowDiagram
+              flow={model.flow}
+              numbers={{
+                files: model.files,
+                sizeBytes: model.sizeBytes,
+                period: months.length > 0 ? `${periodLabel(months[0])} a ${periodLabel(months[months.length - 1])}` : null,
+                companies: model.map.companies.length,
+                read: model.mode === "sped" ? model.counts.pronto : null,
+                tables: Object.fromEntries((d?.published ?? []).map((t) => [t.table, { rows: t.rows, sizeBytes: t.sizeBytes }])),
+                published: (d?.published.length ?? 0) > 0,
+              }}
+            />
+          </div>
+        </details>
+      )}
 
       {readable ? <ReadableFileMap map={model.map} toRead={model.toRead} big={model.big} /> : <FileMapGrid map={model.map} />}
       <FileList title="Arquivos com erro" files={model.failed} tone="danger" />
