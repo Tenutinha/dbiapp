@@ -98,6 +98,8 @@ export function defaultVisual(type: VisualType, id: string, title: string): Visu
       return { ...base, type, measure: "", column: "", levels: [], lines: [] };
     case "scorecard":
       return { ...base, type, field: "", limit: 36, items: [] };
+    case "matrix":
+      return { ...base, type, row: "", column: "", measure: "", limit: 20000 };
   }
 }
 
@@ -152,6 +154,11 @@ export function usedIds(t: Template): UsedIds {
         break;
       case "donut":
         fields.add(v.field);
+        measures.add(v.measure);
+        break;
+      case "matrix":
+        fields.add(v.row);
+        fields.add(v.column);
         measures.add(v.measure);
         break;
       case "scorecard":

@@ -15,6 +15,7 @@ export const VISUAL_TYPE_LABEL: Record<VisualType, string> = {
   text: "Texto explicativo",
   statement: "Demonstrativo (DRE)",
   scorecard: "Tabela de indicadores",
+  matrix: "Mapa de dados (linha × coluna)",
 };
 const TYPE_OPTIONS = (Object.keys(VISUAL_TYPE_LABEL) as VisualType[]).map((v) => ({ value: v, label: VISUAL_TYPE_LABEL[v] }));
 const SPAN_OPTIONS = [
@@ -150,6 +151,20 @@ function TypeSettings({ visual: v, onChange, fields, measures }: TypeSettingsPro
           </p>
           <Field label="Máximo de linhas">
             <NumberInput value={v.limit} min={1} max={1000} onChange={(limit) => onChange({ ...v, limit })} />
+          </Field>
+        </div>
+      );
+    case "matrix":
+      return (
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Field label="Linhas (campo)">
+            <Select value={v.row} empty="— escolha" options={fields} onChange={(row) => onChange({ ...v, row })} />
+          </Field>
+          <Field label="Colunas (campo)">
+            <Select value={v.column} empty="— escolha" options={fields} onChange={(column) => onChange({ ...v, column })} />
+          </Field>
+          <Field label="Medida">
+            <Select value={v.measure} empty="— escolha" options={measures} onChange={(measure) => onChange({ ...v, measure })} />
           </Field>
         </div>
       );

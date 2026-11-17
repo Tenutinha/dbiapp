@@ -40,6 +40,8 @@ export function crossFields(visual: Visual): string[] {
       return [visual.field];
     case "table":
       return [...visual.fields];
+    case "matrix":
+      return [visual.row, visual.column];
     default:
       return [];
   }
