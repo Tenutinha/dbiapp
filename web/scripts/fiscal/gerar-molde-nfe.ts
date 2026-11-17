@@ -183,6 +183,9 @@ const template: Json = {
     { title: "Painéis", analyses: panels.map((s) => s.id) },
     { title: "Dados originais", analyses: [raw.id] },
   ],
+  // As the SPED templates: each analysis a page the scroll stops at, in small type.
+  paging: "pages",
+  density: "compact",
 };
 
 const parsed = templateSchema.safeParse(template);

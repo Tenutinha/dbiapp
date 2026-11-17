@@ -10,6 +10,7 @@ import { PAGE_CLASS, PageStrip } from "./PageStrip";
 import { CARD_STRIP_ATTR } from "./strip-attrs";
 import { CrossTable } from "./CrossTable";
 import { ScrollTable, type ScrollColumn, type SortValue } from "./ScrollTable";
+import { SnapPages } from "./SnapPages";
 import { FieldPicker } from "./FieldPicker";
 import { StatementTable } from "./StatementTable";
 import { VisualCard } from "./VisualCard";
@@ -21,6 +22,13 @@ const ROWS_WRAP_CELL = "min-w-64 max-w-md whitespace-normal";
 
 /** Classes of the tones a text measure gives its values (template `tones`). */
 const TONE_CLASS: Record<string, string> = { ok: "text-ok", warn: "text-accent", danger: "font-medium text-danger" };
+
+/**
+ * An analysis of a dashboard of pages (paging "pages"): at least a screen tall, less the header, and one page
+ * of the wheel (`snap-page`, see SnapPages). The space between analyses is inside the page (padding), so no
+ * strip of the previous one shows.
+ */
+export const VERTICAL_PAGE_CLASS = "snap-page min-h-[calc(100dvh-6rem)] scroll-mt-24 pb-10";
 
 const SPAN: Record<number, string> = {
   1: "md:col-span-1", 2: "md:col-span-2", 3: "md:col-span-3", 4: "md:col-span-4",
@@ -74,7 +82,7 @@ function VisualBody({ template, result }: { template: Template; result: VisualRe
       const detail = visual.detail;
       if (!detail) {
         return (
-          <p className="mt-1 truncate text-3xl font-extrabold tracking-tight" title={formatValue(value, m.format)}>
+          <p className="dash-kpi mt-1 truncate text-3xl font-extrabold tracking-tight" title={formatValue(value, m.format)}>
             {formatValue(value, m.format, compact)}
           </p>
         );
@@ -85,7 +93,7 @@ function VisualBody({ template, result }: { template: Template; result: VisualRe
       const detailText = [dm ? formatValue(rows[0]?.[dm.id], dm.format) : "", detail.text ?? ""].filter(Boolean).join(" ");
       return (
         <div className="@container">
-          <p className="mt-1 truncate text-[clamp(1.125rem,13cqw,1.875rem)] font-extrabold tracking-tight" title={formatValue(value, m.format)}>
+          <p className="dash-kpi-fit mt-1 truncate text-[clamp(1.125rem,13cqw,1.875rem)] font-extrabold tracking-tight" title={formatValue(value, m.format)}>
             {formatValue(value, m.format, compact ? "counts" : false)}
           </p>
           {detailText && <p className="mt-1 truncate text-xs text-muted" title={detailText}>{detailText}</p>}
@@ -265,6 +273,9 @@ export function DashboardView({ template, data, totalRows, later, notesInSummary
     </header>
   );
   const pageClass = sideways ? PAGE_CLASS : undefined;
+  // Pages one below the other: each a screen tall at least, the wheel taking them whole.
+  const snap = template.paging === "pages";
+  const sectionClass = snap ? VERTICAL_PAGE_CLASS : "mt-14 scroll-mt-24 first:mt-0";
   // An analysis computed with the page that has nothing to show under these filters leaves the page.
   const shown = sections.filter(
     (s) => (later !== undefined && pending.has(s.analysis.id)) || s.results.length === 0 || visibleResults(s.results).length > 0,
@@ -275,19 +286,21 @@ export function DashboardView({ template, data, totalRows, later, notesInSummary
       return (
         <LazySection
           key={`${s.analysis.id}?${later.search}`}
-          ticket={later.ticket} analysisId={s.analysis.id} search={later.search} anchor={s.anchor} header={header(s)} pageClass={pageClass}
+          ticket={later.ticket} analysisId={s.analysis.id} search={later.search} anchor={s.anchor} header={header(s)} pageClass={pageClass} sectionClass={sectionClass}
         />
       );
     }
     return (
-      <section key={s.analysis.id} id={s.anchor} aria-labelledby={`${s.anchor}-titulo`} className={pageClass ?? "mt-14 scroll-mt-24 first:mt-0"}>
+      <section key={s.analysis.id} id={s.anchor} aria-labelledby={`${s.anchor}-titulo`} className={pageClass ?? sectionClass}>
         {header(s)}
         <VisualGrid template={template} results={s.results} layout={s.analysis.layout} />
       </section>
     );
   });
+  // `contents`: the scope of the compact type, without a box of its own between the page and its parts.
   return (
-    <>
+    <div className={`contents${template.density === "compact" ? " dash-compact" : ""}${snap ? " dash-pages" : ""}`}>
+      {snap && <SnapPages />}
       <FilterBar filters={data.filters} cross={data.cross} layout={template.filterLayout} />
       <VisualGrid template={template} results={loose} />
       {sideways ? <PageStrip pages={shown.map((s) => ({ anchor: s.anchor, title: s.analysis.title }))} tabs={!notesInSummary}>{body}</PageStrip> : body}
@@ -295,6 +308,6 @@ export function DashboardView({ template, data, totalRows, later, notesInSummary
         {totalRows.toLocaleString("pt-BR")} linhas na fato · {data.visuals.length} visuais calculados em {data.elapsedMs} ms
         {pending.size > 0 && " · as demais análises carregam ao chegar nelas"}
       </p>
-    </>
+    </div>
   );
 }

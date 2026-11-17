@@ -14,6 +14,8 @@ interface LazySectionProps {
   header: React.ReactNode;
   /** A page of a strip turned sideways (PageStrip): its own classes, and the page never scrolls to keep its end. */
   pageClass?: string;
+  /** Classes of the section when it is not such a page (default: one analysis below the other, freely scrolled). */
+  sectionClass?: string;
 }
 
 type State =
@@ -57,7 +59,7 @@ function Waiting() {
  * are asked for when the reader gets near it (scrolling, or jumping from the summary) and take the
  * skeleton's place. A dashboard with dozens of analyses then opens as fast as its first one.
  */
-export function LazySection({ ticket, analysisId, search, anchor, header, pageClass }: LazySectionProps) {
+export function LazySection({ ticket, analysisId, search, anchor, header, pageClass, sectionClass }: LazySectionProps) {
   const ref = useRef<HTMLElement>(null);
   /** Marks where the analysis ends, also when it leaves the page (nothing to show). */
   const end = useRef<HTMLDivElement>(null);
@@ -124,7 +126,7 @@ export function LazySection({ ticket, analysisId, search, anchor, header, pageCl
           id={anchor}
           aria-labelledby={`${anchor}-titulo`}
           aria-busy={state.status === "loading" || undefined}
-          className={pageClass ?? "mt-14 scroll-mt-24 first:mt-0"}
+          className={pageClass ?? sectionClass ?? "mt-14 scroll-mt-24 first:mt-0"}
         >
           {header}
           {state.status === "done" && state.body}

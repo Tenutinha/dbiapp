@@ -70,7 +70,6 @@ function rawSections(
     /** Blocks whose section keeps only those visuals: the listings of the raw records are left out. */
     leadOnly?: ReadonlySet<string>;
     /** Blocks whose section lays its visuals side by side, in a strip that scrolls sideways. */
-    rowLayout?: ReadonlySet<string>;
   },
 ): Section[] {
   const blocks = BLOCKS[kind.templateId];
@@ -125,9 +124,11 @@ function rawSections(
     visuals.unshift(...(opts.lead?.[block] ?? []));
     if (visuals.length === 0) continue;
     const description = tableOfBlock[block] ? `Todos os períodos enviados, lidos da tabela ${tableOfBlock[block]}.` : "";
+    // One listing per record, side by side: a block has dozens of them, and one below the other they took
+    // screens of scrolling to get past. The strip is turned from the dashboard header.
     sections.push({
       id: `bloco_${block.toLowerCase()}`, title: `Bloco ${block} · ${name}`, description, visuals,
-      ...(opts.rowLayout?.has(block) ? { layout: "row" as const } : {}),
+      ...(visuals.length > 1 ? { layout: "row" as const } : {}),
     });
   }
   sections.push({
@@ -263,12 +264,10 @@ interface Parts {
   lead?: Readonly<Record<string, Json[]>>;
   /** Blocks whose original-data section keeps only its `lead` visuals, without the raw record listings. */
   leadOnly?: ReadonlySet<string>;
-  /** Blocks whose original-data section lays its visuals side by side (see rawSections). */
-  rowLayout?: ReadonlySet<string>;
 }
 
 function build(kind: SpedKind, p: Parts): Json {
-  const raw = rawSections(kind, { skipFilters: p.skipFilters, lead: p.lead, leadOnly: p.leadOnly, rowLayout: p.rowLayout });
+  const raw = rawSections(kind, { skipFilters: p.skipFilters, lead: p.lead, leadOnly: p.leadOnly });
   const sections = [...p.panels, ...raw];
   return {
     id: kind.templateId,
@@ -295,6 +294,9 @@ function build(kind: SpedKind, p: Parts): Json {
       { title: p.panelGroup, analyses: p.panels.map((s) => s.id) },
       { title: "Dados originais", analyses: raw.map((s) => s.id) },
     ],
+    // Read as records: each analysis a page the scroll stops at, in small type.
+    paging: "pages",
+    density: "compact",
   };
 }
 
@@ -760,7 +762,6 @@ function efdContrib(): Json {
     fields, measures, filters: ["ano", "mes", "estabelecimento"], panels: panelsAllPeriods, panelGroup: "Painéis",
     lead: { A: [totalsByCompetencia, byNoteTable] },
     // By month, then note by note, side by side: the reader scrolls sideways from one to the other.
-    rowLayout: new Set(["A"]),
     // The raw lines of bloco A (A001 … A990) say little on their own: its section is its totals.
     leadOnly: new Set(["A"]),
   });
