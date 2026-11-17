@@ -4,7 +4,8 @@
 import { queryRows, withConnection, type Row } from "../duck/engine";
 import type { Template, Visual } from "../templates/schema";
 import {
-  buildFilterOptionsQuery, buildTableTotalQuery, buildVisualQuery, MissingFactError, type BuiltQuery, type FilterSelection, type TableFiles,
+  buildFilterOptionsQuery, buildKpiQueries, buildTableTotalQuery, buildVisualQuery, MissingFactError,
+  type BuiltQuery, type FilterSelection, type KpiGroup, type KpiVisual, type TableFiles,
 } from "./build";
 import { cachedRows } from "./result-cache";
 import type { CrossSelection } from "./cross";
@@ -137,10 +138,39 @@ export async function runDashboard(
     };
   };
   const wanted = part.only ? template.visuals.filter((v) => part.only?.has(v.id)) : template.visuals;
-  const [visuals, filters] = await Promise.all([
-    inParallel(storageRoot, wanted, runVisual),
+  // The KPIs that read the same rows are answered together, one query for the lot (see buildKpiQueries).
+  const kpis = wanted.filter((v): v is KpiVisual => v.type === "kpi");
+  const answered = new Map<string, VisualResult>();
+  let groups: KpiGroup[] = [];
+  try {
+    const built = buildKpiQueries(template, files, kpis, resolved, factFilter, cross);
+    groups = built.groups;
+    for (const visual of built.missing) answered.set(visual.id, { visual, rows: [] });
+  } catch (err) {
+    // Built one by one below, so the KPI that cannot be built says so on its own card.
+    console.error(`[dashboard] KPIs of ${template.id} could not be built together`, err);
+  }
+  const runGroup = async (conn: Parameters<typeof queryRows>[0], group: KpiGroup): Promise<void> => {
+    try {
+      const [row] = await read(conn, group.query);
+      for (const m of group.members) {
+        answered.set(m.visual.id, { visual: m.visual, rows: row ? [Object.fromEntries(m.columns.map((c) => [c, row[c] ?? null]))] : [] });
+      }
+    } catch (err) {
+      // One by one then: only the KPI that cannot be computed says so, the others of the group keep their numbers.
+      console.error(`[dashboard] visuals ${template.id}/${group.members.map((m) => m.visual.id).join(",")} failed together`, err);
+      for (const m of group.members) answered.set(m.visual.id, await runVisual(conn, m.visual));
+    }
+  };
+  const grouped = new Set(groups.flatMap((g) => g.members.map((m) => m.visual.id)));
+  const alone = wanted.filter((v) => !grouped.has(v.id) && !answered.has(v.id));
+  const [, others, filters] = await Promise.all([
+    inParallel(storageRoot, groups, runGroup),
+    inParallel(storageRoot, alone, runVisual),
     inParallel(storageRoot, part.filterOptions === false ? [] : template.filters, runFilter),
   ]);
+  for (const result of others) answered.set(result.visual.id, result);
+  const visuals = wanted.flatMap((v) => answered.get(v.id) ?? []);
 
   const picks: CrossPicks[] = cross.map((entry) => ({
     ...entry,

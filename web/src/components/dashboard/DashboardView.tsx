@@ -5,6 +5,8 @@ import { buildSections, offTheAir } from "@/lib/templates/sections";
 import { Chart, type ChartMeasure } from "./Chart";
 import { FilterBar } from "./FilterBar";
 import { LazySection } from "./LazySection";
+import { DashboardLive } from "./live";
+import { LOOSE_PART } from "./live-types";
 import { MapChart, type MapMeasure } from "./MapChart";
 import { PAGE_CLASS, PageStrip } from "./PageStrip";
 import { CARD_STRIP_ATTR } from "./strip-attrs";
@@ -40,13 +42,19 @@ interface DashboardViewProps {
   template: Template;
   data: DashboardData;
   totalRows: number;
-  /** Analyses not computed with the page: each one is asked for when the reader gets near it. */
+  /**
+   * Given, the dashboard is live (see ./live): a filter or an item picked in a visual brings only the numbers
+   * of the parts on screen, without the page being made again. Left out (a shared link, a preview), every
+   * change goes through the address and the server answers with the whole page.
+   */
   later?: {
-    /** Ids of those analyses. */
+    /** Analyses not computed with the page: each one is asked for when the reader gets near it. */
     pending: readonly string[];
     ticket: string;
-    /** The page's filters and picked items, as a query string. */
+    /** The page's filters and picked items, as a query string (see canonicalSearch). */
     search: string;
+    /** The published version the page shows: another one starts every part over. */
+    version?: string;
   };
   /**
    * The sidebar summary shows each analysis's description when the mouse rests on it: the page then
@@ -280,13 +288,17 @@ export function DashboardView({ template, data, totalRows, later, notesInSummary
   const shown = sections.filter(
     (s) => (later !== undefined && pending.has(s.analysis.id)) || s.results.length === 0 || visibleResults(s.results).length > 0,
   );
-  const body = shown.map((s) => {
-    if (later && pending.has(s.analysis.id)) {
-      // Keyed by the filters too: a new selection starts the analysis over, as it does the computed ones.
+  const body = (later ? sections : shown).map((s) => {
+    if (later) {
+      // Every analysis keeps itself up to date: the ones computed with the page start with what it computed
+      // (nothing, when they have nothing to show under these filters), the others ask when the reader gets near.
+      const computed = !pending.has(s.analysis.id);
+      const empty = s.results.length > 0 && visibleResults(s.results).length === 0;
       return (
         <LazySection
-          key={`${s.analysis.id}?${later.search}`}
+          key={s.analysis.id}
           ticket={later.ticket} analysisId={s.analysis.id} search={later.search} anchor={s.anchor} header={header(s)} pageClass={pageClass} sectionClass={sectionClass}
+          initial={computed ? { body: empty ? null : <VisualGrid template={template} results={s.results} layout={s.analysis.layout} /> } : undefined}
         />
       );
     }
@@ -297,17 +309,23 @@ export function DashboardView({ template, data, totalRows, later, notesInSummary
       </section>
     );
   });
+  const looseGrid = <VisualGrid template={template} results={loose} />;
   // `contents`: the scope of the compact type, without a box of its own between the page and its parts.
-  return (
+  const page = (
     <div className={`contents${template.density === "compact" ? " dash-compact" : ""}${snap ? " dash-pages" : ""}`}>
       {snap && <SnapPages />}
       <FilterBar filters={data.filters} cross={data.cross} layout={template.filterLayout} />
-      <VisualGrid template={template} results={loose} />
-      {sideways ? <PageStrip pages={shown.map((s) => ({ anchor: s.anchor, title: s.analysis.title }))} tabs={!notesInSummary}>{body}</PageStrip> : body}
+      {later && loose.length > 0 ? (
+        <LazySection ticket={later.ticket} analysisId={LOOSE_PART} search={later.search} initial={{ body: visibleResults(loose).length > 0 ? looseGrid : null }} />
+      ) : looseGrid}
+      {sideways ? <PageStrip pages={(later ? sections : shown).map((s) => ({ anchor: s.anchor, title: s.analysis.title }))} tabs={!notesInSummary}>{body}</PageStrip> : body}
       <p className="mt-6 text-right font-mono text-xs text-muted">
         {totalRows.toLocaleString("pt-BR")} linhas na fato · {data.visuals.length} visuais calculados em {data.elapsedMs} ms
         {pending.size > 0 && " · as demais análises carregam ao chegar nelas"}
       </p>
     </div>
   );
+  return later
+    ? <DashboardLive key={later.version} ticket={later.ticket} initial={{ filters: data.filters, cross: data.cross, search: later.search }}>{page}</DashboardLive>
+    : page;
 }

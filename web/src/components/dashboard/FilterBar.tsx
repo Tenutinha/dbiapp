@@ -1,11 +1,12 @@
 "use client";
 
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useSearchParams } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { CROSS_PREFIX, crossKey } from "@/lib/query/cross";
-import { useBusySignal } from "./busy";
 import { filterDock, useFilterDock } from "./filter-dock";
+import { shownSelection } from "./filter-selection";
+import { useDashboardNav, useLive } from "./live";
 
 type Filter = { fieldId: string; label: string; values: string[]; selected: string[]; single: boolean };
 
@@ -161,13 +162,18 @@ interface Place {
  * not block the page, so the visuals can be watched — and clicked — while filtering. On the page itself
  * there is only what is in use (chosen filters and the items picked in the visuals, each removable).
  */
-export function FilterBar({ filters, cross = [], layout = "floating" }: FilterBarProps) {
+export function FilterBar({ filters: pageFilters, cross: pageCross = [], layout = "floating" }: FilterBarProps) {
   const inline = layout === "inline";
-  const router = useRouter();
-  const pathname = usePathname();
   const params = useSearchParams();
-  const [pending, start] = useTransition();
-  useBusySignal(pending);
+  const nav = useDashboardNav();
+  // In a live dashboard the list comes up to date a moment after the visuals: until then it shows what the
+  // address already says is chosen, over the options it had.
+  const live = useLive();
+  const behind = live !== null && live.data.search !== live.search;
+  const { filters, cross } = live
+    ? (behind ? shownSelection(live.data, new URLSearchParams(params.toString())) : live.data)
+    : { filters: pageFilters, cross: pageCross };
+  const pending = nav.pending || behind;
   // Open or closed lives in the dock, so the dashboard header's icon can open the panel too.
   const dock = useFilterDock();
   const open = dock.open;
@@ -228,10 +234,7 @@ export function FilterBar({ filters, cross = [], layout = "floating" }: FilterBa
     return () => document.removeEventListener("keydown", onKey);
   }, [open]);
 
-  function go(next: URLSearchParams): void {
-    const query = next.toString();
-    start(() => router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false }));
-  }
+  const go = nav.go;
 
   function apply(fieldId: string, values: string[]): void {
     const next = new URLSearchParams(params.toString());

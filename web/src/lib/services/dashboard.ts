@@ -21,8 +21,9 @@ export interface LoadedDashboard {
 /** What every load of a dashboard needs: the readers' template, the local files and the data filter. */
 async function prepare(instanceId: string, templateId: string, activeVersionId: string, searchParams: Readonly<Record<string, string | string[] | undefined>>) {
   // Analyses taken off the air are neither shown nor computed for readers; swappable tables take the reader’s field.
-  const template = withChosenFields(withoutHidden(await requireTemplate(templateId)), searchParams);
-  const [files, rawFilter] = await Promise.all([listFiles(activeVersionId), getDataFilterRaw(instanceId)]);
+  // Asked together: each is a trip to the database, and one after the other they were most of what a click waited for.
+  const [stored, files, rawFilter] = await Promise.all([requireTemplate(templateId), listFiles(activeVersionId), getDataFilterRaw(instanceId)]);
+  const template = withChosenFields(withoutHidden(stored), searchParams);
   const factFilter = parseFactFilter(rawFilter, factColumns(template));
   const byTable = Object.fromEntries(files.map((f) => [f.tableName, f.storagePath]));
   const fact = template.tables.find((t) => t.kind === "fact")?.name;
@@ -59,24 +60,55 @@ export async function loadDashboard(
   return { template, data, totalRows, pending: opening?.pending ?? [] };
 }
 
+/** The visuals of one part of the page, in its order, and how the part lays them out. */
+export interface LoadedPart {
+  results: DashboardData["visuals"];
+  layout?: "grid" | "row";
+}
+
 /**
- * One analysis of a dashboard, for the page that left it for later: its visuals under the same filters
- * and picked items. Null when the analysis is not one the readers get. Caller must have checked access.
+ * Some parts of a dashboard under one selection, computed in one go (their visuals side by side): the
+ * analyses the page left for later, or the ones on screen after a filter or a picked item changed. A part is
+ * an analysis id, or "" for the visuals that belong to no analysis; one the readers do not get answers null.
+ * The items picked in the visuals come along (no query needed). Caller must have checked access.
  */
-export async function loadAnalysis(
+export async function loadParts(
   instanceId: string,
   templateId: string,
   activeVersionId: string,
-  analysisId: string,
+  partIds: readonly string[],
   searchParams: Readonly<Record<string, string | string[] | undefined>>,
-): Promise<{ template: Template; results: DashboardData["visuals"] } | null> {
+): Promise<{ template: Template; parts: (LoadedPart | null)[]; cross: DashboardData["cross"] }> {
   const { template, factFilter, local, reach } = await prepare(instanceId, templateId, activeVersionId, searchParams);
-  const analysis = template.analyses.find((a) => a.id === analysisId);
-  if (!analysis) return null;
+  const placed = new Set(template.analyses.flatMap((a) => a.visuals));
+  const wanted = partIds.map((id): { visuals: string[]; layout?: "grid" | "row" } | null => {
+    if (id === "") return { visuals: template.visuals.filter((v) => !placed.has(v.id)).map((v) => v.id) };
+    const analysis = template.analyses.find((a) => a.id === id);
+    return analysis ? { visuals: analysis.visuals, layout: analysis.layout } : null;
+  });
   const data = await runDashboard(
     storage.workRoot, template, local, parseSelection(template, searchParams), factFilter, parseCross(template, searchParams),
-    { ...reach, only: new Set(analysis.visuals), filterOptions: false },
+    { ...reach, only: new Set(wanted.flatMap((p) => p?.visuals ?? [])), filterOptions: false },
   );
   const byId = new Map(data.visuals.map((r) => [r.visual.id, r]));
-  return { template, results: analysis.visuals.flatMap((id) => byId.get(id) ?? []) };
+  return {
+    template,
+    parts: wanted.map((p) => p && { results: p.visuals.flatMap((id) => byId.get(id) ?? []), layout: p.layout }),
+    cross: data.cross,
+  };
+}
+
+/** The filters of a dashboard under a selection (their options and what is chosen) and the picked items; no visual is computed. */
+export async function loadFilters(
+  instanceId: string,
+  templateId: string,
+  activeVersionId: string,
+  searchParams: Readonly<Record<string, string | string[] | undefined>>,
+): Promise<Pick<DashboardData, "filters" | "cross">> {
+  const { template, factFilter, local, reach } = await prepare(instanceId, templateId, activeVersionId, searchParams);
+  const data = await runDashboard(
+    storage.workRoot, template, local, parseSelection(template, searchParams), factFilter, parseCross(template, searchParams),
+    { ...reach, only: new Set() },
+  );
+  return { filters: data.filters, cross: data.cross };
 }

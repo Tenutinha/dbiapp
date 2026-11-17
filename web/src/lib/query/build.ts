@@ -293,6 +293,15 @@ function assemble(
   t: Template, files: TableFiles, visual: QueryVisual, parts: { select: string[]; groupBy: string[]; tail: string },
   filters: FilterSelection, factFilter: FactFilter, cross: CrossSelection,
 ): BuiltQuery {
+  const { select, rest, params } = pieces(t, files, visual, parts, filters, factFilter, cross);
+  return { sql: `SELECT ${select.join(", ")}\n${rest}`, params };
+}
+
+/** A visual's query in two parts: what it selects, and the rows it selects from (FROM, joins, WHERE, grouping, order). */
+function pieces(
+  t: Template, files: TableFiles, visual: QueryVisual, parts: { select: string[]; groupBy: string[]; tail: string },
+  filters: FilterSelection, factFilter: FactFilter, cross: CrossSelection,
+): { select: string[]; rest: string; params: string[] } {
   const source = factSource(t, visual.fact);
   const { select, groupBy, tail } = parts;
   // Built apart first: the FROM only joins the dimensions the query mentions, and its parameters come first.
@@ -307,16 +316,51 @@ function assemble(
   const shift = params.length;
   const shiftedWhere = shift === 0 ? whereSql : whereSql.replace(/\$(\d+)/g, (_, n: string) => `$${Number(n) + shift}`);
   params.push(...where.params);
-  const sql = [
-    `SELECT ${select.join(", ")}`,
-    from,
-    shiftedWhere,
-    groupBy.length ? `GROUP BY ${groupBy.join(", ")}` : "",
-    tail,
-  ]
-    .filter(Boolean)
-    .join("\n");
-  return { sql, params };
+  const rest = [from, shiftedWhere, groupBy.length ? `GROUP BY ${groupBy.join(", ")}` : "", tail].filter(Boolean).join("\n");
+  return { select, rest, params };
+}
+
+export type KpiVisual = Extract<Visual, { type: "kpi" }>;
+
+/** KPIs answered by one query, and the columns of its single row each of them reads. */
+export interface KpiGroup {
+  query: BuiltQuery;
+  members: { visual: KpiVisual; columns: string[] }[];
+}
+
+/**
+ * The queries of the KPIs of a page. The ones that read the very same rows (same fact, joins, filters, picked
+ * items and own condition) go in a single query, each with its own column: a row of nine indicators over
+ * one table is one scan of it instead of nine. A KPI whose fact has no data yet comes back in `missing`
+ * (see MissingFactError); any other failure to build is thrown, as when built alone.
+ */
+export function buildKpiQueries(
+  t: Template, files: TableFiles, visuals: readonly KpiVisual[], filters: FilterSelection, factFilter: FactFilter = [],
+  cross: CrossSelection = [],
+): { groups: KpiGroup[]; missing: KpiVisual[] } {
+  const groups = new Map<string, { select: string[]; rest: string; params: string[]; members: KpiGroup["members"] }>();
+  const missing: KpiVisual[] = [];
+  for (const visual of visuals) {
+    let built: ReturnType<typeof pieces>;
+    try {
+      built = pieces(t, files, visual, selectFor(t, visual, filters), filters, factFilter, cross);
+    } catch (err) {
+      if (!(err instanceof MissingFactError)) throw err;
+      missing.push(visual);
+      continue;
+    }
+    const key = JSON.stringify([built.rest, built.params]);
+    const group = groups.get(key) ?? { select: [], rest: built.rest, params: built.params, members: [] };
+    // The same measure asked by two KPIs is selected once.
+    for (const column of built.select) if (!group.select.includes(column)) group.select.push(column);
+    const columns = [visual.measure, ...(visual.detail?.measure && visual.detail.measure !== visual.measure ? [visual.detail.measure] : [])];
+    group.members.push({ visual, columns });
+    groups.set(key, group);
+  }
+  return {
+    groups: [...groups.values()].map((g) => ({ query: { sql: `SELECT ${g.select.join(", ")}\n${g.rest}`, params: g.params }, members: g.members })),
+    missing,
+  };
 }
 
 /** Distinct values for a filter, honouring the *other* active filters (cross-filtering). */

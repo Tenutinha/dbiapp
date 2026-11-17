@@ -1,5 +1,6 @@
 import { DashboardSkeleton } from "@/components/dashboard/DashboardSkeleton";
 import { DashboardView } from "@/components/dashboard/DashboardView";
+import { canonicalSearchOf } from "@/lib/search-string";
 import { issueSectionTicket } from "@/lib/section-ticket";
 import { loadDashboard } from "@/lib/services/dashboard";
 import { DashboardLanding } from "./DashboardArrival";
@@ -16,16 +17,6 @@ interface DashboardBodyProps {
   before: React.ReactNode;
   /** Shown under the visuals once they are ready (the way on to the next dashboard). */
   after: React.ReactNode;
-}
-
-/** The page's search params as one query string, in a stable order (it tells a selection from another). */
-function searchString(searchParams: Readonly<Record<string, string | string[] | undefined>>): string {
-  const query = new URLSearchParams();
-  for (const name of Object.keys(searchParams).sort()) {
-    const value = searchParams[name];
-    for (const v of Array.isArray(value) ? value : value === undefined ? [] : [value]) query.append(name, v);
-  }
-  return query.toString();
 }
 
 /**
@@ -46,9 +37,9 @@ export async function DashboardBody({
 }: DashboardBodyProps) {
   // Only the first analysis is computed with the page; the others arrive when the reader gets near them.
   const dashboard = await loadDashboard(instanceId, templateId, activeVersionId, searchParams, "opening");
-  const later = dashboard.pending.length > 0
-    ? { pending: dashboard.pending, ticket: issueSectionTicket({ instanceId, templateId, activeVersionId }), search: searchString(searchParams) }
-    : undefined;
+  // The ticket goes with every dashboard: besides the analyses left for later, it is what lets a click on a
+  // visual or a filter bring only the numbers, without this page being made again (see dashboard/live).
+  const later = { pending: dashboard.pending, ticket: issueSectionTicket({ instanceId, templateId, activeVersionId }), search: canonicalSearchOf(searchParams), version: activeVersionId };
   return (
     <>
       <DashboardLanding anchorsKey={anchorsKey} />

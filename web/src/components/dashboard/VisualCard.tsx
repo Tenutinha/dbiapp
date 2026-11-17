@@ -2,6 +2,7 @@
 
 import { useBusy } from "./busy";
 import { CardProgress } from "./CardProgress";
+import { useStale } from "./live";
 
 interface VisualCardProps {
   title: string;
@@ -12,12 +13,14 @@ interface VisualCardProps {
 }
 
 /**
- * Card of one visual. While the dashboard recalculates (a filter changed, an item was picked) the body
- * gives way to a skeleton of the same size, so the page keeps its shape and the reader sees that the
- * numbers on screen are about to be replaced; a thin bar runs along the top edge meanwhile.
+ * Card of one visual. While its numbers are being recalculated (a filter changed, an item was picked) the
+ * ones on screen stay where they are, dimmed, with a thin bar running along the top edge: the reader keeps
+ * reading and sees that they are about to be replaced, instead of watching the page empty and fill again.
  */
 export function VisualCard({ title, className, children, tools }: VisualCardProps) {
-  const busy = useBusy();
+  const recalculating = useBusy();
+  const stale = useStale();
+  const busy = recalculating || stale;
   return (
     <section className={`card relative p-5 ${className}`} aria-busy={busy || undefined}>
       {tools ? (
@@ -28,9 +31,8 @@ export function VisualCard({ title, className, children, tools }: VisualCardProp
       ) : (
         <h2 className="text-xs font-medium text-muted">{title}</h2>
       )}
-      <div className={busy ? "invisible" : undefined}>{children}</div>
+      <div className={`transition-opacity ${busy ? "opacity-50" : ""}`}>{children}</div>
       {busy && <CardProgress />}
-      {busy && <div aria-hidden className="absolute inset-x-5 bottom-5 top-11 animate-pulse rounded-lg bg-text/10" />}
     </section>
   );
 }

@@ -10,6 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { queryRows, toDuckPath, withConnection } from "../duck/engine";
 import { checkRelationships, ingestTable } from "../ingest/ingest";
 import { loadTemplate } from "../test-helpers";
+import { buildVisualQuery } from "./build";
 import { clearResultCache } from "./result-cache";
 import { runDashboard } from "./run";
 
@@ -147,6 +148,24 @@ describe("ingest + dashboard pipeline", () => {
     // orphan facts (id_loja 5 has no dimension row) are listed and filterable
     const orphans = await runDashboard(root, t, files, { regiao: ["(sem cadastro)"] });
     expect(kpi(orphans, "k_receita").receita).toBe(20_000);
+  });
+
+  it("gives each KPI the number it gets when asked alone, though they are answered together", async () => {
+    const files = Object.fromEntries(t.tables.map((tb) => [tb.name, target(tb.name)]));
+    const kpis = t.visuals.filter((v) => v.type === "kpi");
+    expect(kpis.length).toBeGreaterThan(1);
+    const together = await runDashboard(root, t, files, { regiao: ["Sul"] }, [], [], { filterOptions: false });
+    for (const visual of kpis) {
+      const alone = await withConnection(root, (conn) => {
+        const q = buildVisualQuery(t, files, visual, { regiao: ["Sul"] });
+        return queryRows(conn, q.sql, q.params);
+      });
+      const result = together.visuals.find((v) => v.visual.id === visual.id);
+      expect(result?.error).toBeUndefined();
+      expect(result?.rows).toEqual(alone);
+    }
+    // The visuals come back in the order of the template, whatever the order they were answered in.
+    expect(together.visuals.map((v) => v.visual.id)).toEqual(t.visuals.map((v) => v.id));
   });
 
   it("answers the same with the results kept, running each query once", async () => {
