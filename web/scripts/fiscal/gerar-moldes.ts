@@ -13,7 +13,7 @@ import { templateSchema } from "../../src/lib/templates/schema";
 type Json = Record<string, unknown>;
 interface Field { id: string; label: string; sql: string }
 interface Measure { id: string; label: string; sql: string; format: "currency" | "currency_exact" | "number" | "integer" | "percent" | "text" }
-interface Section { id: string; title: string; description: string; visuals: Json[]; layout?: "grid" | "row" }
+interface Section { id: string; title: string; description: string; visuals: Json[]; layout?: "grid" | "row"; strip?: string[] }
 
 const F = "registros";
 const kindOf = (id: string): SpedKind => SPED_KINDS.find((k) => k.templateId === id)!;
@@ -288,7 +288,7 @@ function build(kind: SpedKind, p: Parts): Json {
     filterDefaults: p.filterDefaults ?? {},
     visuals: sections.flatMap((s) => s.visuals),
     analyses: sections.map((s) => ({
-      id: s.id, title: s.title, description: s.description, visuals: s.visuals.map((v) => v.id as string), ...(s.layout ? { layout: s.layout } : {}),
+      id: s.id, title: s.title, description: s.description, visuals: s.visuals.map((v) => v.id as string), ...(s.layout ? { layout: s.layout } : {}), ...(s.strip ? { strip: s.strip } : {}),
     })),
     summary: [
       { title: p.panelGroup, analyses: p.panels.map((s) => s.id) },
@@ -887,6 +887,11 @@ function ecd(): Json {
     { id: "lucro_liquido_j150", label: "Lucro líquido no J150", sql: j150Result, format: "currency" },
     { id: "diferenca_j150", label: "Diferença para o J150", sql: `CASE WHEN ${hasJ150} THEN ROUND(${dreValue()} - ${j150Result}, 2) END`, format: "currency" },
     { id: "meses_com_j150", label: "Meses com J150", sql: `COUNT(DISTINCT CASE WHEN ${j150} THEN ${F}.arquivo END)`, format: "integer" },
+    // The size of the company, for the overview: the result under a name of its own and what it is of the revenue.
+    { id: "resultado_dre", label: "Resultado", sql: dreValue(), format: "currency" },
+    { id: "margem_liquida", label: "Margem líquida", sql: `(${dreValue()}) / NULLIF(${dreValue(linesOf("receita_bruta", "deducoes"))}, 0)`, format: "percent" },
+    { id: "margem_bruta", label: "Margem bruta", sql: `(${dreValue(linesOf("receita_bruta", "deducoes", "custos"))}) / NULLIF(${dreValue(linesOf("receita_bruta", "deducoes"))}, 0)`, format: "percent" },
+    { id: "endividamento", label: "Endividamento", sql: `(0 - ${sumWhen(nat("02"), fin)}) / NULLIF(${sumWhen(nat("01"), fin)}, 0)`, format: "percent" },
   ];
   const dreRegs = isReg("I155", "I355");
   const annual = { skipFilters: ["mes", "natureza"] };
@@ -928,15 +933,30 @@ function ecd(): Json {
   const panels: Section[] = [
     {
       id: "visao_geral", title: "Visão geral",
-      description: "Posição do mês escolhido no filtro (abre no mais recente), a partir dos saldos periódicos (I155). Saldos credores de passivo, patrimônio líquido e resultado aparecem positivos.",
+      description: "O tamanho da empresa no mês escolhido no filtro (abre no mais recente): receita, resultado e margens do mês, e a posição patrimonial ao fim dele (saldos periódicos, I155). "
+        + "O gráfico mostra todos os meses; um clique num mês leva os indicadores para ele. Os quadros lado a lado, abaixo, trazem a evolução por ano, o patrimônio e a composição.",
       visuals: [
-        kpi("k_ativo", "Ativo", "ativo", 3, i155), kpi("k_passivo", "Passivo", "passivo", 3, i155),
-        kpi("k_pl", "Patrimônio líquido", "patrimonio_liquido", 3, i155), kpi("k_resultado", "Resultado acumulado", "resultado_acumulado", 3, i155),
-        kpi("k_resultado_mes", "Resultado do mês", "resultado_mes", 3, i155), kpi("k_debitos", "Débitos do mês", "debitos", 3, i155),
-        kpi("k_creditos", "Créditos do mês", "creditos", 3, i155), kpi("k_contas", "Contas movimentadas", "contas_movimentadas", 3, i155),
-        { id: "d_ativo", type: "donut", title: "Composição do ativo", field: "grupo_2", measure: "ativo", span: 6, where: nat("01") },
-        { id: "d_passivo", type: "donut", title: "Composição do passivo e do patrimônio líquido", field: "grupo_2", measure: "saldo_credor", span: 6, where: `${i155} AND plano_contas.natureza IN ('02', '03')` },
+        kpi("k_receita_liquida", "Receita líquida do mês", "receita_liquida_dre", 2, dreRegs), kpi("k_resultado_mes", "Resultado do mês", "resultado_dre", 2, dreRegs),
+        kpi("k_margem_liquida", "Margem líquida", "margem_liquida", 2, dreRegs), kpi("k_ativo", "Ativo", "ativo", 2, i155),
+        kpi("k_pl", "Patrimônio líquido", "patrimonio_liquido", 2, i155), kpi("k_endividamento", "Endividamento (passivo ÷ ativo)", "endividamento", 2, i155),
+        kpi("k_lucro_bruto", "Lucro bruto do mês", "lucro_bruto_dre", 2, dreRegs), kpi("k_margem_bruta", "Margem bruta", "margem_bruta", 2, dreRegs),
+        kpi("k_passivo", "Passivo", "passivo", 2, i155), kpi("k_debitos", "Débitos do mês", "debitos", 2, i155),
+        kpi("k_creditos", "Créditos do mês", "creditos", 2, i155), kpi("k_contas", "Contas movimentadas", "contas_movimentadas", 2, i155),
+        {
+          id: "l_resultado_mes", type: "line", title: "Evolução do resultado: receita líquida e resultado por mês (clique num mês para filtrar)",
+          field: "mes", measures: ["receita_liquida_dre", "resultado_dre"], sort: "field", limit: 400, span: 12, where: dreRegs, skipFilters: ["mes"],
+        },
+        { id: "b_resultado_ano", type: "bar", title: "Receita líquida e resultado por ano", field: "ano", measures: ["receita_liquida_dre", "resultado_dre"], sort: "field", limit: 40, span: 12, where: dreRegs, skipFilters: ["mes", "ano"] },
+        { id: "l_patrimonio_mes", type: "line", title: "Ativo e patrimônio líquido ao fim de cada mês", field: "mes", measures: ["ativo", "patrimonio_liquido"], sort: "field", limit: 400, span: 12, where: i155, skipFilters: ["mes"] },
+        { id: "d_ativo", type: "donut", title: "Composição do ativo", field: "grupo_2", measure: "ativo", span: 12, where: nat("01") },
+        { id: "d_passivo", type: "donut", title: "Composição do passivo e do patrimônio líquido", field: "grupo_2", measure: "saldo_credor", span: 12, where: `${i155} AND plano_contas.natureza IN ('02', '03')` },
+        { id: "b_resultado_grupo_mes", type: "bar", title: "O que formou o resultado do mês, por grupo de contas", field: "grupo_3", measures: ["resultado_dre"], sort: "measure_desc", horizontal: true, limit: 25, span: 12, where: `${dreRegs} AND ${result}` },
+        {
+          id: "t_resultado_meses", type: "table", title: "Receita, lucro bruto, resultado e margem, mês a mês", fields: ["mes"],
+          measures: ["receita_liquida_dre", "lucro_bruto_dre", "resultado_dre", "margem_liquida"], sort: "field_desc", limit: 400, span: 12, where: dreRegs, skipFilters: ["mes"],
+        },
       ],
+      strip: ["b_resultado_ano", "l_patrimonio_mes", "d_ativo", "d_passivo", "b_resultado_grupo_mes", "t_resultado_meses"],
     },
     dreSection,
     {

@@ -17,6 +17,21 @@ describe("buildWhere", () => {
   it("ignores selections for fields that are not template filters", () => {
     expect(buildWhere(t, { produto: ["X"] })).toEqual({ sql: "", params: [] });
   });
+
+  it("lets a value picked in a visual stand for a filter that always holds one value", () => {
+    // "regiao" as a single-choice filter (e.g. the month a balance is read at): picking another one in a chart
+    // must not leave the page empty ("Sul" AND "Norte").
+    const single = { ...t, filterDefaults: { regiao: "Sul" } };
+    const picked = [{ visualId: "outro", fieldId: "regiao", values: ["Norte"] }];
+    const where = buildWhere(single, { regiao: ["Sul"], canal: ["Loja"] }, undefined, [], { selection: picked, visualId: "este" });
+    expect(where.params).toEqual(["Loja", "Norte"]);
+    expect(where.sql.match(/regiao/g)).toHaveLength(1);
+    // The visual it was picked in, and one that does not follow that field, keep the filter as it is.
+    expect(buildWhere(single, { regiao: ["Sul"] }, undefined, [], { selection: picked, visualId: "outro" }).params).toEqual(["Sul"]);
+    expect(buildWhere(single, { regiao: ["Sul"] }, undefined, [], { selection: picked, visualId: "este", skipFields: ["regiao"] }).params).toEqual(["Sul"]);
+    // A filter of many values keeps adding up with what is picked, as before.
+    expect(buildWhere(t, { regiao: ["Sul"] }, undefined, [], { selection: picked, visualId: "este" }).params).toEqual(["Sul", "Norte"]);
+  });
 });
 
 describe("buildVisualQuery", () => {

@@ -296,6 +296,12 @@ const analysisSchema = z.object({
    */
   layout: z.enum(["grid", "row"]).optional(),
   /**
+   * Visuals of this section (ids out of `visuals`) shown after the others, side by side in one strip that
+   * scrolls sideways: what is worth having at hand without making the section longer (more charts of the
+   * same subject). The rest keeps the grid.
+   */
+  strip: z.array(ident).optional(),
+  /**
    * Off the air (e.g. while it is being built): left out of the summary and of the page for whoever
    * reads the dashboard; still shown, marked, in the catalog preview.
    */
@@ -497,6 +503,9 @@ function checkAnalyses(t: AnalysesInput, issue: (message: string) => void): void
       if (!visualIds.has(v)) issue(`analysis ${a.id}: unknown visual "${v}"`);
       else if (placed.has(v)) issue(`visual "${v}" is in more than one analysis`);
       placed.add(v);
+    }
+    for (const v of a.strip ?? []) {
+      if (!a.visuals.includes(v)) issue(`analysis ${a.id}: strip visual "${v}" is not one of its visuals`);
     }
   }
   const listed = new Set<string>();

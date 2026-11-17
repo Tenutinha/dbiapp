@@ -5,7 +5,7 @@ import { loadTemplate } from "@/lib/test-helpers";
 import type { DashboardData } from "@/lib/query/run";
 import { templateSchema } from "@/lib/templates/schema";
 import { analysisAnchor } from "@/lib/templates/sections";
-import { DashboardView } from "./DashboardView";
+import { DashboardView, stripOf } from "./DashboardView";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/org/d/1",
@@ -160,5 +160,18 @@ describe("DashboardView with a rows listing", () => {
     expect(cell("EC01")).toContain("align-top");
     expect(cell("Um texto longo que explica a regra.")).toContain("whitespace-normal");
     expect(cell("Um texto longo que explica a regra.")).not.toContain("truncate");
+  });
+});
+
+describe("stripOf", () => {
+  const result = (id: string): Parameters<typeof stripOf>[1][number] => ({ visual: { id } } as Parameters<typeof stripOf>[1][number]);
+  const template = { analyses: [{ id: "a", visuals: ["k1", "c1", "c2", "c3"], strip: ["c2", "c3"] }, { id: "b", visuals: ["x", "y"] }] } as unknown as Parameters<typeof stripOf>[0];
+
+  it("sends to the strip the visuals the analysis lists, when at least two are on the page", () => {
+    expect([...stripOf(template, ["k1", "c1", "c2", "c3"].map(result))]).toEqual(["c2", "c3"]);
+    // One alone has nothing to scroll to: it stays in the grid.
+    expect(stripOf(template, ["k1", "c2"].map(result)).size).toBe(0);
+    expect(stripOf(template, ["x", "y"].map(result)).size).toBe(0);
+    expect(stripOf(template, []).size).toBe(0);
   });
 });
