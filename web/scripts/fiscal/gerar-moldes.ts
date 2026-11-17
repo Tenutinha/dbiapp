@@ -812,6 +812,15 @@ function ecd(): Json {
     `CASE WHEN ${col(k, reg, dc)} = 'C' THEN -${num(col(k, reg, value))} ELSE ${num(col(k, reg, value))} END`;
   const fin = signed("I155", "VL_SLD_FIN", "IND_DC_FIN");
   const ini = signed("I155", "VL_SLD_INI", "IND_DC_INI");
+  // A balance is not added up over months: it is read at the latest month of what is selected (and the
+  // opening balance at the earliest), so the page needs no month fixed in the filters. Each line of a visual
+  // takes its own latest month — the month itself in a chart by month, the last one under the filters in a
+  // total. One expression: the (month, value) pairs of the lines, those of the latest month, their sum.
+  const monthNumber = `(year(${F}.periodo) * 100 + month(${F}.periodo))`;
+  const atEdge = (edge: "MAX" | "MIN", cond: string, expr: string): string =>
+    `list_sum(list_transform(list_filter(list(list_value(${monthNumber}, ${expr})) FILTER (WHERE ${cond}), `
+    + `lambda e: list_extract(e, 1) = ${edge}(${monthNumber}) FILTER (WHERE ${i155})), lambda e: list_extract(e, 2)))`;
+  const lastSum = (cond: string, expr: string): string => atEdge("MAX", cond, expr);
   const deb = num(col(k, "I155", "VL_DEB"));
   const cre = num(col(k, "I155", "VL_CRED"));
   const nat = (code: string): string => `${i155} AND plano_contas.natureza = '${code}'`;
@@ -833,14 +842,14 @@ function ecd(): Json {
     { id: "tipo_lancamento", label: "Tipo de lançamento", sql: `CASE ${col(k, "I200", "IND_LCTO")} WHEN 'N' THEN 'N - Normal' WHEN 'E' THEN 'E - Encerramento' WHEN 'X' THEN 'X - Extemporâneo' ELSE ${col(k, "I200", "IND_LCTO")} END` },
   ];
   const measures: Measure[] = [
-    { id: "saldo_inicial", label: "Saldo inicial", sql: sumWhen(i155, ini), format: "currency" },
+    { id: "saldo_inicial", label: "Saldo inicial", sql: atEdge("MIN", i155, ini), format: "currency" },
     { id: "debitos", label: "Débitos", sql: sumWhen(i155, deb), format: "currency" },
     { id: "creditos", label: "Créditos", sql: sumWhen(i155, cre), format: "currency" },
-    { id: "saldo_final", label: "Saldo final", sql: sumWhen(i155, fin), format: "currency" },
-    { id: "ativo", label: "Ativo", sql: sumWhen(nat("01"), fin), format: "currency" },
-    { id: "passivo", label: "Passivo", sql: `0 - ${sumWhen(nat("02"), fin)}`, format: "currency" },
-    { id: "patrimonio_liquido", label: "Patrimônio líquido", sql: `0 - ${sumWhen(nat("03"), fin)}`, format: "currency" },
-    { id: "resultado_acumulado", label: "Resultado acumulado", sql: `0 - ${sumWhen(nat("04"), fin)}`, format: "currency" },
+    { id: "saldo_final", label: "Saldo final", sql: lastSum(i155, fin), format: "currency" },
+    { id: "ativo", label: "Ativo", sql: lastSum(nat("01"), fin), format: "currency" },
+    { id: "passivo", label: "Passivo", sql: `0 - ${lastSum(nat("02"), fin)}`, format: "currency" },
+    { id: "patrimonio_liquido", label: "Patrimônio líquido", sql: `0 - ${lastSum(nat("03"), fin)}`, format: "currency" },
+    { id: "resultado_acumulado", label: "Resultado acumulado", sql: `0 - ${lastSum(nat("04"), fin)}`, format: "currency" },
     { id: "resultado_mes", label: "Resultado do mês", sql: sumWhen(nat("04"), `${cre} - ${deb}`), format: "currency" },
     { id: "contas_movimentadas", label: "Contas movimentadas", sql: `COUNT(DISTINCT CASE WHEN ${i155} AND (${deb} <> 0 OR ${cre} <> 0) THEN ${F}.id_cta END)`, format: "integer" },
     { id: "resultado_antes_encerramento", label: "Resultado antes do encerramento", sql: `0 - ${sumWhen(i355, signed("I355", "VL_CTA", "IND_DC"))}`, format: "currency" },
@@ -884,7 +893,7 @@ function ecd(): Json {
   // 2.01 current liabilities, 2.02 non-current, 2.03 equity. An account without a referential code falls back
   // on its nature for assets, liabilities and equity as a whole, and stays out of the current / non-current split.
   const refCode = "COALESCE(plano_contas.cod_cta_ref, '')";
-  const bal = (cond: string): string => sumWhen(`${i155} AND (${cond})`, fin);
+  const bal = (cond: string): string => lastSum(`${i155} AND (${cond})`, fin);
   const isEquity = `(${refCode} LIKE '2.03%' OR (${refCode} = '' AND plano_contas.natureza = '03'))`;
   const assets = bal("plano_contas.natureza = '01'");
   const currentAssets = bal(`plano_contas.natureza = '01' AND ${refCode} LIKE '1.01%'`);
@@ -922,7 +931,7 @@ function ecd(): Json {
     { id: "resultado_dre", label: "Resultado", sql: dreValue(), format: "currency" },
     { id: "margem_liquida", label: "Margem líquida", sql: `(${dreValue()}) / NULLIF(${dreValue(linesOf("receita_bruta", "deducoes"))}, 0)`, format: "percent" },
     { id: "margem_bruta", label: "Margem bruta", sql: `(${dreValue(linesOf("receita_bruta", "deducoes", "custos"))}) / NULLIF(${dreValue(linesOf("receita_bruta", "deducoes"))}, 0)`, format: "percent" },
-    { id: "endividamento", label: "Endividamento", sql: `(0 - ${sumWhen(nat("02"), fin)}) / NULLIF(${sumWhen(nat("01"), fin)}, 0)`, format: "percent" },
+    { id: "endividamento", label: "Endividamento", sql: `(0 - ${lastSum(nat("02"), fin)}) / NULLIF(${lastSum(nat("01"), fin)}, 0)`, format: "percent" },
     ...indicatorMeasures,
   ];
   const dreRegs = isReg("I155", "I355");
@@ -965,15 +974,15 @@ function ecd(): Json {
   const panels: Section[] = [
     {
       id: "visao_geral", title: "Visão geral",
-      description: "O tamanho da empresa no mês escolhido no filtro (abre no mais recente): receita, resultado e margens do mês, e a posição patrimonial ao fim dele (saldos periódicos, I155). "
+      description: "O tamanho da empresa no período dos filtros (sem filtro, tudo o que foi escriturado): receita, resultado e margens somam o período, e a posição patrimonial é a do último mês dele (saldos periódicos, I155). "
         + "O gráfico mostra todos os meses; um clique num mês leva os indicadores para ele. Os quadros lado a lado, abaixo, trazem a evolução por ano, o patrimônio e a composição.",
       visuals: [
-        kpi("k_receita_liquida", "Receita líquida do mês", "receita_liquida_dre", 2, dreRegs), kpi("k_resultado_mes", "Resultado do mês", "resultado_dre", 2, dreRegs),
+        kpi("k_receita_liquida", "Receita líquida", "receita_liquida_dre", 2, dreRegs), kpi("k_resultado_mes", "Resultado", "resultado_dre", 2, dreRegs),
         kpi("k_margem_liquida", "Margem líquida", "margem_liquida", 2, dreRegs), kpi("k_ativo", "Ativo", "ativo", 2, i155),
         kpi("k_pl", "Patrimônio líquido", "pl_referencial", 2, i155), kpi("k_endividamento", "Endividamento (passivo ÷ ativo)", "endividamento_geral", 2, i155),
-        kpi("k_lucro_bruto", "Lucro bruto do mês", "lucro_bruto_dre", 2, dreRegs), kpi("k_margem_bruta", "Margem bruta", "margem_bruta", 2, dreRegs),
-        kpi("k_passivo", "Passivo exigível", "passivo_exigivel", 2, i155), kpi("k_debitos", "Débitos do mês", "debitos", 2, i155),
-        kpi("k_creditos", "Créditos do mês", "creditos", 2, i155), kpi("k_contas", "Contas movimentadas", "contas_movimentadas", 2, i155),
+        kpi("k_lucro_bruto", "Lucro bruto", "lucro_bruto_dre", 2, dreRegs), kpi("k_margem_bruta", "Margem bruta", "margem_bruta", 2, dreRegs),
+        kpi("k_passivo", "Passivo exigível", "passivo_exigivel", 2, i155), kpi("k_debitos", "Débitos", "debitos", 2, i155),
+        kpi("k_creditos", "Créditos", "creditos", 2, i155), kpi("k_contas", "Contas movimentadas", "contas_movimentadas", 2, i155),
         {
           id: "l_resultado_mes", type: "line", title: "Evolução do resultado: receita líquida e resultado por mês (clique num mês para filtrar)",
           field: "mes", measures: ["receita_liquida_dre", "resultado_dre"], sort: "field", limit: 400, span: 12, where: dreRegs, skipFilters: ["mes"],
@@ -982,7 +991,7 @@ function ecd(): Json {
         { id: "l_patrimonio_mes", type: "line", title: "Ativo e patrimônio líquido ao fim de cada mês", field: "mes", measures: ["ativo", "pl_referencial"], sort: "field", limit: 400, span: 12, where: i155, skipFilters: ["mes"] },
         { id: "d_ativo", type: "donut", title: "Composição do ativo", field: "grupo_2", measure: "ativo", span: 12, where: nat("01") },
         { id: "d_passivo", type: "donut", title: "Composição do passivo e do patrimônio líquido", field: "grupo_2", measure: "saldo_credor", span: 12, where: `${i155} AND plano_contas.natureza IN ('02', '03')` },
-        { id: "b_resultado_grupo_mes", type: "bar", title: "O que formou o resultado do mês, por grupo de contas", field: "grupo_3", measures: ["resultado_dre"], sort: "measure_desc", horizontal: true, limit: 25, span: 12, where: `${dreRegs} AND ${result}` },
+        { id: "b_resultado_grupo_mes", type: "bar", title: "O que formou o resultado do período, por grupo de contas", field: "grupo_3", measures: ["resultado_dre"], sort: "measure_desc", horizontal: true, limit: 25, span: 12, where: `${dreRegs} AND ${result}` },
         {
           id: "t_resultado_meses", type: "table", title: "Receita, lucro bruto, resultado e margem, mês a mês", fields: ["mes"],
           measures: ["receita_liquida_dre", "lucro_bruto_dre", "resultado_dre", "margem_liquida"], sort: "field_desc", limit: 400, span: 12, where: dreRegs, skipFilters: ["mes"],
@@ -1063,14 +1072,14 @@ function ecd(): Json {
   const panelsAllPeriods = panels.map((s) => (s.id === "lancamentos"
     ? s
     : { ...s, visuals: s.visuals.map((v) => (v.fact ? v : { ...v, fact: "paineis_todos_periodos" })) }));
-  measures.push({ id: "saldo_credor", label: "Saldo", sql: `0 - ${sumWhen(i155, fin)}`, format: "currency" });
+  measures.push({ id: "saldo_credor", label: "Saldo", sql: `0 - ${lastSum(i155, fin)}`, format: "currency" });
   measures.push(...dreMeasures);
   /** Records that carry a month of their own follow the month filter; the others always show. */
   const monthly = new Set(["I150", "I155", "I200", "I250", "I300", "I310", "I350", "I355", "C150", "C155"]);
   return build(k, {
     name: "ECD", area: "Contábil",
     description: "Escrituração contábil digital completa: balancete, lançamentos e demonstrações em painéis, e todos os registros do arquivo com todos os campos para consulta.",
-    fields, measures, filters: ["ano", "mes", "empresa", "natureza"], filterDefaults: { mes: "mais recente" }, panels: panelsAllPeriods, panelGroup: "Painéis",
+    fields, measures, filters: ["ano", "mes", "empresa", "natureza"], panels: panelsAllPeriods, panelGroup: "Painéis",
     skipFilters: (reg) => (monthly.has(reg) ? ["natureza"] : ["mes", "natureza"]),
   });
 }

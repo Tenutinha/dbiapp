@@ -17,8 +17,9 @@ const IDENT = /^[a-z_][a-z0-9_]*$/;
 const ident = z.string().regex(IDENT, "use snake_case identifiers");
 
 // No statement separators, comments or string-literal tricks beyond simple quotes.
-// Letters may be accented (labels such as 'Não' inside CASE expressions).
-const SAFE_SQL = /^[\p{L}\p{N}_\s.,()*+\-/<>=%'!]+$/u;
+// Letters may be accented (labels such as 'Não' inside CASE expressions). The colon is for a lambda
+// ("lambda e: ..."), as in a balance read at the latest month of what is selected.
+const SAFE_SQL = /^[\p{L}\p{N}_\s.,()*+\-/<>=%'!:]+$/u;
 const sqlExpr = z
   .string()
   .min(1)
