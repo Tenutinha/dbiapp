@@ -19,6 +19,9 @@
  *
  * Com --ao-vivo [porta], a carga serve o próprio andamento num navegador desta máquina (http://localhost:3040
  * por padrão): cada passo no instante em que acontece, sem depender do servidor do app.
+ *
+ * Cada carga fica guardada no histórico desta máquina (<home>/dbi-importacoes/conversoes, ou
+ * DBI_FISCAL_HISTORY_DIR): o que ela imprimiu e um resumo. --sem-historico desliga.
  */
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -28,6 +31,7 @@ import { sql } from "../../src/lib/db";
 import { publishDraft } from "../../src/lib/services/datasets";
 import { rebuildFiscal } from "../../src/lib/services/fiscal";
 import { startLiveServer, type LiveServer } from "../../src/lib/fiscal/live-server";
+import { historyDir, openRun, type RunRecorder } from "../../src/lib/fiscal/load-history";
 import { eventLine } from "../../src/lib/fiscal/local-load";
 import { extraFacts, templateSchema, type Template } from "../../src/lib/templates/schema";
 
@@ -46,19 +50,35 @@ let live: LiveServer | null = null;
 /** Colors and cursor moves a terminal understands and a page does not. */
 const plain = (text: string): string => text.replace(/\u001b\[[0-9;]*m/g, "");
 
-/** Starts the live page and sends it every line the load prints from now on. */
-async function goLive(titulo: string): Promise<void> {
-  const asked = Number(arg("--ao-vivo"));
-  live = await startLiveServer({ port: Number.isInteger(asked) && asked > 0 ? asked : LIVE_PORT, titulo });
-  const server = live;
+/** The load kept in this machine's history (off with --sem-historico, and when only the template is updated). */
+const HISTORY = !process.argv.includes("--sem-historico") && !process.argv.includes("--so-molde");
+let run: RunRecorder | null = null;
+
+/** Whoever gets each line the load prints, besides the terminal: the live page and the history. */
+const followers: ((line: string) => void)[] = [];
+
+function follow(follower: (line: string) => void): void {
+  if (followers.push(follower) > 1) return;
   for (const method of ["log", "warn", "error"] as const) {
     const print = console[method].bind(console);
     console[method] = (...args: unknown[]): void => {
       print(...args);
       const text = plain(args.map((a) => (a instanceof Error ? a.message : typeof a === "string" ? a : JSON.stringify(a))).join(" "));
-      for (const line of text.split(/\r?\n/)) if (line.trim() !== "") server.publish(line);
+      for (const line of text.split(/\r?\n/)) if (line.trim() !== "") for (const send of followers) send(line);
     };
   }
+}
+
+/** Starts the live page and sends it every line the load prints from now on. */
+async function goLive(titulo: string): Promise<void> {
+  const asked = Number(arg("--ao-vivo"));
+  live = await startLiveServer({
+    port: Number.isInteger(asked) && asked > 0 ? asked : LIVE_PORT,
+    titulo,
+    ...(run ? { history: historyDir(), run: run.id } : {}),
+  });
+  const server = live;
+  follow((line) => server.publish(line));
   console.log(`ao vivo: ${server.url}`);
 }
 
@@ -99,7 +119,13 @@ async function main(): Promise<void> {
   const orgSlug = arg("--org");
   const clientSlug = arg("--cliente");
   if (!templateId || !orgSlug) throw new Error("uso: --molde <id> --org <slug> [--cliente <slug>] [--so-molde]");
-  if (LIVE) await goLive(`${templateId} · ${orgSlug}${clientSlug ? ` / ${clientSlug}` : ""}`);
+  const titulo = `${templateId} · ${orgSlug}${clientSlug ? ` / ${clientSlug}` : ""}`;
+  if (HISTORY) {
+    const kept = openRun(historyDir(), { titulo, molde: templateId, org: orgSlug, cliente: clientSlug ?? null, opcoes: process.argv.slice(2).filter((a) => a.startsWith("--") && !["--molde", "--org", "--cliente"].includes(a)) });
+    run = kept;
+    follow((line) => kept.append(line));
+  }
+  if (LIVE) await goLive(titulo);
 
   const fromFile = templateSchema.parse(JSON.parse(await readFile(path.join(process.cwd(), "fiscal-templates", `${templateId}.json`), "utf8")));
   const existing = await findTemplate(fromFile.id);
@@ -202,11 +228,14 @@ async function main(): Promise<void> {
 
 main()
   .then(async () => {
+    // The summary first: the live page reads the history when it hears the end.
+    run?.close(true);
     await live?.finish(true);
     await sql.end();
   })
   .catch(async (err: unknown) => {
     console.error(err instanceof Error ? err.message : err);
+    run?.close(false, err instanceof Error ? err.message : String(err));
     await live?.finish(false).catch(() => undefined);
     await sql.end();
     process.exit(1);

@@ -134,6 +134,33 @@ reproduz as linhas de uma carga real que rodou com `--eventos`.
 
 Peças: `src/lib/fiscal/live-server.ts` e `src/lib/fiscal/live-page.ts`.
 
+## O histórico das conversões
+
+Toda carga que roda nesta máquina (pela tela ou pelo terminal) fica guardada, uma pasta por rodada, em
+`<home>/dbi-importacoes/conversoes` (ou na pasta de `DBI_FISCAL_HISTORY_DIR`), fora do repositório:
+
+- `saida.log`: cada linha que a carga imprimiu, a mesma que o terminal e a página ao vivo receberam;
+- `resumo.json`: início, fim, duração, tempo de cada etapa, arquivos lidos e com erro (com o motivo), linhas,
+  as tabelas finais e, quando parou antes de publicar, o que ela disse.
+
+Uma carga que morre sem avisar (processo encerrado, memória da máquina esgotada) não grava o fim: ela aparece
+como **interrompida**, com o que conseguiu imprimir até ali. `--sem-historico` desliga; `--so-molde` não guarda.
+
+A página ao vivo mostra o histórico embaixo do terminal: a lista das rodadas, cada uma com a diferença de
+duração para a anterior do mesmo dashboard, e as linhas de cada tabela final antes e agora. Clicar numa rodada
+abre a página inteira (etapas, cartões, terminal) como ela terminou.
+
+O servidor da carga fecha quando ela acaba. Para ver o histórico a qualquer hora:
+
+```bash
+node --import tsx scripts/fiscal/historico.ts
+```
+
+Abre em `http://localhost:3050`, na última conversão guardada. Com `--lista`, só imprime as rodadas no terminal.
+O ensaio guarda a si mesmo numa pasta à parte com `--historico <pasta>` (para ver a tela sem carga de verdade).
+
+Peça: `src/lib/fiscal/load-history.ts`.
+
 ## A tela: Converter nesta máquina
 
 Com o app rodando na máquina (não no hospedado), o painel **Dados fiscais** mostra, em cada dashboard SPED e só

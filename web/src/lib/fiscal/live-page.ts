@@ -2,7 +2,8 @@
  * The page the load serves about itself (see live-server.ts): the four steps of the fiscal modeling, the
  * file being read and the table being put together, the totals, and a terminal with every message as it
  * happens. One self-contained document — the load has no build step and no app server next to it — fed by
- * `/eventos` (events "linha", "estado" and "fim").
+ * `/eventos` (events "linha", "estado" and "fim"). Below, the history of the loads kept on this machine
+ * (`/historico`); with `?rodada=<id>` the page shows one of them instead of the running load.
  *
  * The script inside is plain JavaScript with string concatenation: no template literals, so this file's own
  * template string needs no escaping.
@@ -84,6 +85,14 @@ export const LIVE_PAGE = `<!doctype html>
   #terminal .h { color: #ffd28a; }
   #terminal .c { opacity: .7; }
 
+  .note { background: var(--card); border: 1px solid var(--warn); border-radius: 10px; padding: 10px 14px; display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; }
+  a { color: var(--accent); }
+  .scroll { overflow-x: auto; }
+  tr.sel td { background: var(--accent-soft); }
+  .up { color: var(--warn); } .down { color: var(--ok); }
+  .tag { font-size: 12px; font-weight: 600; white-space: nowrap; }
+  .tag.ok { color: var(--ok); } .tag.fail { color: var(--accent); } .tag.run { color: var(--warn); }
+
   @media (max-width: 860px) { .steps, .grid { grid-template-columns: 1fr; } .nums { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 </style>
 </head>
@@ -94,6 +103,8 @@ export const LIVE_PAGE = `<!doctype html>
     <span id="fase" class="badge" role="status"><span class="dot"></span><span id="fase-texto">Conectando…</span></span>
     <span id="tempo" class="muted"></span>
   </header>
+
+  <p class="note" id="guardada" hidden><strong>Conversão guardada no histórico.</strong><span id="guardada-texto"></span><a href="/" id="guardada-voltar" hidden>Ver a conversão que está rodando</a></p>
 
   <section aria-label="Etapas">
     <ol class="steps">
@@ -140,6 +151,14 @@ export const LIVE_PAGE = `<!doctype html>
     </div>
     <div id="terminal" role="log" aria-live="off" tabindex="0"></div>
   </section>
+
+  <section aria-labelledby="h-historico">
+    <h2 id="h-historico">Histórico das conversões nesta máquina</h2>
+    <div class="grid">
+      <div class="card" style="grid-column: 1 / -1"><div class="scroll" id="historico"><p class="empty">Carregando o histórico…</p></div><p class="muted" id="historico-pasta" style="margin: 8px 0 0; font-size: 12px"></p></div>
+      <div class="card" style="grid-column: 1 / -1" id="comparacao-card" hidden><h2 id="h-comparacao">Esta conversão e a anterior do mesmo dashboard</h2><div id="comparacao"></div></div>
+    </div>
+  </section>
 </main>
 <script>
 (function () {
@@ -150,6 +169,9 @@ export const LIVE_PAGE = `<!doctype html>
   var pausado = false;
   var estado = null;
   var terminal = document.getElementById("terminal");
+  var rodada = new URLSearchParams(location.search).get("rodada");
+  var historico = null;
+  var desenhadaPara;
 
   function $(id) { return document.getElementById(id); }
   function n(v) { return Number(v || 0).toLocaleString("pt-BR"); }
@@ -314,8 +336,8 @@ export const LIVE_PAGE = `<!doctype html>
   }
   function relogio() {
     if (!estado) return;
-    var fim = estado.fase === "rodando" ? Date.now() : (estado.recebido || Date.now());
-    $("tempo").textContent = "iniciada às " + new Date(estado.inicio).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) + " · " + duracao(fim - Date.parse(estado.inicio));
+    var fim = estado.guardada ? (estado.guardada.fim ? Date.parse(estado.guardada.fim) : Date.now()) : estado.fase === "rodando" ? Date.now() : (estado.recebido || Date.now());
+    $("tempo").textContent = "iniciada " + (estado.guardada ? "em " + quando(estado.inicio) : "às " + new Date(estado.inicio).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })) + " · " + duracao(fim - Date.parse(estado.inicio));
   }
   function aplica(e) {
     e.recebido = Date.now();
@@ -324,7 +346,9 @@ export const LIVE_PAGE = `<!doctype html>
     $("titulo").textContent = e.titulo;
     var fase = $("fase");
     fase.className = "badge " + (e.fase === "rodando" ? "run" : e.fase === "concluida" ? "ok" : "fail");
-    $("fase-texto").textContent = e.fase === "rodando" ? "Rodando" : e.fase === "concluida" ? "Concluída e publicada" : "Parou antes de publicar";
+    $("fase-texto").textContent = e.guardada && e.guardada.fase === "interrompida" ? "Interrompida: o processo terminou sem avisar" : e.fase === "rodando" ? "Rodando" : e.fase === "concluida" ? "Concluída e publicada" : "Parou antes de publicar";
+    $("guardada").hidden = !e.guardada;
+    if (e.guardada) $("guardada-texto").textContent = "Iniciada em " + quando(e.inicio) + (e.guardada.fim ? ", terminou em " + quando(e.guardada.fim) + "." : ", ainda rodando em outro processo.");
     var v = e.log.live;
     $("n-arquivos").textContent = n(v ? v.files - v.failed : 0);
     $("n-linhas").textContent = n(v ? v.rows : 0);
@@ -336,7 +360,85 @@ export const LIVE_PAGE = `<!doctype html>
     cartaoBlocos(v);
     cartaoProntas(v);
     relogio();
+    if (mostrada() !== desenhadaPara) desenhaHistorico();
   }
+
+  // ---- history ----
+  function quando(iso) { return new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }); }
+  var FASES = { concluida: ["ok", "Publicada"], falhou: ["fail", "Parou antes de publicar"], interrompida: ["fail", "Interrompida"], rodando: ["run", "Rodando"] };
+  function delta(valor, texto) {
+    if (valor === null || valor === undefined) return el("span", "muted", "—");
+    if (valor === 0) return el("span", "muted", "igual");
+    return el("span", "", (valor > 0 ? "+" : "−") + texto(Math.abs(valor)));
+  }
+  function somaTabelas(r) { var t = 0; for (var i = 0; i < r.tabelas.length; i += 1) t += r.tabelas[i].rows || 0; return t; }
+  function mostrada() { return estado && estado.rodada ? estado.rodada : null; }
+  function desenhaHistorico() {
+    if (!historico) return;
+    var box = limpa($("historico")), lista = historico.rodadas, atual = mostrada(), trs = [], escolhida = null;
+    desenhadaPara = atual;
+    $("historico-pasta").textContent = historico.pasta ? "Guardado em " + historico.pasta : "Esta conversão roda sem histórico.";
+    $("guardada-voltar").hidden = !historico.aoVivo;
+    if (lista.length === 0) { box.appendChild(el("p", "empty", "Nenhuma conversão guardada ainda.")); $("comparacao-card").hidden = true; return; }
+    for (var i = 0; i < lista.length; i += 1) {
+      var r = lista[i], tr = el("tr", r.id === atual ? "sel" : ""), c = r.comparacao, fase = FASES[r.fase] || ["", r.fase];
+      if (r.id === atual) escolhida = r;
+      var td = el("td"), a = el("a", "", quando(r.inicio));
+      a.href = historico.aoVivo && r.id === historico.atual ? "/" : "/?rodada=" + encodeURIComponent(r.id);
+      if (r.id === atual) a.setAttribute("aria-current", "true");
+      td.appendChild(a); tr.appendChild(td);
+      tr.appendChild(el("td", "", r.titulo));
+      td = el("td"); td.appendChild(el("span", "tag " + fase[0], fase[1])); tr.appendChild(td);
+      tr.appendChild(el("td", "r", r.duracaoMs === null ? "—" : duracao(r.duracaoMs)));
+      td = el("td", "r"); td.appendChild(c ? delta(c.duracaoMs !== null && Math.abs(c.duracaoMs) < 1000 ? 0 : c.duracaoMs, duracao) : el("span", "muted", "—")); tr.appendChild(td);
+      tr.appendChild(el("td", "r", n(r.arquivos.lidos) + (r.arquivos.total ? " de " + n(r.arquivos.total) : "")));
+      tr.appendChild(el("td", "r", n(r.arquivos.erros)));
+      tr.appendChild(el("td", "r", n(r.linhas)));
+      tr.appendChild(el("td", "r", n(somaTabelas(r))));
+      trs.push(tr);
+    }
+    box.appendChild(tabela([{ t: "Início" }, { t: "Dashboard" }, { t: "Resultado" }, { t: "Duração", r: true }, { t: "× anterior", r: true }, { t: "Arquivos lidos", r: true }, { t: "Com erro", r: true }, { t: "Linhas lidas", r: true }, { t: "Linhas nas tabelas", r: true }], trs));
+    desenhaComparacao(escolhida);
+  }
+  function desenhaComparacao(r) {
+    var card = $("comparacao-card"), box = limpa($("comparacao"));
+    card.hidden = !r || r.fase === "rodando";
+    if (card.hidden) return;
+    var resumo = el("div", "row");
+    var e = r.etapas, partes = [["Quebra em blocos", e.quebra], ["União por bloco", e.uniao], ["Publicação", e.publicacao]];
+    for (var i = 0; i < partes.length; i += 1) resumo.appendChild(el("span", "", partes[i][0] + ": " + (partes[i][1] === null ? "não chegou" : duracao(partes[i][1]))));
+    box.appendChild(resumo);
+    if (r.erro) box.appendChild(el("p", "up", "Parou com: " + r.erro));
+    for (var f = 0; f < Math.min(r.falhas.length, 20); f += 1) box.appendChild(el("div", "mono muted", "✕ " + cnpj(r.falhas[f].cnpj) + " " + mes(r.falhas[f].periodo) + ": " + r.falhas[f].error));
+    if (r.falhas.length > 20) box.appendChild(el("div", "muted", "… e mais " + n(r.falhas.length - 20) + " arquivo(s) com erro; a busca do terminal mostra todos."));
+    var c = r.comparacao;
+    if (!c) { box.appendChild(el("p", "empty", "É a primeira conversão guardada deste dashboard: não há anterior para comparar.")); return; }
+    var p = el("p", "muted", "Anterior: ");
+    var a = el("a", "", quando(c.anterior.inicio)); a.href = "/?rodada=" + encodeURIComponent(c.anterior.id);
+    p.appendChild(a); p.appendChild(document.createTextNode(" (" + ((FASES[c.anterior.fase] || ["", c.anterior.fase])[1]).toLowerCase() + ")"));
+    box.appendChild(p);
+    if (c.tabelas.length === 0) { box.appendChild(el("p", "empty", "Nenhuma das duas chegou a montar tabelas.")); return; }
+    var trs = [];
+    for (var j = 0; j < c.tabelas.length; j += 1) {
+      var t = c.tabelas[j], tr = el("tr");
+      tr.appendChild(el("td", "mono", t.table));
+      tr.appendChild(el("td", "r", t.antes === null ? "—" : n(t.antes)));
+      tr.appendChild(el("td", "r", t.rows === null ? "—" : n(t.rows)));
+      var td = el("td", "r"); td.appendChild(t.antes === null || t.rows === null ? el("span", "muted", t.rows === null ? "não montada agora" : "nova") : delta(t.rows - t.antes, n)); tr.appendChild(td);
+      trs.push(tr);
+    }
+    var wrap = el("div", "scroll");
+    wrap.appendChild(tabela([{ t: "Tabela final" }, { t: "Linhas antes", r: true }, { t: "Linhas agora", r: true }, { t: "Diferença", r: true }], trs));
+    box.appendChild(wrap);
+  }
+  function buscaHistorico() {
+    fetch("/historico").then(function (res) { return res.ok ? res.json() : null; }).then(function (h) {
+      if (h) { historico = h; desenhaHistorico(); }
+    }).catch(function () {
+      if (!historico) limpa($("historico")).appendChild(el("p", "empty", "O histórico não respondeu (a conversão já fechou o servidor). Abra com: node --import tsx scripts/fiscal/historico.ts"));
+    });
+  }
+  buscaHistorico();
 
   // ---- controls ----
   $("busca").addEventListener("input", function (ev) { filtro.busca = ev.target.value.trim().toLowerCase(); redesenha(); });
@@ -350,12 +452,19 @@ export const LIVE_PAGE = `<!doctype html>
   setInterval(relogio, 1000);
 
   // ---- stream ----
-  var fonte = new EventSource("/eventos");
+  var fonte = new EventSource("/eventos" + (rodada ? "?rodada=" + encodeURIComponent(rodada) : ""));
   fonte.addEventListener("linha", function (ev) { chega(JSON.parse(ev.data)); });
   fonte.addEventListener("estado", function (ev) { aplica(JSON.parse(ev.data)); });
-  fonte.addEventListener("fim", function () { fonte.close(); });
+  fonte.addEventListener("fim", function () { fonte.close(); buscaHistorico(); });
   fonte.onerror = function () {
-    if (fonte.readyState !== EventSource.CLOSED || !estado || estado.fase !== "rodando") return;
+    if (!estado) {
+      // Nothing came: there is no such load (or none kept yet) — the browser must not keep asking.
+      fonte.close();
+      $("fase").className = "badge";
+      $("fase-texto").textContent = rodada ? "Conversão não encontrada no histórico" : "Nenhuma conversão para mostrar";
+      return;
+    }
+    if (fonte.readyState !== EventSource.CLOSED || estado.fase !== "rodando") return;
     $("fase").className = "badge fail";
     $("fase-texto").textContent = "Conexão com a conversão encerrada";
   };
