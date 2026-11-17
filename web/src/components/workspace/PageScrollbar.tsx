@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { STRIP_ATTR } from "@/components/dashboard/PageStrip";
-import { CARD_STRIP_ATTR, HEADER_DRIVEN_ATTR } from "@/components/dashboard/strip-attrs";
+import { CARD_STRIP_ATTR, HEADER_DRIVEN_ATTR, STRIP_CARD_ATTR } from "@/components/dashboard/strip-attrs";
 
 /** Where the strip of pages is scrolled: its pages, the share on screen and how far along it is (0 to 1). */
 interface StripView {
@@ -20,7 +20,7 @@ const MIN_IN_VIEW = 48;
 
 /** The pages of a strip: the analyses of a dashboard turned sideways, or the visuals of one analysis side by side. */
 function pagesOf(strip: HTMLElement): HTMLElement[] {
-  return Array.from(strip.querySelectorAll<HTMLElement>(strip.hasAttribute(CARD_STRIP_ATTR) ? ":scope > *" : ":scope > section"));
+  return Array.from(strip.querySelectorAll<HTMLElement>(strip.hasAttribute(CARD_STRIP_ATTR) ? `[${STRIP_CARD_ATTR}]` : ":scope > section"));
 }
 
 /** Where a page starts in its strip (the first one at 0, whatever padding the strip has). */
