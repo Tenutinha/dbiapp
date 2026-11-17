@@ -97,8 +97,8 @@ def natureza(cfop: str, entrada: str) -> str:
     """A natureza da operação pelos três últimos dígitos do CFOP."""
     d = f"TRY_CAST(right({cfop}, 3) AS INT)"
     return f"""CASE
-      WHEN {d} = 933 THEN '{SERVICO}'
-      WHEN {d} BETWEEN 151 AND 156 OR {d} IN (408, 409, 552, 557, 658, 659) THEN 'Transferência entre estabelecimentos'
+      WHEN {d} = 933 THEN CASE WHEN {entrada} THEN 'Remessas, retornos e outras' ELSE '{SERVICO}' END
+      WHEN {d} BETWEEN 151 AND 158 OR {d} IN (408, 409, 552, 557, 658, 659) THEN 'Transferência entre estabelecimentos'
       WHEN {d} BETWEEN 201 AND 210 OR {d} BETWEEN 410 AND 413 OR {d} IN (503, 504, 553, 660, 661, 662)
         THEN CASE WHEN {entrada} THEN '{DEV_VENDA}' ELSE '{DEV_COMPRA}' END
       WHEN NOT {entrada} AND {d} = 556 THEN '{DEV_COMPRA}'
@@ -107,7 +107,7 @@ def natureza(cfop: str, entrada: str) -> str:
       WHEN {d} = 922 THEN 'Faturamento para entrega futura'
       WHEN {d} BETWEEN 251 AND 258 OR {d} BETWEEN 301 AND 307 OR {d} BETWEEN 351 AND 360 OR {d} = 932
         THEN CASE WHEN {entrada} THEN 'Energia, comunicação e transporte' ELSE '{VENDA}' END
-      WHEN {d} BETWEEN 101 AND 126 OR {d} BETWEEN 401 AND 405 OR {d} BETWEEN 651 AND 656 OR {d} IN (653, 667)
+      WHEN {d} BETWEEN 101 AND 139 OR {d} BETWEEN 401 AND 405 OR {d} BETWEEN 651 AND 656 OR {d} = 667
         THEN CASE WHEN {entrada} THEN 'Compra para revenda ou produção' ELSE '{VENDA}' END
       ELSE 'Remessas, retornos e outras' END"""
 
@@ -147,9 +147,10 @@ def documentos_icms(con: duckdb.DuckDBPyConnection, src: str) -> None:
     """C190 e os seus pares de outros modelos: CST, CFOP, alíquota, VL_OPR, base e ICMS nas mesmas posições."""
     con.execute(f"""
       CREATE OR REPLACE TEMP TABLE icms AS
-      SELECT strftime(periodo, '%Y-%m') AS competencia, cnpj AS estabelecimento, oper = '0' AS entrada, c02 AS cfop, c01 AS cst,
+      SELECT strftime(periodo, '%Y-%m') AS competencia, cnpj AS estabelecimento,
+             coalesce(oper = '0', left(c02, 1) IN ('1', '2', '3')) AS entrada, c02 AS cfop, c01 AS cst,
              sum({num('c04')}) AS valor, sum({num('c05')}) AS base, sum({num('c06')}) AS icms,
-             sum(CASE WHEN registro IN ('C190', 'C590', 'D590') THEN {num('c08')} ELSE 0 END) AS st
+             sum(CASE WHEN registro IN ('C190', 'C590') THEN {num('c08')} ELSE 0 END) AS st
       FROM {src} WHERE registro IN ('C190', 'C490', 'C590', 'C850', 'D190', 'D590') GROUP BY ALL
     """)
     con.execute(f"""
@@ -176,15 +177,16 @@ def documentos_contrib(con: duckdb.DuckDBPyConnection, src: str) -> None:
     """
     con.execute(f"""
       CREATE OR REPLACE TEMP TABLE contrib AS
-      SELECT strftime(periodo, '%Y-%m') AS competencia, cnpj AS estabelecimento, oper = '0' AS entrada, c10 AS cfop, c24 AS cst,
+      SELECT strftime(periodo, '%Y-%m') AS competencia, cnpj AS estabelecimento,
+             coalesce(oper = '0', left(c10, 1) IN ('1', '2', '3')) AS entrada, c10 AS cfop, c24 AS cst,
              NULL AS nat, sum({num('c06')} - {num('c07')}) AS valor, sum({num('c29')}) AS pis, sum({num('c35')}) AS cofins, true AS com_valor
       FROM {src} WHERE registro = 'C170' GROUP BY ALL
       UNION ALL
-      SELECT strftime(periodo, '%Y-%m'), cnpj, oper = '0', NULL, c08, CASE WHEN oper = '0' THEN 'Serviços tomados' ELSE '{SERVICO}' END,
+      SELECT strftime(periodo, '%Y-%m'), cnpj, coalesce(oper = '0', false), NULL, c08, CASE WHEN oper = '0' THEN 'Serviços tomados' ELSE '{SERVICO}' END,
              sum({num('c04')} - {num('c05')}), sum({num('c11')}), sum({num('c15')}), true
       FROM {src} WHERE registro = 'A170' GROUP BY ALL
       UNION ALL
-      SELECT strftime(periodo, '%Y-%m'), cnpj, c01 = '0', NULL, c06,
+      SELECT strftime(periodo, '%Y-%m'), cnpj, coalesce(c01 = '0', false), NULL, c06,
              CASE WHEN c01 = '0' THEN 'Demais aquisições com crédito' ELSE '{OUTRAS_RECEITAS}' END,
              sum({num('c05')}), sum({num('c09')}), sum({num('c13')}), true
       FROM {src} WHERE registro = 'F100' GROUP BY ALL
@@ -246,11 +248,11 @@ def apuracao(con: duckdb.DuckDBPyConnection, icms: str | None, contrib: str | No
 
 
 def transicao(con: duckdb.DuckDBPyConnection) -> str | None:
-    """O valor a recolher e a base líquida do ano-base (o último ano com os doze meses) levado a cada ano do cronograma, por cenário."""
+    """O valor a recolher e a base líquida do ano-base (o último ano com receita nos doze meses) levado a cada ano do cronograma, por cenário."""
     con.execute("""CREATE OR REPLACE TABLE reforma_transicao (ano VARCHAR, etapa VARCHAR, tributo VARCHAR, cenario VARCHAR,
                    origem VARCHAR, valor DOUBLE)""")
-    base = con.execute("""SELECT ano FROM reforma GROUP BY ano HAVING count(DISTINCT competencia) = 12
-                          AND sum(receita) > 0 ORDER BY ano DESC LIMIT 1""").fetchone()
+    base = con.execute("""SELECT ano FROM reforma GROUP BY ano
+                          HAVING count(DISTINCT competencia) FILTER (receita > 0) = 12 ORDER BY ano DESC LIMIT 1""").fetchone()
     if not base:
         print("aviso: nenhum ano com doze meses e receita; a transição fica vazia")
         return None

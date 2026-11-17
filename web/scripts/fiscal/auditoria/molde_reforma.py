@@ -160,6 +160,7 @@ def parametros() -> str:
         f"Transição (ADCT, arts. 125 a 129, conferidos em resumo da página oficial em 17/11/2026): em 2026 as alíquotas de teste são "
         f"compensadas com PIS e Cofins; em 2027 e 2028 a CBS é a calculada pelo TCU para 2027 ({pct(CBS_2027)}) menos "
         f"{pct(REDUCAO_CBS_2027_2028).replace('%', '')} ponto, em todos os cenários, e o IBS é de {pct(IBS_2027_2028)}; de 2029 a 2032 o "
+        "cenário passa a valer, e por isso os cenários com CBS menor que a do TCU mostram queda da CBS em 2029; nesses anos o "
         "ICMS cai a 90%, 80%, 70% e 60% e o IBS sobe a 10%, 20%, 30% e 40% da referência; em 2033 o ICMS é extinto. O gráfico da "
         f"transição usa o cenário de {CENTRAL.rotulo}."
     )
