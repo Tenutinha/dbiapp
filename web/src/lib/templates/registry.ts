@@ -7,7 +7,8 @@
 import "server-only";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
-import { findTemplate, listDefinitions, syncBuiltIns, type TemplateStatus } from "../data/catalog";
+import { cache } from "react";
+import { findTemplate, findTemplateStamp, listDefinitions, syncBuiltIns, type StoredTemplate, type TemplateStatus } from "../data/catalog";
 import { templateSchema, type Template } from "./schema";
 
 const TEMPLATES_DIR = path.join(process.cwd(), "templates");
@@ -64,6 +65,26 @@ function parseStored(definition: unknown, id: string): Template {
   return parsed.data;
 }
 
+/** Definitions already read by this server, by template, each with the fingerprint it had. */
+const held = new Map<string, { stamp: string; definition: unknown }>();
+
+/**
+ * A template as stored. Its definition comes from the database once per server and again only when it
+ * changes (the fingerprint is asked every time: a few bytes instead of the whole definition); within one
+ * request it is asked once, however many parts of the page need the template.
+ */
+const storedTemplate = cache(async (id: string): Promise<StoredTemplate | null> => {
+  const known = held.get(id);
+  if (known) {
+    const now = await findTemplateStamp(id);
+    if (now?.stamp === known.stamp) return { ...now, definition: known.definition };
+  }
+  const row = await findTemplate(id);
+  if (row) held.set(id, { stamp: row.stamp, definition: row.definition });
+  else held.delete(id);
+  return row;
+});
+
 export interface CatalogEntry {
   template: Template;
   status: TemplateStatus;
@@ -76,7 +97,7 @@ export async function getCatalogEntry(id: string): Promise<CatalogEntry | null> 
     const shipped = (await shippedTemplates()).get(id);
     return shipped ? { template: shipped, status: "published", builtIn: true } : null;
   }
-  const row = await findTemplate(id);
+  const row = await storedTemplate(id);
   return row ? { template: parseStored(row.definition, id), status: row.status, builtIn: row.builtIn } : null;
 }
 

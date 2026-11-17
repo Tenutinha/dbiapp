@@ -344,10 +344,17 @@ export function buildFilterOptionsQuery(
   const parts = [...groups.values()].map((group) => {
     const [source] = group;
     const together = { ...files, [source.table]: joinParts(group.flatMap((s) => splitParts(files[s.table] ?? ""))) };
-    const from = buildFrom(t, together, factFilter, params, undefined, source);
-    const where = buildWhere(t, filters, fieldId, params, { selection: cross }, source.alias);
+    // Built apart first, as in a visual: only the dimensions the field and the other filters mention are
+    // joined. The values are distinct, so a LEFT JOIN nobody reads cannot change them, and joining a
+    // dimension of millions of rows to every fact just to list the months took most of a page's time.
+    const where = buildWhere(t, filters, fieldId, [], { selection: cross }, source.alias);
+    const mentioned = `${field.sql}\n${where.sql}`;
+    const from = buildFrom(t, together, factFilter, params, (table) => mentions(mentioned, table), source);
+    const shift = params.length;
+    const whereSql = shift === 0 ? where.sql : where.sql.replace(/\$(\d+)/g, (_, n: string) => `$${Number(n) + shift}`);
+    params.push(...where.params);
     const grouped = columns.length > 0 ? `GROUP BY ${columns.join(", ")}` : "";
-    return [`SELECT ${grouped ? "" : "DISTINCT "}${fieldValue(field)} AS value`, from, where.sql, grouped].filter(Boolean).join("\n");
+    return [`SELECT ${grouped ? "" : "DISTINCT "}${fieldValue(field)} AS value`, from, whereSql, grouped].filter(Boolean).join("\n");
   });
   const sql = `SELECT DISTINCT value FROM (\n${parts.join("\nUNION ALL\n")}\n) AS options\nORDER BY value NULLS LAST LIMIT 500`;
   return { sql, params };

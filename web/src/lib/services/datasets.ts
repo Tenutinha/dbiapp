@@ -11,6 +11,7 @@ import {
 } from "../ingest/ingest";
 import { joinedName } from "../ingest/joined-name";
 import { getDraft, getOrCreateDraft, listFiles, promoteDraft, registerDraftFile, type VersionRef } from "../data/repository";
+import { quotePath } from "../duck/engine";
 import { storage } from "../storage";
 import { isDatasetKey, isIssuedUploadKey } from "../storage-keys";
 import { joinParts, splitParts } from "../storage-parts";
@@ -266,6 +267,31 @@ export interface PublishResult {
 }
 
 /** Local paths (downloading from Storage when needed) for a table → key map. */
+/**
+ * The same local paths without fetching anything, and a way to fetch only the files a query reads. A
+ * dashboard of a dozen tables opens on an analysis that reads two of them: on a server that has not read
+ * the dashboard yet, the others (hundreds of MB) are not downloaded before the first number shows.
+ */
+export function lazyLocalFiles(keys: Readonly<Record<string, string>>): {
+  files: Record<string, string>;
+  /** Makes sure every file `sql` reads is on this machine. */
+  fetchFor: (sql: string) => Promise<void>;
+} {
+  const parts = Object.values(keys).flatMap(splitParts).map((key) => ({ key, mark: quotePath(storage.pathFor(key)) }));
+  const fetched = new Map<string, Promise<string>>();
+  const fetch = (key: string): Promise<string> => {
+    const running = fetched.get(key) ?? storage.localPath(key);
+    fetched.set(key, running);
+    return running;
+  };
+  return {
+    files: Object.fromEntries(Object.entries(keys).map(([t, k]) => [t, joinParts(splitParts(k).map((part) => storage.pathFor(part)))])),
+    fetchFor: async (sql) => {
+      await Promise.all(parts.filter((p) => sql.includes(p.mark)).map((p) => fetch(p.key)));
+    },
+  };
+}
+
 export async function resolveLocalFiles(keys: Readonly<Record<string, string>>): Promise<Record<string, string>> {
   // A table fed by several files has one key per part, and so one local path per part (see storage-parts.ts).
   const entries = await Promise.all(Object.entries(keys).map(async ([t, k]) =>

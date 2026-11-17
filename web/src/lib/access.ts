@@ -25,7 +25,12 @@ export interface OrgContext {
   membership: Membership;
 }
 
-export interface ClientContext extends OrgContext {
+/** What the organization's own pages get: its context and the optional modules it has on (e.g. ["controle"]). */
+export interface OrgHome extends OrgContext {
+  modules: readonly string[];
+}
+
+export interface ClientContext extends OrgHome {
   client: ClientRef;
   actions: ReadonlySet<Action>;
 }
@@ -66,25 +71,28 @@ const toMembership = (row: MembershipRow, platformAdmin: boolean): Membership =>
   platformAdmin,
 });
 
-const loadMembership = cache(async (userId: string, orgId: string, platformAdmin: boolean): Promise<Membership> => {
-  const [row] = await sql<MembershipRow[]>`SELECT ${membershipColumns(userId, sql`${orgId}::uuid`)}`;
-  return toMembership(row, platformAdmin);
-});
-
-export const getOrgContext = cache(async (orgSlug: string): Promise<OrgContext> => {
+export const getOrgContext = cache(async (orgSlug: string): Promise<OrgHome> => {
   const user = await getCurrentUser();
-  const [row] = await sql<(OrgRef & MembershipRow)[]>`
-    SELECT o.id, o.slug, o.name, ${membershipColumns(user.id, sql`o.id`)}
+  // The modules come along (null before migration 015): the client's page needs them, and asking apart is one more round trip.
+  const [row] = await sql<(OrgRef & MembershipRow & { modules: string[] | null })[]>`
+    SELECT o.id, o.slug, o.name, to_jsonb(o) -> 'modules' AS modules, ${membershipColumns(user.id, sql`o.id`)}
     FROM organizations o WHERE o.slug = ${orgSlug}`;
   if (!row) throw notFound();
   const membership = toMembership(row, user.isPlatformAdmin);
   if (!isMember(membership)) throw notFound();
-  return { user, org: { id: row.id, slug: row.slug, name: row.name }, membership };
+  return { user, org: { id: row.id, slug: row.slug, name: row.name }, membership, modules: row.modules ?? [] };
 });
 
 export const getClientContext = cache(async (orgSlug: string, clientSlug: string): Promise<ClientContext> => {
+  // Asked together with the organization (by the two addresses), not after it: what it finds is only
+  // looked at once the organization's own check has passed.
+  const found = sql<ClientRef[]>`
+    SELECT c.id, c.slug, c.name FROM org_clients c JOIN organizations o ON o.id = c.organization_id
+    WHERE o.slug = ${orgSlug} AND c.slug = ${clientSlug}`.then((rows) => rows, () => null);
   const ctx = await getOrgContext(orgSlug);
-  const [client] = await sql<ClientRef[]>`
+  const rows = await found;
+  // The lookup itself failed (the database, not the address): asked again, so the error is the real one.
+  const [client] = rows ?? await sql<ClientRef[]>`
     SELECT id, slug, name FROM org_clients WHERE organization_id = ${ctx.org.id} AND slug = ${clientSlug}`;
   if (!client) throw notFound();
   const actions = allowedActions(ctx.membership, { clientId: client.id });
@@ -144,12 +152,14 @@ interface InstanceRow {
 export async function requireInstance(instanceId: string, action: Action, orgSlug?: string): Promise<InstanceAccess> {
   if (!UUID.test(instanceId)) throw notFound();
   const user = await getCurrentUser();
-  const [row] = await sql<InstanceRow[]>`
+  // The person's roles come in the same statement as the dashboard, not in a second one.
+  const [row] = await sql<(InstanceRow & MembershipRow)[]>`
     SELECT i.id AS "instanceId", i.template_id AS "templateId", i.name, i.active_version_id AS "activeVersionId",
            i.description, v.published_at AS "publishedAt",
            o.id AS "orgId", o.slug AS "orgSlug", o.name AS "orgName",
            c.id AS "clientId", c.slug AS "clientSlug", c.name AS "clientName",
-           (SELECT t.definition ->> 'access' FROM dashboard_templates t WHERE t.id = i.template_id) AS access
+           (SELECT t.definition ->> 'access' FROM dashboard_templates t WHERE t.id = i.template_id) AS access,
+           ${membershipColumns(user.id, sql`o.id`)}
     FROM dashboard_instances i
     JOIN organizations o ON o.id = i.organization_id
     LEFT JOIN org_clients c ON c.id = i.client_id
@@ -157,7 +167,7 @@ export async function requireInstance(instanceId: string, action: Action, orgSlu
     WHERE i.id = ${instanceId} AND i.archived_at IS NULL`;
   if (!row || (orgSlug !== undefined && row.orgSlug !== orgSlug)) throw notFound();
 
-  const membership = await loadMembership(user.id, row.orgId, user.isPlatformAdmin);
+  const membership = toMembership(row, user.isPlatformAdmin);
   // A dashboard restricted to the platform administrator does not exist for anyone else.
   if (!canSeeDashboard(membership, row.access)) throw notFound();
   const actions = allowedActions(membership, { clientId: row.clientId });

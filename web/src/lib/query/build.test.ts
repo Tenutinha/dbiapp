@@ -115,6 +115,33 @@ describe("buildFilterOptionsQuery", () => {
     expect(q.sql.startsWith("SELECT DISTINCT value FROM (\nSELECT COALESCE(")).toBe(true);
     expect(q.sql).toContain("GROUP BY dim_loja.regiao");
   });
+
+  it("joins only the dimensions the field and the other filters read", () => {
+    // A field of the fact itself: no dimension at all.
+    const ano = buildFilterOptionsQuery(t, files, "ano", {});
+    expect(ano.sql).toContain("FROM read_parquet('/data/fato_vendas.parquet') AS fato_vendas");
+    expect(ano.sql).not.toContain("LEFT JOIN");
+    // A field of one dimension: that one, not the others.
+    const regiao = buildFilterOptionsQuery(t, files, "regiao", {});
+    expect(regiao.sql.match(/LEFT JOIN/g)).toHaveLength(1);
+    expect(regiao.sql).toContain("LEFT JOIN read_parquet('/data/dim_loja.parquet') AS dim_loja");
+    // Another filter in force brings its own dimension in.
+    const filtered = buildFilterOptionsQuery(t, files, "ano", { categoria: ["Cat 1"] });
+    expect(filtered.sql.match(/LEFT JOIN/g)).toHaveLength(1);
+    expect(filtered.sql).toContain("LEFT JOIN read_parquet('/data/dim_produto.parquet') AS dim_produto");
+    // So does an item picked in a visual.
+    const picked = buildFilterOptionsQuery(t, files, "ano", {}, [], [{ visualId: "receita_categoria", fieldId: "segmento", values: ["Varejo"] }]);
+    expect(picked.sql.match(/LEFT JOIN/g)).toHaveLength(1);
+    expect(picked.sql).toContain("AS dim_cliente");
+  });
+
+  it("numbers the other filters' values after the data filter's", () => {
+    const q = buildFilterOptionsQuery(t, files, "regiao", { canal: ["Loja"], ano: ["2025"] }, [{ column: "id_loja", op: "in", values: ["L01", "L02"] }]);
+    expect(q.params).toEqual(["L01", "L02", "2025", "Loja"]);
+    expect(q.sql).toContain(`WHERE CAST("id_loja" AS VARCHAR) IN ($1, $2)`);
+    expect(q.sql).toContain("IN ($3) AND ");
+    expect(q.sql).toContain("IN ($4)");
+  });
 });
 
 describe("dashboard data filter (fact table)", () => {

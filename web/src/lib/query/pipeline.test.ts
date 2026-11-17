@@ -10,6 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { queryRows, toDuckPath, withConnection } from "../duck/engine";
 import { checkRelationships, ingestTable } from "../ingest/ingest";
 import { loadTemplate } from "../test-helpers";
+import { clearResultCache } from "./result-cache";
 import { runDashboard } from "./run";
 
 const t = loadTemplate("vendas-executivo");
@@ -146,6 +147,32 @@ describe("ingest + dashboard pipeline", () => {
     // orphan facts (id_loja 5 has no dimension row) are listed and filterable
     const orphans = await runDashboard(root, t, files, { regiao: ["(sem cadastro)"] });
     expect(kpi(orphans, "k_receita").receita).toBe(20_000);
+  });
+
+  it("answers the same with the results kept, running each query once", async () => {
+    clearResultCache();
+    const files = Object.fromEntries(t.tables.map((tb) => [tb.name, target(tb.name)]));
+    const plain = await runDashboard(root, t, files, { regiao: ["Sul"] });
+    // Every query asks for its files before it runs; one answered from what was kept does not run at all.
+    const asked: string[] = [];
+    const reach = { keep: true, fetchFor: async (sql: string): Promise<void> => void asked.push(sql) };
+    const first = await runDashboard(root, t, files, { regiao: ["Sul"] }, [], [], reach);
+    const ran = asked.length;
+    expect(ran).toBeGreaterThan(0);
+    expect(asked.every((sql) => sql.includes(toDuckPath(target("fato_vendas"))))).toBe(true);
+    const second = await runDashboard(root, t, files, { regiao: ["Sul"] }, [], [], reach);
+    expect(asked).toHaveLength(ran);
+    // Rows that tie in a visual's order may come in any order from one run to the next: compared as a set.
+    const sorted = (rows: readonly unknown[]): string[] => rows.map((r) => JSON.stringify(r)).sort();
+    const shown = (d: typeof plain): unknown => ({ visuals: d.visuals.map((v) => ({ id: v.visual.id, rows: sorted(v.rows), total: v.total, error: v.error })), filters: d.filters });
+    expect(shown(first)).toEqual(shown(plain));
+    expect(shown(second)).toEqual(shown(plain));
+    // What was kept comes back exactly as it was computed, order included.
+    expect(second.visuals.map((v) => v.rows)).toEqual(first.visuals.map((v) => v.rows));
+    // Other filters are other queries.
+    const norte = await runDashboard(root, t, files, { regiao: ["Norte"] }, [], [], reach);
+    expect(norte.visuals.find((v) => v.visual.id === "k_receita")?.rows[0].receita).toBe(40_000);
+    expect(asked.length).toBeGreaterThan(ran);
   });
 
   it("cannot read files outside the storage root", async () => {

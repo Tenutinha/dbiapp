@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState, useTransition } from "react";
 import { filterSpaces, type SpaceOption } from "@/lib/space-options";
+import { useSwitchSignal } from "./switching";
 
 /** From this many spaces on, the menu gets a search field. */
 const SEARCH_FROM = 7;
@@ -66,6 +67,9 @@ function SpaceMenu({ spaces, current }: { spaces: SpaceOption[]; current: SpaceO
   const router = useRouter();
   const [pending, start] = useTransition();
   const [open, setOpen] = useState(false);
+  /** The space on its way: named at once on the button, and the dashboard on screen gives way to a skeleton. */
+  const [opening, setOpening] = useState<string | null>(null);
+  useSwitchSignal(pending && opening !== null, opening ?? "");
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -90,7 +94,9 @@ function SpaceMenu({ spaces, current }: { spaces: SpaceOption[]; current: SpaceO
   const choose = (space: SpaceOption | undefined): void => {
     if (!space) return;
     close(true);
-    if (!space.current) start(() => router.push(space.href));
+    if (space.current) return;
+    setOpening(space.label);
+    start(() => router.push(space.href));
   };
 
   // Focus the search (or the list) on open; close on any pointer down outside.
@@ -144,7 +150,7 @@ function SpaceMenu({ spaces, current }: { spaces: SpaceOption[]; current: SpaceO
         disabled={pending}
         className={`-mx-1.5 flex max-w-[calc(100%+0.75rem)] items-center gap-1 rounded-md px-1.5 py-0.5 transition hover:bg-black/5 hover:text-ink disabled:cursor-wait ${open ? "bg-black/5 text-ink" : "text-ink-muted"}`}
       >
-        <span className={`${SUBTITLE} min-w-0`}>{pending ? "Abrindo…" : current.label}</span>
+        <span className={`${SUBTITLE} min-w-0`}>{pending ? `Abrindo ${opening ?? ""}…` : current.label}</span>
         <ChevronIcon open={open} />
       </button>
 

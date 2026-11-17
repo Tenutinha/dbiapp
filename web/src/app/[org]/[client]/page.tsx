@@ -5,7 +5,7 @@ import { SpaceHome } from "@/components/workspace/SpaceHome";
 import { getClientContext } from "@/lib/access";
 import { guard } from "@/lib/guard";
 import { firstItem } from "@/lib/layout/toc";
-import { controleEnabled } from "@/lib/services/controle";
+import { CONTROLE_MODULE } from "@/lib/services/controle";
 import { loadSpace } from "@/lib/services/space";
 
 export const dynamic = "force-dynamic";
@@ -24,7 +24,7 @@ export default async function ClientHomePage({ params, searchParams }: Props) {
   const ctx = await guard(getClientContext(org, client));
   if (ctx === "forbidden") return <Forbidden />;
   // With the "controle" module on, a client that has no dashboard to show opens on its entries screen.
-  if (await controleEnabled(ctx.org.id)) {
+  if (ctx.modules.includes(CONTROLE_MODULE)) {
     const space = await loadSpace(ctx.org, ctx.client, ctx.membership);
     if (!firstItem(space.toc)) redirect(`/${ctx.org.slug}/${ctx.client.slug}/controle`);
   }

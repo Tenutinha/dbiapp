@@ -35,7 +35,11 @@ export interface StoredTemplate {
   definition: unknown;
   status: TemplateStatus;
   builtIn: boolean;
+  /** Fingerprint of the definition as stored: the same one means the very same definition. */
+  stamp: string;
 }
+
+export type TemplateStamp = Omit<StoredTemplate, "definition">;
 
 export class DuplicateTemplateError extends Error {}
 
@@ -68,7 +72,18 @@ export async function listCatalog(onlyStatus?: TemplateStatus): Promise<CatalogR
 
 export async function findTemplate(id: string): Promise<StoredTemplate | null> {
   const [row] = await sql<StoredTemplate[]>`
-    SELECT definition, status, built_in AS "builtIn" FROM dashboard_templates WHERE id = ${id}`;
+    SELECT definition, status, built_in AS "builtIn", md5(definition::text) AS stamp FROM dashboard_templates WHERE id = ${id}`;
+  return row ?? null;
+}
+
+/**
+ * What tells whether a definition already read is still the stored one, without bringing it again (a
+ * fiscal template is hundreds of kB). Taken from the content, not from updated_at: a definition changed
+ * by hand in the database is noticed too.
+ */
+export async function findTemplateStamp(id: string): Promise<TemplateStamp | null> {
+  const [row] = await sql<TemplateStamp[]>`
+    SELECT status, built_in AS "builtIn", md5(definition::text) AS stamp FROM dashboard_templates WHERE id = ${id}`;
   return row ?? null;
 }
 
@@ -135,14 +150,15 @@ export async function deleteUnusedTemplate(id: string): Promise<string[] | null>
  * refreshed when the file has a higher version. Status chosen by an admin is never overwritten.
  */
 export async function syncBuiltIns(templates: readonly Template[]): Promise<void> {
-  for (const t of templates) {
+  // Side by side: each is its own row, and one after the other they held up the first page of a server just started.
+  await Promise.all(templates.map((t) => {
     const m = metaColumns(t);
-    await sql`
+    return sql`
       INSERT INTO dashboard_templates (id, name, area, origin, description, version, definition, status, built_in)
       VALUES (${m.id}, ${m.name}, ${m.area}, ${m.origin}, ${m.description}, ${m.version}, ${sql.json(t as never)}, 'published', true)
       ON CONFLICT (id) DO UPDATE
       SET name = EXCLUDED.name, area = EXCLUDED.area, origin = EXCLUDED.origin, description = EXCLUDED.description,
           version = EXCLUDED.version, definition = EXCLUDED.definition, updated_at = now()
       WHERE dashboard_templates.built_in AND dashboard_templates.version < EXCLUDED.version`;
-  }
+  }));
 }

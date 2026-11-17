@@ -1,5 +1,6 @@
 import "server-only";
 import { Storage, type StorageOptions } from "@google-cloud/storage";
+import type { BrowseEntryFile } from "../storage-browse";
 import type { RemoteBucket } from "./types";
 
 const UPLOAD_URL_TTL_MS = 15 * 60 * 1000;
@@ -47,6 +48,42 @@ function options(cfg: GcsConfig): StorageOptions {
 
 const errMsg = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
+/** What a listing of a whole tree asks of each object: nothing else travels (a full record is ~1 kB, times thousands). */
+const TREE_FIELDS = "items(name,size,updated),prefixes,nextPageToken";
+/** An object as such a listing answers it: with `fields`, the library hands the bucket's record as it came. */
+interface TreeRecord {
+  name: string;
+  size?: string | number;
+  updated?: string;
+}
+/** Sub-folders of a tree listed at the same time. */
+const FOLDERS_AT_A_TIME = 24;
+/** A tree with more first-level entries than this is listed in one go (its pages one after the other). */
+const MAX_FIRST_LEVEL = 1000;
+
+/** The files among the records of a listing (folder markers left out), kept to `names` when given. */
+function asEntries(records: readonly TreeRecord[], names?: readonly string[]): BrowseEntryFile[] {
+  return records
+    .filter((f) => !f.name.endsWith("/") && !f.name.endsWith(".emptyFolderPlaceholder"))
+    .map((f) => ({
+      key: f.name,
+      name: f.name.slice(f.name.lastIndexOf("/") + 1),
+      sizeBytes: Number(f.size ?? 0),
+      updatedAt: f.updated ? new Date(f.updated) : null,
+    }))
+    .filter((f) => !names || names.includes(f.name));
+}
+
+/** `fn` over every item, a few at a time, results in the order of the items. */
+async function pooled<T, R>(items: readonly T[], size: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = new Array<R>(items.length);
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(size, items.length) }, async () => {
+    for (let i = next++; i < items.length; i = next++) results[i] = await fn(items[i]);
+  }));
+  return results;
+}
+
 export function gcsBucket(cfg: GcsConfig): RemoteBucket {
   const bucket = new Storage(options(cfg)).bucket(cfg.bucket);
 
@@ -81,17 +118,29 @@ export function gcsBucket(cfg: GcsConfig): RemoteBucket {
     async listTree(prefix, names) {
       try {
         // matchGlob: the bucket itself keeps only the named files (thousands of parts folders, two names wanted).
-        const glob = names && names.length > 0 ? `${prefix}**/${names.length === 1 ? names[0] : `{${names.join(",")}}`}` : undefined;
-        const [files] = await bucket.getFiles({ prefix, autoPaginate: true, ...(glob ? { matchGlob: glob } : {}) });
-        return files
-          .filter((f) => !f.name.endsWith("/") && !f.name.endsWith(".emptyFolderPlaceholder"))
-          .map((f) => ({
-            key: f.name,
-            name: f.name.slice(f.name.lastIndexOf("/") + 1),
-            sizeBytes: Number(f.metadata.size ?? 0),
-            updatedAt: f.metadata.updated ? new Date(f.metadata.updated) : null,
-          }))
-          .filter((f) => !names || names.includes(f.name));
+        const wanted = names && names.length > 0 ? `**/${names.length === 1 ? names[0] : `{${names.join(",")}}`}` : undefined;
+        const under = async (folder: string): Promise<TreeRecord[]> => {
+          const [found] = await bucket.getFiles({
+            prefix: folder, autoPaginate: true, fields: TREE_FIELDS, ...(wanted ? { matchGlob: `${folder}${wanted}` } : {}),
+          });
+          return found as unknown as TreeRecord[];
+        };
+        // Named files: one listing, the bucket skips the rest itself.
+        if (wanted) {
+          const named = await under(prefix);
+          return asEntries(named, names);
+        }
+        // Everything: a listing comes a page (a thousand objects) at a time, one page after the other, and ten
+        // thousand files took ten round trips in a row. The first-level folders (one per company) are listed
+        // side by side instead.
+        const [top, more, response] = await bucket.getFiles({
+          prefix, delimiter: "/", autoPaginate: false, maxResults: MAX_FIRST_LEVEL, fields: TREE_FIELDS,
+        });
+        const folders = (response as { prefixes?: string[] } | undefined)?.prefixes ?? [];
+        const files = more || folders.length < 2
+          ? await under(prefix)
+          : [...(top as unknown as TreeRecord[]), ...(await pooled(folders, FOLDERS_AT_A_TIME, under)).flat()];
+        return asEntries(files, names);
       } catch (e) {
         throw new Error(`storage list failed for ${prefix}: ${errMsg(e)}`);
       }
