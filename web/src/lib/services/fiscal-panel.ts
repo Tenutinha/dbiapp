@@ -6,10 +6,12 @@
  */
 import "server-only";
 import type { ClientRef, InstanceAccess, OrgRef } from "../access";
+import { findTemplate } from "../data/catalog";
 import { listSpaceDashboards, type SpaceDashboardRow } from "../data/instances";
 import { getDraft, getVersion, listFiles } from "../data/repository";
 import { FISCAL_IMPORTERS, fiscalImporterFor } from "../fiscal/importers";
 import type { BuildStatus } from "../fiscal/build-status";
+import { fiscalFlow, type FiscalFlow } from "../fiscal/flow";
 import type { Lineage } from "../fiscal/lineage";
 import {
   countStates, documentFileStatuses, fileMap, filesToRead, lineageSourcesPage, lineageTableView, parseLineage,
@@ -17,6 +19,7 @@ import {
 } from "../fiscal/panel";
 import type { LineageSource } from "../fiscal/lineage";
 import { storage } from "../storage";
+import { templateSchema } from "../templates/schema";
 import { relativeToOrg } from "../storage-browse";
 import { dashboardFolder } from "../storage-keys";
 import { hostedLimits, LINEAGE_FILE, MAX_HOSTED_READ_BYTES, readBuildStatus, spedFilesOverview } from "./fiscal-parts";
@@ -68,6 +71,8 @@ export interface PanelModel {
   big: PanelFile[];
   /** Files dropped at the root of the model's folder. */
   loose: number;
+  /** The path of the data, from the original files to the sections of the dashboard (null: the template could not be read). */
+  flow: FiscalFlow | null;
   /** The storage could not be listed for this model. */
   error?: string;
 }
@@ -101,6 +106,19 @@ const panelFile = (orgSlug: string, s: FileStatus): PanelFile => ({
   ...(s.error ? { error: s.error } : {}),
 });
 
+/** The diagram of a model, drawn from its template in the catalog. A template that cannot be read leaves the panel without it. */
+async function flowOf(templateId: string): Promise<FiscalFlow | null> {
+  const importer = fiscalImporterFor(templateId);
+  if (!importer) return null;
+  try {
+    const parsed = templateSchema.safeParse((await findTemplate(templateId))?.definition);
+    return parsed.success ? fiscalFlow(parsed.data, importer.mode === "sped" ? importer.kind : null, importer.title) : null;
+  } catch (err) {
+    console.error("[fiscal-panel] could not draw the flow of", templateId, err);
+    return null;
+  }
+}
+
 async function loadModel(
   org: OrgRef, client: ClientRef | null, templateId: string, row: SpaceDashboardRow | undefined, canManage: boolean,
 ): Promise<PanelModel | null> {
@@ -109,9 +127,10 @@ async function loadModel(
   const clientSlug = client?.slug || null;
   const base = { templateId, title: importer.title, mode: importer.mode } as const;
   try {
-    const [stored, dashboard] = await Promise.all([
+    const [stored, dashboard, flow] = await Promise.all([
       storedFiscalFiles(org.slug, clientSlug, templateId),
       row ? dashboardOf(org, client, row, importer.mode === "sped") : Promise.resolve(null),
+      flowOf(templateId),
     ]);
     if (!dashboard && stored.files.length === 0 && stored.loose.length === 0) return null;
     const accepted = stored.files.filter((f) => importer.extensions.some((ext) => f.name.toLowerCase().endsWith(ext)));
@@ -132,12 +151,13 @@ async function loadModel(
       failed: statuses.filter((s) => s.state === "erro").map(toFile),
       big: statuses.filter((s) => s.state === "script").map(toFile),
       loose: stored.loose.length,
+      flow,
     };
   } catch (err) {
     console.error("[fiscal-panel] could not list", org.slug, templateId, err);
     return {
       ...base, dashboard: row ? await dashboardOf(org, client, row, importer.mode === "sped").catch(() => null) : null,
-      counts: countStates([]), files: 0, sizeBytes: 0, map: fileMap([]), toRead: [], failed: [], big: [], loose: 0,
+      counts: countStates([]), files: 0, sizeBytes: 0, map: fileMap([]), toRead: [], failed: [], big: [], loose: 0, flow: null,
       error: "Não foi possível listar os arquivos deste molde agora.",
     };
   }
