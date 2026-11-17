@@ -1,4 +1,5 @@
 import "server-only";
+import { readPart, STRIP_RUN } from "@/components/dashboard/strip-attrs";
 import { getDataFilterRaw } from "../data/instances";
 import { listFiles } from "../data/repository";
 import { parseCross } from "../query/cross";
@@ -64,6 +65,8 @@ export async function loadDashboard(
 export interface LoadedPart {
   results: DashboardData["visuals"];
   layout?: "grid" | "row";
+  /** The part is one run of an analysis' strip: its cards alone, to go inside the strip the page already has. */
+  run?: boolean;
 }
 
 /**
@@ -81,10 +84,13 @@ export async function loadParts(
 ): Promise<{ template: Template; parts: (LoadedPart | null)[]; cross: DashboardData["cross"] }> {
   const { template, factFilter, local, reach } = await prepare(instanceId, templateId, activeVersionId, searchParams);
   const placed = new Set(template.analyses.flatMap((a) => a.visuals));
-  const wanted = partIds.map((id): { visuals: string[]; layout?: "grid" | "row" } | null => {
+  const wanted = partIds.map((id): { visuals: string[]; layout?: "grid" | "row"; run?: boolean } | null => {
     if (id === "") return { visuals: template.visuals.filter((v) => !placed.has(v.id)).map((v) => v.id) };
-    const analysis = template.analyses.find((a) => a.id === id);
-    return analysis ? { visuals: analysis.visuals, layout: analysis.layout } : null;
+    const { analysisId, run } = readPart(id);
+    const analysis = template.analyses.find((a) => a.id === analysisId);
+    if (!analysis) return null;
+    if (run === null) return { visuals: analysis.visuals, layout: analysis.layout };
+    return { visuals: analysis.visuals.slice(run * STRIP_RUN, (run + 1) * STRIP_RUN), layout: analysis.layout, run: true };
   });
   const data = await runDashboard(
     storage.workRoot, template, local, parseSelection(template, searchParams), factFilter, parseCross(template, searchParams),
@@ -93,7 +99,7 @@ export async function loadParts(
   const byId = new Map(data.visuals.map((r) => [r.visual.id, r]));
   return {
     template,
-    parts: wanted.map((p) => p && { results: p.visuals.flatMap((id) => byId.get(id) ?? []), layout: p.layout }),
+    parts: wanted.map((p) => p && { results: p.visuals.flatMap((id) => byId.get(id) ?? []), layout: p.layout, ...(p.run ? { run: true } : {}) }),
     cross: data.cross,
   };
 }

@@ -9,7 +9,7 @@ import { DashboardLive } from "./live";
 import { LOOSE_PART } from "./live-types";
 import { MapChart, type MapMeasure } from "./MapChart";
 import { PAGE_CLASS, PageStrip } from "./PageStrip";
-import { CARD_STRIP_ATTR } from "./strip-attrs";
+import { CARD_STRIP_ATTR, runPart, runsOf, STRIP_CARD_CLASS, STRIP_RUN } from "./strip-attrs";
 import { CrossTable } from "./CrossTable";
 import { Scorecard } from "./Scorecard";
 import { ScrollTable, type ScrollColumn, type SortValue } from "./ScrollTable";
@@ -221,7 +221,7 @@ function visualTools(template: Template, visual: VisualResult["visual"]): React.
  * next one peeks in and says the strip goes on. Its scrollbar is the one in the dashboard header (always in
  * sight); the native one stays only where no header drives the strip (a shared page).
  */
-function VisualStrip({ template, results, className = "" }: { template: Template; results: readonly VisualResult[]; className?: string }) {
+function StripShell({ className = "", children }: { className?: string; children: React.ReactNode }) {
   return (
     <div
       role="region"
@@ -230,13 +230,26 @@ function VisualStrip({ template, results, className = "" }: { template: Template
       {...{ [CARD_STRIP_ATTR]: "" }}
       className={`relative -mx-1 flex snap-x snap-mandatory gap-4 overflow-x-auto px-1 pb-3 data-[header-scrollbar]:[scrollbar-width:none] data-[header-scrollbar]:[&::-webkit-scrollbar]:hidden focus-visible:outline focus-visible:outline-1 focus-visible:outline-brand ${className}`}
     >
+      {children}
+    </div>
+  );
+}
+
+/** The cards of a strip (all of them, or one run: see STRIP_RUN), to go inside its shell. */
+export function StripCards({ template, results }: { template: Template; results: readonly VisualResult[] }) {
+  return (
+    <>
       {results.map((result) => (
-        <VisualCard key={result.visual.id} title={result.visual.title} tools={visualTools(template, result.visual)} className="w-[calc(100%-3rem)] shrink-0 snap-start">
+        <VisualCard key={result.visual.id} title={result.visual.title} tools={visualTools(template, result.visual)} className={STRIP_CARD_CLASS} strip>
           <VisualBody template={template} result={result} />
         </VisualCard>
       ))}
-    </div>
+    </>
   );
+}
+
+function VisualStrip({ template, results, className = "" }: { template: Template; results: readonly VisualResult[]; className?: string }) {
+  return <StripShell className={className}><StripCards template={template} results={results} /></StripShell>;
 }
 
 /** The visuals of an analysis that go to its strip (the analysis' `strip`), when there are enough to scroll. */
@@ -255,8 +268,9 @@ export function VisualGrid({ template, results: all, layout }: VisualGridProps) 
   const grid = results.filter((r) => !inStrip.has(r.visual.id));
   return (
     <>
+      {/* Keyed: sent to a client part of the page, the two come as a list. */}
       {grid.length > 0 && (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-12">
+        <div key="grade" className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-12">
           {grid.map((result) => (
             <VisualCard
               key={result.visual.id}
@@ -269,7 +283,7 @@ export function VisualGrid({ template, results: all, layout }: VisualGridProps) 
           ))}
         </div>
       )}
-      {inStrip.size > 0 && <VisualStrip template={template} results={results.filter((r) => inStrip.has(r.visual.id))} className={grid.length > 0 ? "mt-4" : ""} />}
+      {inStrip.size > 0 && <VisualStrip key="faixa" template={template} results={results.filter((r) => inStrip.has(r.visual.id))} className={grid.length > 0 ? "mt-4" : ""} />}
     </>
   );
 }
@@ -311,6 +325,30 @@ export function DashboardView({ template, data, totalRows, later, notesInSummary
     (s) => (later !== undefined && pending.has(s.analysis.id)) || s.results.length === 0 || visibleResults(s.results).length > 0,
   );
   const body = (later ? sections : shown).map((s) => {
+    const runs = s.analysis.layout === "row" ? runsOf(s.analysis.visuals.length) : 0;
+    if (later && runs > 0) {
+      // A strip of many visuals: the section and its shell are on the page from the start, and each run of
+      // cards keeps itself up to date — asked for when the reader turns the strip up to it.
+      const computed = !pending.has(s.analysis.id);
+      const byId = new Map(s.results.map((r) => [r.visual.id, r]));
+      return (
+        <section key={s.analysis.id} id={s.anchor} aria-labelledby={`${s.anchor}-titulo`} className={pageClass ?? sectionClass}>
+          {header(s)}
+          <StripShell>
+            {Array.from({ length: runs }, (_, run) => {
+              const own = visibleResults(s.analysis.visuals.slice(run * STRIP_RUN, (run + 1) * STRIP_RUN).flatMap((id) => byId.get(id) ?? []));
+              return (
+                <LazySection
+                  key={run} cards
+                  ticket={later.ticket} analysisId={runPart(s.analysis.id, run)} search={later.search}
+                  initial={computed ? { body: own.length > 0 ? <StripCards template={template} results={own} /> : null } : undefined}
+                />
+              );
+            })}
+          </StripShell>
+        </section>
+      );
+    }
     if (later) {
       // Every analysis keeps itself up to date: the ones computed with the page start with what it computed
       // (nothing, when they have nothing to show under these filters), the others ask when the reader gets near.

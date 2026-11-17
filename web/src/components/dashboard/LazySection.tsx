@@ -5,6 +5,7 @@ import { StaleProvider, useLive } from "./live";
 import type { PartAnswer } from "./live-types";
 import { nextLoad, type PartState } from "./part-state";
 import { loadAnalysisAction } from "./section-actions";
+import { STRIP_CARD_ATTR, STRIP_CARD_CLASS } from "./strip-attrs";
 
 interface LazySectionProps {
   /** Signed by the page: which dashboard this reader was given (see lib/section-ticket). */
@@ -23,6 +24,12 @@ interface LazySectionProps {
   pageClass?: string;
   /** Classes of the section when it is not such a page (default: one analysis below the other, freely scrolled). */
   sectionClass?: string;
+  /**
+   * The part is a run of cards inside a strip of visuals side by side (`analysisId` names the run): its cards
+   * stand directly in the strip, a card-shaped placeholder holds their place until the reader turns the strip
+   * up to it, and the page is never scrolled to make up for them.
+   */
+  cards?: boolean;
 }
 
 /**
@@ -38,6 +45,16 @@ const AHEAD = "-140px 0px 700px 0px";
 const NOTICEABLE_PX = 2;
 
 const BLOCK = "animate-pulse rounded-lg bg-text/10";
+
+/** The place of the cards of a run still to come: one page of the strip, so its scrollbar can turn to it. */
+function WaitingCards() {
+  return (
+    <div role="status" aria-label="Carregando os próximos quadros" className={`card p-5 ${STRIP_CARD_CLASS}`} {...{ [STRIP_CARD_ATTR]: "" }}>
+      <div className={`${BLOCK} h-3 w-40`} />
+      <div className={`${BLOCK} mt-4 h-56`} />
+    </div>
+  );
+}
 
 function Waiting() {
   return (
@@ -65,7 +82,7 @@ function Waiting() {
  * part asks again, and again only when it is on screen or about to be; what it shows stays in place, marked
  * as on its way out, until the new numbers arrive. Nothing is unmounted, so the reader stays where they are.
  */
-export function LazySection({ ticket, analysisId, search: pageSearch, anchor, header, initial, pageClass, sectionClass }: LazySectionProps) {
+export function LazySection({ ticket, analysisId, search: pageSearch, anchor, header, initial, pageClass, sectionClass, cards = false }: LazySectionProps) {
   const live = useLive();
   // Outside a live dashboard the selection only changes with the page itself.
   const search = live?.search ?? pageSearch;
@@ -78,6 +95,8 @@ export function LazySection({ ticket, analysisId, search: pageSearch, anchor, he
     initial ? { loaded: pageSearch, body: initial.body, loading: null, failed: null } : { loaded: null, body: null, loading: null, failed: null },
   );
   const [near, setNear] = useState(false);
+  /** What stands for a run of cards in the strip (see `cards`): its cards, or their placeholder. */
+  const run = useRef<HTMLDivElement>(null);
 
   // Its box comes and goes (nothing loaded yet, nothing to show): what is watched follows it.
   const never = state.loaded === null;
@@ -92,10 +111,13 @@ export function LazySection({ ticket, analysisId, search: pageSearch, anchor, he
       },
       { rootMargin: AHEAD },
     );
-    // The end mark too: a part with nothing to show has no box of its own to be seen.
-    for (const el of [ref.current, end.current]) if (el) observer.observe(el);
+    // The end mark too: a part with nothing to show has no box of its own to be seen. A run of cards has no
+    // box at all (its cards stand in the strip): each card, or the placeholder, and the end mark are what is seen.
+    const boxes = cards ? Array.from(run.current?.children ?? []) : [ref.current];
+    for (const el of [...boxes, end.current]) if (el) observer.observe(el);
     return () => observer.disconnect();
-  }, [never, empty]);
+    // `state.body`: the cards of a run change with what it shows.
+  }, [never, empty, cards, state.body]);
 
   // Back to the selection it already shows while asking for another: that answer is not waited for any more.
   const idle = state.loading !== null && state.loaded === search;
@@ -131,13 +153,13 @@ export function LazySection({ ticket, analysisId, search: pageSearch, anchor, he
   useLayoutEffect(() => {
     const was = before.current;
     before.current = null;
-    if (was === null || was.top >= 0 || pageClass !== undefined) return;
+    if (was === null || was.top >= 0 || pageClass !== undefined || cards) return;
     const frame = requestAnimationFrame(() => {
       const after = end.current?.getBoundingClientRect().top;
       if (after !== undefined && Math.abs(after - was.end) > NOTICEABLE_PX) window.scrollBy({ top: after - was.end, behavior: "instant" });
     });
     return () => cancelAnimationFrame(frame);
-  }, [state.loaded, state.body, pageClass]);
+  }, [state.loaded, state.body, pageClass, cards]);
 
   const failed = state.failed === search;
   // Nothing to show under the selection it was computed for: the part leaves the page, as it does when
@@ -145,6 +167,28 @@ export function LazySection({ ticket, analysisId, search: pageSearch, anchor, he
   const gone = !never && empty && !failed;
   const stale = !never && state.loaded !== search;
   const Box = anchor === undefined ? "div" : "section";
+
+  if (cards) {
+    // No box of its own: the cards, the placeholder and the end mark are the strip's own children.
+    return (
+      <>
+        <div ref={run} className="contents">
+          {!never && !gone && <StaleProvider value={stale}>{state.body}</StaleProvider>}
+          {never && !failed && <WaitingCards />}
+        </div>
+        {failed && (
+          <div className={`card flex flex-col items-start gap-3 p-5 text-sm ${STRIP_CARD_CLASS}`} {...{ [STRIP_CARD_ATTR]: "" }}>
+            <p className="text-muted">Não foi possível {never ? "carregar" : "atualizar"} estes quadros.</p>
+            <button type="button" onClick={() => setState((s) => ({ ...s, failed: null }))} className="rounded-md border border-line px-3 py-1 hover:bg-text/5">
+              Tentar de novo
+            </button>
+          </div>
+        )}
+        {/* Takes no room in the strip, not even the gap between cards. */}
+        <div ref={end} aria-hidden className="-ml-4 shrink-0" />
+      </>
+    );
+  }
 
   return (
     <>

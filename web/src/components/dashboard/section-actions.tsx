@@ -3,7 +3,7 @@
 import { loadFilters, loadParts } from "@/lib/services/dashboard";
 import { searchRecord } from "@/lib/search-string";
 import { readSectionTicket } from "@/lib/section-ticket";
-import { VisualGrid, visibleResults } from "./DashboardView";
+import { StripCards, VisualGrid, visibleResults } from "./DashboardView";
 import type { FilterData } from "./live-types";
 
 export type AnalysisAnswer =
@@ -16,8 +16,8 @@ export type PartsAnswer = { ok: true; bodies: (React.ReactNode | null)[]; cross:
 
 export type FiltersAnswer = ({ ok: true } & FilterData) | { ok: false };
 
-/** An analysis id, or "" for the visuals that belong to none. */
-const PART_ID = /^([a-z_][a-z0-9_]{0,80})?$/;
+/** An analysis id, "" for the visuals that belong to none, or one run of an analysis' strip ("analise:3"). */
+const PART_ID = /^([a-z_][a-z0-9_]{0,80}(:\d{1,3})?)?$/;
 const MAX_PARTS = 60;
 const MAX_SEARCH = 8000;
 
@@ -39,7 +39,10 @@ export async function loadPartsAction(ticket: string, parts: string[], search: s
       if (part === null) return null;
       // A part whose visuals all hid themselves (no rows) is not shown; an analysis without visuals keeps its title.
       const empty = part.results.length > 0 && visibleResults(part.results).length === 0;
-      return empty ? null : <VisualGrid key={parts[i]} template={loaded.template} results={part.results} layout={part.layout} />;
+      if (empty) return null;
+      return part.run
+        ? <StripCards key={parts[i]} template={loaded.template} results={visibleResults(part.results)} />
+        : <VisualGrid key={parts[i]} template={loaded.template} results={part.results} layout={part.layout} />;
     });
     return { ok: true, bodies, cross: loaded.cross };
   } catch (err) {

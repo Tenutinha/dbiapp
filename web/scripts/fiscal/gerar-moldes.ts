@@ -60,7 +60,11 @@ function registroNome(kind: SpedKind): string {
   return `CASE ${F}.registro ${whens.join(" ")} ELSE ${F}.registro END`;
 }
 
-/** The original data: one section per block, one listing per record, one column per field. */
+/**
+ * The original data, in one section: the count of lines per record, then one listing per record with one column
+ * per field, side by side in a strip (the reader tells at a glance what is the platform's analysis and what is
+ * the file as it came). A block that keeps only its own visuals (`leadOnly`) stays a section of its own.
+ */
 function rawSections(
   kind: SpedKind,
   opts: {
@@ -75,13 +79,9 @@ function rawSections(
   const blocks = BLOCKS[kind.templateId];
   const rootBlocks = new Set(Object.keys(kind.roots).map((r) => r[0]));
   const multiEstab = kind.establishmentRecords.size > 0;
-  const sections: Section[] = [{
-    id: "registros_do_arquivo",
-    title: "Registros do arquivo",
-    description: "Quantas linhas cada registro tem nos arquivos carregados. Abaixo, cada bloco traz os registros com todos os campos, como vieram no txt.",
-    visuals: [{
-      id: "t_registros", type: "table", title: "Linhas por registro", fields: ["bloco", "registro_nome"], measures: ["linhas"], limit: 400, span: 12,
-    }],
+  const sections: Section[] = [];
+  const original: Json[] = [{
+    id: "t_registros", type: "table", title: "Linhas por registro", fields: ["bloco", "registro_nome"], measures: ["linhas"], limit: 400, span: 12,
   }];
   // A block that has a fact of its own is listed from it: every period, not only the ones loaded whole.
   // (Only a fact that keeps the block as it came: a summary has no original lines to list.)
@@ -120,22 +120,18 @@ function rawSections(
       };
     });
     if (visuals.length === 0) continue;
-    if (opts.leadOnly?.has(block)) visuals.length = 0;
-    visuals.unshift(...(opts.lead?.[block] ?? []));
-    if (visuals.length === 0) continue;
-    const description = tableOfBlock[block] ? `Todos os períodos enviados, lidos da tabela ${tableOfBlock[block]}.` : "";
-    // One listing per record, side by side: a block has dozens of them, and one below the other they took
-    // screens of scrolling to get past. The strip is turned from the dashboard header.
-    sections.push({
-      id: `bloco_${block.toLowerCase()}`, title: `Bloco ${block} · ${name}`, description, visuals,
-      ...(visuals.length > 1 ? { layout: "row" as const } : {}),
-    });
+    const lead = opts.lead?.[block] ?? [];
+    if (opts.leadOnly?.has(block)) {
+      // The block is shown by its own visuals alone (its raw listings are left out): a section of its own.
+      if (lead.length === 0) continue;
+      const description = tableOfBlock[block] ? `Todos os períodos enviados, lidos da tabela ${tableOfBlock[block]}.` : "";
+      sections.push({ id: `bloco_${block.toLowerCase()}`, title: `Bloco ${block} · ${name}`, description, visuals: lead, ...(lead.length > 1 ? { layout: "row" as const } : {}) });
+      continue;
+    }
+    original.push(...lead, ...visuals);
   }
-  sections.push({
-    id: "outros_registros",
-    title: "Outros registros",
-    description: "Registros que os arquivos trazem e que ainda não estão no layout cadastrado: os campos aparecem pela posição.",
-    visuals: [{
+  original.push(
+    {
       id: "r_outros", type: "rows", title: "Registros fora do layout", span: 12, hideEmpty: true,
       where: `${F}.registro NOT IN (${known.map((r) => `'${r}'`).join(", ")})`,
       orderBy: `${F}.arquivo, ${F}.linha`, limit: 20, expand: { filter: "registro_nome", limit: 1000 },
@@ -143,7 +139,15 @@ function rawSections(
         { label: "Arquivo", sql: `${F}.arquivo` }, { label: "Linha", sql: `${F}.linha` }, { label: "Registro", sql: `${F}.registro` },
         ...Array.from({ length: kind.width }, (_, i) => ({ label: `Campo ${i + 2}`, sql: `${F}.${fieldColumn(i + 1)}` })),
       ],
-    }],
+    },
+  );
+  sections.push({
+    id: "dados_originais",
+    title: "Dados originais",
+    description: "Os arquivos como vieram: primeiro quantas linhas cada registro tem, depois um quadro por registro, na ordem dos blocos, com todos os campos do layout. "
+      + "Os quadros ficam lado a lado: role para o lado ou use a barra do cabeçalho. Registros que os arquivos não trazem não aparecem.",
+    visuals: original,
+    layout: "row",
   });
   return sections;
 }
@@ -291,8 +295,9 @@ function build(kind: SpedKind, p: Parts): Json {
       id: s.id, title: s.title, description: s.description, visuals: s.visuals.map((v) => v.id as string), ...(s.layout ? { layout: s.layout } : {}), ...(s.strip ? { strip: s.strip } : {}),
     })),
     summary: [
-      { title: p.panelGroup, analyses: p.panels.map((s) => s.id) },
-      { title: "Dados originais", analyses: raw.map((s) => s.id) },
+      // A block shown by its own visuals is an analysis like the panels; the original data is one topic alone.
+      { title: p.panelGroup, analyses: [...p.panels, ...raw.filter((s) => s.id !== "dados_originais")].map((s) => s.id) },
+      { title: "Dados originais", analyses: ["dados_originais"] },
     ],
     // Read as records: each analysis a page the scroll stops at, in small type.
     paging: "pages",

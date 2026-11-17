@@ -5,3 +5,29 @@
  */
 export const CARD_STRIP_ATTR = "data-card-strip";
 export const HEADER_DRIVEN_ATTR = "data-header-scrollbar";
+/** Marks each card of such a strip (and the placeholder of the cards still to come): one page of its scrollbar. */
+export const STRIP_CARD_ATTR = "data-strip-card";
+/** Classes of a card of the strip: a little narrower than the page, so the next one peeks in and says the strip goes on. */
+export const STRIP_CARD_CLASS = "w-[calc(100%-3rem)] shrink-0 snap-start";
+
+/**
+ * A strip with many visuals (every record of a file, one listing each) is brought in runs of this many, as
+ * the reader turns it: nobody waits for hundreds of queries to see the first listing.
+ */
+export const STRIP_RUN = 8;
+/** A strip is brought in runs when it has more visuals than this. */
+export const STRIP_RUNS_FROM = 12;
+
+const RUN_MARK = ":";
+
+/** The part of the page that is one run of an analysis' strip (see lib/services/dashboard loadParts). */
+export const runPart = (analysisId: string, run: number): string => `${analysisId}${RUN_MARK}${run}`;
+
+/** Reads a part id: an analysis (or "" for the visuals outside any), or one run of an analysis' strip. */
+export function readPart(part: string): { analysisId: string; run: number | null } {
+  const at = part.indexOf(RUN_MARK);
+  return at < 0 ? { analysisId: part, run: null } : { analysisId: part.slice(0, at), run: Number(part.slice(at + 1)) };
+}
+
+/** How many runs a strip of `visuals` visuals comes in (0: it comes whole). */
+export const runsOf = (visuals: number): number => (visuals > STRIP_RUNS_FROM ? Math.ceil(visuals / STRIP_RUN) : 0);
