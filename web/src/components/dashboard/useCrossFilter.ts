@@ -1,9 +1,9 @@
 "use client";
 
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useMemo, useTransition } from "react";
+import { useSearchParams } from "next/navigation";
+import { useCallback, useMemo } from "react";
 import { ownCross, toggleCross, type CrossPick } from "@/lib/query/cross";
-import { useBusySignal } from "./busy";
+import { useDashboardNav } from "./live";
 
 export interface CrossFilter {
   /** Values picked in this visual, per field. */
@@ -16,11 +16,8 @@ export interface CrossFilter {
 
 /** Cross-filter state of one visual, kept in the URL (see lib/query/cross). */
 export function useCrossFilter(visualId: string, fields: readonly string[]): CrossFilter {
-  const router = useRouter();
-  const pathname = usePathname();
   const params = useSearchParams();
-  const [pending, start] = useTransition();
-  useBusySignal(pending);
+  const { go, pending } = useDashboardNav();
   const fieldsKey = fields.join(",");
 
   const own = useMemo(
@@ -30,11 +27,9 @@ export function useCrossFilter(visualId: string, fields: readonly string[]): Cro
 
   const pick = useCallback(
     (picks: readonly CrossPick[], additive: boolean): void => {
-      const next = toggleCross(new URLSearchParams(params.toString()), visualId, picks, additive);
-      const query = next.toString();
-      start(() => router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false }));
+      go(toggleCross(new URLSearchParams(params.toString()), visualId, picks, additive));
     },
-    [params, pathname, router, visualId],
+    [params, go, visualId],
   );
 
   return { own, pick, pending };

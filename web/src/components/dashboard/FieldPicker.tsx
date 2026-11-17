@@ -1,9 +1,8 @@
 "use client";
 
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useTransition } from "react";
+import { useSearchParams } from "next/navigation";
 import { chooseField } from "@/lib/templates/field-choice";
-import { useBusySignal } from "./busy";
+import { useDashboardNav } from "./live";
 
 interface FieldPickerProps {
   visualId: string;
@@ -17,16 +16,15 @@ interface FieldPickerProps {
  * field, the one in use highlighted. The choice goes to the URL, so the page recalculates as for a filter.
  */
 export function FieldPicker({ visualId, current, options }: FieldPickerProps) {
-  const router = useRouter();
-  const pathname = usePathname();
   const params = useSearchParams();
-  const [pending, start] = useTransition();
-  useBusySignal(pending);
+  const { go } = useDashboardNav();
 
   const pick = (fieldId: string): void => {
-    if (fieldId === current) return;
-    const query = chooseField(new URLSearchParams(params.toString()), visualId, fieldId).toString();
-    start(() => router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false }));
+    // Against the address, not against what is drawn: while the table is on its way, `current` is still the old one.
+    const now = new URLSearchParams(params.toString());
+    const next = chooseField(new URLSearchParams(params.toString()), visualId, fieldId);
+    if (next.toString() === now.toString()) return;
+    go(next);
   };
 
   return (

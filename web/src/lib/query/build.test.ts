@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { loadTemplate } from "../test-helpers";
 import { templateSchema } from "../templates/schema";
-import { buildFilterOptionsQuery, buildVisualQuery, buildWhere, MissingFactError, type QueryVisual } from "./build";
+import { buildFilterOptionsQuery, buildKpiQueries, buildVisualQuery, buildWhere, MissingFactError, type KpiVisual, type QueryVisual } from "./build";
 
 const t = loadTemplate("vendas-executivo");
 const files = Object.fromEntries(t.tables.map((tb) => [tb.name, `/data/${tb.name}.parquet`]));
@@ -103,6 +103,42 @@ describe("buildVisualQuery", () => {
 
   it("fails loudly when a table file is missing", () => {
     expect(() => buildVisualQuery(t, { fato_vendas: "/x.parquet" }, visual("k_receita"), {})).toThrow(/missing file/);
+  });
+});
+
+describe("buildKpiQueries", () => {
+  const kpis = t.visuals.filter((v): v is KpiVisual => v.type === "kpi");
+  const afterSelect = (sql: string): string => sql.slice(sql.indexOf("\nFROM "));
+
+  it("answers the KPIs that read the same rows with one query, each with its own column", () => {
+    const { groups, missing } = buildKpiQueries(t, files, kpis, { regiao: ["Sul"] });
+    expect(missing).toEqual([]);
+    expect(groups.flatMap((g) => g.members.map((m) => m.visual.id)).sort()).toEqual(kpis.map((v) => v.id).sort());
+    // Fewer queries than KPIs, and each query is exactly what its members would ask alone, columns aside.
+    expect(groups.length).toBeLessThan(kpis.length);
+    for (const group of groups) {
+      for (const member of group.members) {
+        const alone = buildVisualQuery(t, files, member.visual, { regiao: ["Sul"] });
+        expect(group.query.params).toEqual(alone.params);
+        expect(afterSelect(group.query.sql)).toBe(afterSelect(alone.sql));
+        for (const column of member.columns) expect(group.query.sql.split("\nFROM ")[0]).toContain(` AS ${column}`);
+      }
+    }
+  });
+
+  it("keeps apart the KPIs that read other rows: another condition, or filters they do not follow", () => {
+    const [first, second] = kpis;
+    const apart = buildKpiQueries(
+      t, files,
+      [first, { ...second, where: "fato_vendas.quantidade > 1" }, { ...second, id: "sem_regiao", skipFilters: ["regiao"] }],
+      { regiao: ["Sul"] },
+    );
+    expect(apart.groups).toHaveLength(3);
+    // The same measure asked twice is selected once.
+    const twice = buildKpiQueries(t, files, [first, { ...first, id: "de_novo" }], {});
+    expect(twice.groups).toHaveLength(1);
+    expect(twice.groups[0].query.sql.split(` AS ${first.measure}`)).toHaveLength(2);
+    expect(twice.groups[0].members.map((m) => m.visual.id)).toEqual([first.id, "de_novo"]);
   });
 });
 

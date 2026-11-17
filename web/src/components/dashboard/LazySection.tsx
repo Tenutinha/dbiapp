@@ -1,27 +1,29 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { StaleProvider, useLive } from "./live";
+import type { PartAnswer } from "./live-types";
+import { nextLoad, type PartState } from "./part-state";
 import { loadAnalysisAction } from "./section-actions";
 
 interface LazySectionProps {
   /** Signed by the page: which dashboard this reader was given (see lib/section-ticket). */
   ticket: string;
+  /** The analysis, or "" for the visuals of the page that belong to none. */
   analysisId: string;
-  /** The page's filters and picked items, as a query string. */
+  /** The page's filters and picked items when it was made, as a query string. */
   search: string;
-  anchor: string;
+  /** Where the summary jumps to; none for the visuals outside the analyses (a plain block, not a section). */
+  anchor?: string;
   /** Title and description of the analysis: on screen from the start, so the page has its outline. */
-  header: React.ReactNode;
+  header?: React.ReactNode;
+  /** What the page already computed for `search` (null: nothing to show). Left out: asked for when the reader gets near. */
+  initial?: { body: React.ReactNode | null };
   /** A page of a strip turned sideways (PageStrip): its own classes, and the page never scrolls to keep its end. */
   pageClass?: string;
   /** Classes of the section when it is not such a page (default: one analysis below the other, freely scrolled). */
   sectionClass?: string;
 }
-
-type State =
-  | { status: "idle" | "loading" | "error" }
-  /** `body` is null when the analysis has nothing to show under these filters. */
-  | { status: "done"; body: React.ReactNode | null };
 
 /**
  * An analysis starts loading a screen or so before the reader scrolls down to it, so it is usually ready
@@ -55,92 +57,118 @@ function Waiting() {
 }
 
 /**
- * An analysis the page did not compute when it opened. Its title is there from the start; its visuals
- * are asked for when the reader gets near it (scrolling, or jumping from the summary) and take the
- * skeleton's place. A dashboard with dozens of analyses then opens as fast as its first one.
+ * One part of a dashboard that keeps itself up to date: an analysis (or the visuals outside any).
+ *
+ * Its visuals come with the page (`initial`) or are asked for when the reader gets near it (scrolling, or
+ * jumping from the summary), a skeleton holding the place meanwhile: a dashboard with dozens of analyses
+ * opens as fast as its first one. When the selection changes (a filter, an item picked in a visual) the
+ * part asks again, and again only when it is on screen or about to be; what it shows stays in place, marked
+ * as on its way out, until the new numbers arrive. Nothing is unmounted, so the reader stays where they are.
  */
-export function LazySection({ ticket, analysisId, search, anchor, header, pageClass, sectionClass }: LazySectionProps) {
+export function LazySection({ ticket, analysisId, search: pageSearch, anchor, header, initial, pageClass, sectionClass }: LazySectionProps) {
+  const live = useLive();
+  // Outside a live dashboard the selection only changes with the page itself.
+  const search = live?.search ?? pageSearch;
   const ref = useRef<HTMLElement>(null);
-  /** Marks where the analysis ends, also when it leaves the page (nothing to show). */
+  /** Marks where the part ends, also when it leaves the page (nothing to show). */
   const end = useRef<HTMLDivElement>(null);
-  /** Where the analysis started and ended on screen just before the visuals took the skeleton's place. */
+  /** Where the part started and ended on screen just before new visuals took the place of what was there. */
   const before = useRef<{ top: number; end: number } | null>(null);
-  const [state, setState] = useState<State>({ status: "idle" });
+  const [state, setState] = useState<PartState<React.ReactNode | null>>(
+    initial ? { loaded: pageSearch, body: initial.body, loading: null, failed: null } : { loaded: null, body: null, loading: null, failed: null },
+  );
+  const [near, setNear] = useState(false);
 
+  // Its box comes and goes (nothing loaded yet, nothing to show): what is watched follows it.
+  const never = state.loaded === null;
+  const empty = state.body === null;
+  // Near the screen or not, all the time: a part that scrolled away waits again when the selection changes.
   useEffect(() => {
-    if (state.status !== "idle") return;
-    const el = ref.current;
-    if (!el) return;
+    const seen = new Map<Element, boolean>();
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries.some((e) => e.isIntersecting)) setState({ status: "loading" });
+        for (const e of entries) seen.set(e.target, e.isIntersecting);
+        setNear([...seen.values()].some(Boolean));
       },
       { rootMargin: AHEAD },
     );
-    observer.observe(el);
+    // The end mark too: a part with nothing to show has no box of its own to be seen.
+    for (const el of [ref.current, end.current]) if (el) observer.observe(el);
     return () => observer.disconnect();
-  }, [state.status]);
+  }, [never, empty]);
 
+  // Back to the selection it already shows while asking for another: that answer is not waited for any more.
+  const idle = state.loading !== null && state.loaded === search;
   useEffect(() => {
-    if (state.status !== "loading") return;
-    let current = true;
-    loadAnalysisAction(ticket, analysisId, search)
-      .then((answer) => {
-        if (!current) return;
-        const top = ref.current?.getBoundingClientRect().top;
-        const bottom = end.current?.getBoundingClientRect().top;
-        before.current = top === undefined || bottom === undefined ? null : { top, end: bottom };
-        setState(answer.ok ? { status: "done", body: answer.body } : { status: "error" });
-      })
-      .catch(() => {
-        if (current) setState({ status: "error" });
-      });
-    return () => {
-      current = false;
-    };
-  }, [state.status, ticket, analysisId, search]);
+    if (idle) setState((s) => (s.loaded === search ? { ...s, loading: null } : s));
+  }, [idle, search]);
+  // A new ticket (the page was made again after the old one expired): what failed is asked again by itself.
+  useEffect(() => {
+    setState((s) => (s.failed === null ? s : { ...s, failed: null }));
+  }, [ticket]);
 
-  // The visuals rarely have the skeleton's height. When the analysis starts above the screen, the reader
+  const wanted = nextLoad(state, search, near);
+  useEffect(() => {
+    if (wanted === null) return;
+    setState((s) => ({ ...s, loading: wanted, failed: null }));
+    const ask: Promise<PartAnswer> = live ? live.loadPart(analysisId, wanted) : loadAnalysisAction(ticket, analysisId, wanted);
+    ask.then((answer) => answer, (): PartAnswer => ({ ok: false })).then((answer) => {
+      const top = ref.current?.getBoundingClientRect().top;
+      const bottom = end.current?.getBoundingClientRect().top;
+      // An answer for a selection that is not the one waited for any more is dropped.
+      setState((s) => {
+        if (s.loading !== wanted) return s;
+        before.current = top === undefined || bottom === undefined ? null : { top, end: bottom };
+        return answer.ok ? { loaded: wanted, body: answer.body, loading: null, failed: null } : { ...s, loading: null, failed: wanted };
+      });
+    });
+  }, [wanted, live, ticket, analysisId]);
+
+  // The visuals rarely have the height of what they replace. When the part starts above the screen, the reader
   // came from below (scrolling up, or having jumped to the next one): what they see is its end and what
   // follows, and that must not move — so the page is scrolled by how much the end shifted.
   // After the frame, so a browser that already kept the place by itself is left alone.
   useLayoutEffect(() => {
     const was = before.current;
     before.current = null;
-    if (state.status !== "done" || was === null || was.top >= 0 || pageClass !== undefined) return;
+    if (was === null || was.top >= 0 || pageClass !== undefined) return;
     const frame = requestAnimationFrame(() => {
       const after = end.current?.getBoundingClientRect().top;
       if (after !== undefined && Math.abs(after - was.end) > NOTICEABLE_PX) window.scrollBy({ top: after - was.end, behavior: "instant" });
     });
     return () => cancelAnimationFrame(frame);
-  }, [state, pageClass]);
+  }, [state.loaded, state.body, pageClass]);
 
-  // Nothing to show under these filters: the analysis leaves the page, as it does when computed with it.
-  const gone = state.status === "done" && state.body === null;
+  const failed = state.failed === search;
+  // Nothing to show under the selection it was computed for: the part leaves the page, as it does when
+  // computed with it (and comes back by itself if another selection gives it something).
+  const gone = !never && empty && !failed;
+  const stale = !never && state.loaded !== search;
+  const Box = anchor === undefined ? "div" : "section";
 
   return (
     <>
       {!gone && (
-        <section
-          ref={ref}
+        <Box
+          ref={ref as React.Ref<HTMLDivElement>}
           id={anchor}
-          aria-labelledby={`${anchor}-titulo`}
-          aria-busy={state.status === "loading" || undefined}
-          className={pageClass ?? sectionClass ?? "mt-14 scroll-mt-24 first:mt-0"}
+          aria-labelledby={anchor === undefined ? undefined : `${anchor}-titulo`}
+          aria-busy={state.loading !== null || undefined}
+          className={anchor === undefined ? undefined : pageClass ?? sectionClass ?? "mt-14 scroll-mt-24 first:mt-0"}
         >
           {header}
-          {state.status === "done" && state.body}
-          {(state.status === "idle" || state.status === "loading") && <Waiting />}
-          {state.status === "error" && (
+          {!never && <StaleProvider value={stale}>{state.body}</StaleProvider>}
+          {never && !failed && <Waiting />}
+          {failed && (
             <div className="card flex flex-wrap items-center gap-3 p-5 text-sm">
-              <p className="text-muted">Não foi possível carregar esta análise.</p>
-              <button type="button" onClick={() => setState({ status: "loading" })} className="rounded-md border border-line px-3 py-1 hover:bg-text/5">
+              <p className="text-muted">Não foi possível {never ? "carregar" : "atualizar"} esta análise.</p>
+              <button type="button" onClick={() => setState((s) => ({ ...s, failed: null }))} className="rounded-md border border-line px-3 py-1 hover:bg-text/5">
                 Tentar de novo
               </button>
               <span className="text-xs text-muted">Se continuar, recarregue a página.</span>
             </div>
           )}
-        </section>
+        </Box>
       )}
       <div ref={end} aria-hidden />
     </>
