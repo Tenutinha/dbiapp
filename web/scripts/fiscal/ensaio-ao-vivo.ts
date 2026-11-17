@@ -6,9 +6,12 @@
  * Uso (em web/): node --import tsx scripts/fiscal/ensaio-ao-vivo.ts [arquivo.log] [--porta 3040] [--pausa 150] [--falha]
  *   --pausa  milissegundos entre os passos (padrão 150)
  *   --falha  no exemplo, um arquivo falha e a conversão para antes de publicar
+ *   --historico <pasta>  guarda o ensaio nessa pasta, como uma carga guarda a si mesma (para ver a tela do
+ *            histórico; nunca na pasta das cargas de verdade)
  */
 import { readFileSync } from "node:fs";
 import { startLiveServer } from "../../src/lib/fiscal/live-server";
+import { openRun } from "../../src/lib/fiscal/load-history";
 import { eventLine, type LoadEvent } from "../../src/lib/fiscal/local-load";
 
 const arg = (flag: string): string | undefined => {
@@ -61,7 +64,11 @@ async function main(): Promise<void> {
   const logFile = process.argv[2] && !process.argv[2].startsWith("--") ? process.argv[2] : undefined;
   const pause = Number(arg("--pausa") ?? 150);
   const fail = process.argv.includes("--falha");
-  const live = await startLiveServer({ port: Number(arg("--porta") ?? 3040), titulo: logFile ? "ensaio · log reproduzido" : "ensaio · conversão de exemplo" });
+  const titulo = logFile ? "ensaio · log reproduzido" : "ensaio · conversão de exemplo";
+  const history = arg("--historico");
+  const run = history ? openRun(history, { titulo, molde: "ensaio", org: "exemplo", cliente: null, opcoes: fail ? ["--falha"] : [] }) : null;
+  const server = await startLiveServer({ port: Number(arg("--porta") ?? 3040), titulo, ...(history && run ? { history, run: run.id } : {}) });
+  const live = { ...server, publish: (line: string): void => { run?.append(line); server.publish(line); } };
   console.log(`ao vivo: ${live.url} (abra no navegador; começa em 3 s)`);
   await wait(3000);
 
@@ -82,7 +89,9 @@ async function main(): Promise<void> {
       live.publish("publicado: /exemplo/d/00000000-0000-0000-0000-000000000000");
     }
   }
-  await live.finish(logFile ? lines.some((line) => line.startsWith("publicado:")) : !fail);
+  const ok = logFile ? lines.some((line) => line.startsWith("publicado:")) : !fail;
+  run?.close(ok, ok ? undefined : "o ensaio parou antes de publicar");
+  await live.finish(ok);
 }
 
 main().then(() => process.exit(0), (err: unknown) => {
