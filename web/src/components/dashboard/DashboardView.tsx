@@ -7,6 +7,7 @@ import { FilterBar } from "./FilterBar";
 import { LazySection } from "./LazySection";
 import { MapChart, type MapMeasure } from "./MapChart";
 import { PAGE_CLASS, PageStrip } from "./PageStrip";
+import { CARD_STRIP_ATTR } from "./strip-attrs";
 import { CrossTable } from "./CrossTable";
 import { ScrollTable, type ScrollColumn, type SortValue } from "./ScrollTable";
 import { FieldPicker } from "./FieldPicker";
@@ -200,13 +201,16 @@ export function VisualGrid({ template, results: all, layout }: VisualGridProps) 
   const results = visibleResults(all);
   if (results.length === 0) return null;
   if (layout === "row" && results.length > 1) {
-    // Each card a little narrower than the page, so the next one peeks in and says the strip goes on.
+    // Each card a little narrower than the page, so the next one peeks in and says the strip goes on. Its
+    // scrollbar is the one in the dashboard header (always in sight); the native one stays only where no
+    // header drives the strip (a shared page).
     return (
       <div
         role="region"
         aria-label="Quadros lado a lado: role para o lado para ver os próximos"
         tabIndex={0}
-        className="-mx-1 flex snap-x snap-mandatory gap-4 overflow-x-auto px-1 pb-3 focus-visible:outline focus-visible:outline-1 focus-visible:outline-brand"
+        {...{ [CARD_STRIP_ATTR]: "" }}
+        className="relative -mx-1 flex snap-x snap-mandatory gap-4 overflow-x-auto px-1 pb-3 data-[header-scrollbar]:[scrollbar-width:none] data-[header-scrollbar]:[&::-webkit-scrollbar]:hidden focus-visible:outline focus-visible:outline-1 focus-visible:outline-brand"
       >
         {results.map((result) => (
           <VisualCard key={result.visual.id} title={result.visual.title} tools={visualTools(template, result.visual)} className="w-[calc(100%-3rem)] shrink-0 snap-start">
