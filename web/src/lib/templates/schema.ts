@@ -334,9 +334,13 @@ export const templateSchema = z
     summary: z.array(summaryGroupSchema).default([]),
     /**
      * "horizontal": each analysis is a page of its own, side by side, and the reader turns them sideways
-     * (tabs above, the summary or a swipe), like the pages of a report. Default: one below the other.
+     * (tabs above, the summary or a swipe), like the pages of a report. "pages": one below the other, each
+     * at least a screen tall, and the mouse wheel takes them whole instead of creeping from one to the next.
+     * Default: one below the other, scrolled freely.
      */
-    paging: z.enum(["vertical", "horizontal"]).optional(),
+    paging: z.enum(["vertical", "horizontal", "pages"]).optional(),
+    /** "compact": smaller type and tighter cards and tables, for dashboards read as records (e.g. the fiscal ones). */
+    density: z.enum(["comfortable", "compact"]).optional(),
     /**
      * "inline": the filters are drop-down boxes in a row at the top of the page, one value each (or all), under
      * a bar with what is selected. Default ("floating"): the "Filtros" button in the corner, with many values per filter.

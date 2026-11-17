@@ -285,3 +285,37 @@ body {
     transform: none;
   }
 }
+
+/* ---------- Compact dashboards (template density "compact") ---------- */
+/* Outside any layer: these must win over the utilities the components carry. */
+.dash-compact {
+  font-size: 0.8125rem;
+}
+.dash-compact section > header {
+  margin-bottom: 0.75rem;
+  padding-top: 0.75rem;
+}
+.dash-compact section > header h2 {
+  font-size: 1.375rem;
+}
+.dash-compact .card {
+  padding: 0.875rem;
+  border-radius: 0.75rem;
+}
+.dash-compact .card h2 {
+  font-size: 0.6875rem;
+}
+.dash-compact table {
+  font-size: 0.6875rem;
+}
+.dash-compact th,
+.dash-compact td {
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
+}
+.dash-compact .dash-kpi {
+  font-size: 1.375rem;
+}
+.dash-compact .dash-kpi-fit {
+  font-size: clamp(1rem, 11cqw, 1.375rem);
+}

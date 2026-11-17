@@ -1742,5 +1742,7 @@
         "dados_originais"
       ]
     }
-  ]
+  ],
+  "paging": "pages",
+  "density": "compact"
 }
