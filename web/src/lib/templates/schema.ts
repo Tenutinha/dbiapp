@@ -190,6 +190,20 @@ const visualSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     ...base,
+    /**
+     * A map of what the data has: one line per value of `row` (the companies), one column per value of
+     * `column` (the months), a square where the two meet — stronger where `measure` is bigger. A click on a
+     * square shows the rest of the page for that pair alone.
+     */
+    type: z.literal("matrix"),
+    row: ident,
+    column: ident,
+    measure: ident,
+    /** Squares read at most (lines × columns with data). */
+    limit: z.number().int().min(1).max(50000).default(20000),
+  }),
+  z.object({
+    ...base,
     type: z.literal("donut"),
     field: ident,
     measure: ident,
@@ -460,6 +474,12 @@ export const templateSchema = z
       if (v.type === "kpi" || v.type === "donut") needMeasure(v.measure, where);
       if (v.type === "kpi" && v.detail?.measure !== undefined) needMeasure(v.detail.measure, `${where} detail`);
       if (v.type === "bar" || v.type === "line" || v.type === "donut" || v.type === "scorecard") needField(v.field, where);
+      if (v.type === "matrix") {
+        needField(v.row, where);
+        needField(v.column, where);
+        needMeasure(v.measure, where);
+        if (v.row === v.column) issue(`${where}: row and column must be different fields`);
+      }
       if (v.type === "scorecard") {
         v.items.forEach((item) => needMeasure(item.measure, where));
         if (new Set(v.items.map((item) => item.measure)).size !== v.items.length) issue(`${where}: an indicator is repeated`);

@@ -15,6 +15,7 @@ const KIND_LABEL: Record<VisualKind, string> = {
   text: "textos",
   statement: "demonstrativos",
   scorecard: "tabelas de indicadores",
+  matrix: "mapas de dados",
 };
 
 function Stat({ value, label }: { value: number; label: string }) {

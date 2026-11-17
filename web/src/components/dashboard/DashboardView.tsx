@@ -11,6 +11,7 @@ import { MapChart, type MapMeasure } from "./MapChart";
 import { PAGE_CLASS, PageStrip } from "./PageStrip";
 import { CARD_STRIP_ATTR, runPart, runsOf, STRIP_CARD_CLASS, STRIP_RUN } from "./strip-attrs";
 import { CrossTable } from "./CrossTable";
+import { MatrixMap } from "./MatrixMap";
 import { Scorecard } from "./Scorecard";
 import { ScrollTable, type ScrollColumn, type SortValue } from "./ScrollTable";
 import { SnapPages } from "./SnapPages";
@@ -107,6 +108,20 @@ function VisualBody({ template, result }: { template: Template; result: VisualRe
           </p>
           {detailText && <p className="mt-1 truncate text-xs text-muted" title={detailText}>{detailText}</p>}
         </div>
+      );
+    }
+    case "matrix": {
+      const m = measure(visual.measure);
+      return (
+        <MatrixMap
+          visualId={visual.id} rowField={visual.row} columnField={visual.column}
+          rowTitle={template.fields.find((f) => f.id === visual.row)?.label ?? visual.row} measureLabel={m.label.toLowerCase()}
+          points={rows.map((r) => {
+            const raw = r[m.id];
+            const value = raw === null || raw === undefined || raw === "" || !Number.isFinite(Number(raw)) ? null : Number(raw);
+            return { row: String(r[visual.row] ?? ""), column: String(r[visual.column] ?? ""), value, text: formatValue(raw, m.format) };
+          })}
+        />
       );
     }
     case "scorecard":

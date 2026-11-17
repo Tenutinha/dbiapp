@@ -220,6 +220,15 @@ function selectFor(t: Template, visual: QueryVisual, filters: FilterSelection): 
         tail: `ORDER BY ${order} LIMIT ${visual.limit}`,
       };
     }
+    case "matrix": {
+      const row = field(visual.row);
+      const column = field(visual.column);
+      return {
+        select: [fieldCol(row), fieldCol(column), measureCol(measure(visual.measure))],
+        groupBy: ["1", "2"],
+        tail: `ORDER BY 1, 2 LIMIT ${visual.limit}`,
+      };
+    }
     case "scorecard": {
       // The latest values of the field first: the limit keeps the most recent, the screen puts them in order.
       const f = field(visual.field);

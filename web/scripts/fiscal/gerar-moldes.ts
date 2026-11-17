@@ -54,6 +54,16 @@ const BLOCKS: Record<string, Record<string, string>> = {
   },
 };
 
+/**
+ * Where the map of files reads from: the closing block (one 9999 line per file, with the file's count of lines)
+ * when it has a table of its own with every period; else the table of the panels of every period, by its lines.
+ */
+function fileMap(kind: SpedKind): { fact: string; where?: string; measure: string } {
+  if (kind.blockFacts.bloco_9_encerramento) return { fact: "bloco_9_encerramento", where: isReg("9999"), measure: "linhas_arquivo" };
+  if (kind.blockFacts.paineis_todos_periodos) return { fact: "paineis_todos_periodos", measure: "linhas" };
+  throw new Error(`${kind.templateId}: sem tabela de todos os períodos para o mapa de arquivos`);
+}
+
 /** "C100 - Nota fiscal …" for every record of the layout, as one CASE (used as a field and a filter). */
 function registroNome(kind: SpedKind): string {
   const whens = Object.entries(kind.layout).map(([code, r]) => `WHEN '${code}' THEN '${code} - ${literal(r.d).slice(0, 70)}'`);
@@ -80,7 +90,14 @@ function rawSections(
   const rootBlocks = new Set(Object.keys(kind.roots).map((r) => r[0]));
   const multiEstab = kind.establishmentRecords.size > 0;
   const sections: Section[] = [];
+  // The cover of the original data: the files there are, a company per line and a month per column, read from
+  // the lightest table that has every file. A click on a square shows the listings of that file alone.
+  const map = fileMap(kind);
   const original: Json[] = [{
+    id: "m_arquivos", type: "matrix", title: "Mapa dos arquivos: um quadrado por arquivo (empresa × mês). Clique num quadrado para ver só os registros dele",
+    row: "cnpj_arquivo", column: "mes_arquivo", measure: map.measure, span: 12, fact: map.fact, ...(map.where ? { where: map.where } : {}),
+    skipFilters: ["bloco", "registro_nome"],
+  }, {
     id: "t_registros", type: "table", title: "Linhas por registro", fields: ["bloco", "registro_nome"], measures: ["linhas"], limit: 400, span: 12,
   }];
   // A block that has a fact of its own is listed from it: every period, not only the ones loaded whole.
@@ -145,7 +162,11 @@ function rawSections(
     id: "dados_originais",
     title: "Dados originais",
     description: "Os arquivos como vieram: primeiro quantas linhas cada registro tem, depois um quadro por registro, na ordem dos blocos, com todos os campos do layout. "
-      + "Os quadros ficam lado a lado: role para o lado ou use a barra do cabeçalho. Registros que os arquivos não trazem não aparecem.",
+      + "Os quadros ficam lado a lado: role para o lado ou use a barra do cabeçalho. Registros que os arquivos não trazem não aparecem. "
+      + "O mapa mostra os arquivos que existem; um clique num quadrado deixa só os registros daquele arquivo (no nome da empresa, os dela; no mês, os dele)."
+      + (kind.mainFactPeriods === "latest"
+        ? ` Só o arquivo mais recente de cada empresa fica guardado inteiro: num arquivo mais antigo aparecem os registros dos blocos guardados para todos os períodos (${Object.keys(tableOfBlock).sort().join(", ")}).`
+        : ""),
     visuals: original,
     layout: "row",
   });
@@ -285,9 +306,17 @@ function build(kind: SpedKind, p: Parts): Json {
     fields: [
       ...p.fields,
       { id: "bloco", label: "Bloco", sql: `${F}.bloco` },
+      // The file a line came from, as the map of files shows it: its company and its month ("<cnpj>-aaaa-mm").
+      { id: "cnpj_arquivo", label: "Empresa (CNPJ)", sql: `${F}.cnpj` },
+      { id: "mes_arquivo", label: "Mês do arquivo", sql: `right(${F}.arquivo, 7)` },
       { id: "registro_nome", label: "Registro", sql: registroNome(kind) },
     ],
-    measures: [...p.measures, { id: "linhas", label: "Linhas", sql: "COUNT(*)", format: "integer" }],
+    measures: [
+      ...p.measures,
+      { id: "linhas", label: "Linhas", sql: "COUNT(*)", format: "integer" },
+      // The file's own count of its lines (9999, QTD_LIN).
+      { id: "linhas_arquivo", label: "Linhas no arquivo", sql: sumWhen(isReg("9999"), `TRY_CAST(${col(kind, "9999", "QTD_LIN")} AS BIGINT)`), format: "integer" },
+    ],
     filters: [...p.filters, "bloco", "registro_nome"],
     filterDefaults: p.filterDefaults ?? {},
     visuals: sections.flatMap((s) => s.visuals),

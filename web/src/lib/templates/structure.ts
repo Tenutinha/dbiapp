@@ -39,6 +39,8 @@ export function visualRefs(v: Visual): { fields: string[]; measures: string[]; s
       return { fields: [v.field], measures: v.measures, sql: where };
     case "donut":
       return { fields: [v.field], measures: [v.measure], sql: where };
+    case "matrix":
+      return { fields: [v.row, v.column], measures: [v.measure], sql: where };
     case "scorecard":
       return { fields: [v.field], measures: v.items.map((item) => item.measure), sql: where };
     case "table":
