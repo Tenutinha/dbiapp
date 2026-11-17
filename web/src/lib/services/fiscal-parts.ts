@@ -531,19 +531,52 @@ export interface SpedFilesOverview {
   failures: Map<string, PartsFailure>;
 }
 
+/** Parts folder (relative to the dashboard's parts) → which of the two records it holds. */
+export type PartsRecords = Map<string, Set<string>>;
+
+/**
+ * Which parts folders of a dashboard hold a marker or a failure record: the listing behind the panel's quick
+ * look. It does not depend on the stored raw files, so the panel starts it together with their listing
+ * instead of after it (each takes seconds for a client with thousands of files).
+ */
+export async function spedPartsRecords(
+  access: DashboardRef,
+  /**
+   * The companies that have raw files, when known: their folders are listed side by side. A dashboard of a
+   * hundred companies keeps millions of parts, and one listing of them all took most of the panel's time,
+   * while each company's own answers at once. Unknown (null): one listing of everything.
+   */
+  companies: readonly string[] | null = null,
+): Promise<PartsRecords> {
+  const root = partsRoot(access);
+  const names = [MARKER, FAILURE];
+  const found = companies
+    ? (await inBatches(companies, COMPANIES_AT_A_TIME, (cnpj) => partsStore.listTree(`${root}${cnpj}/`, names))).flat()
+    : await partsStore.listTree(root, names);
+  const records: PartsRecords = new Map();
+  for (const f of found) {
+    const place = f.key.slice(root.length, f.key.length - f.name.length);
+    records.set(place, (records.get(place) ?? new Set()).add(f.name));
+  }
+  return records;
+}
+
+/** Companies whose parts are listed at the same time. */
+const COMPANIES_AT_A_TIME = 24;
+
 /**
  * The quick look of the panel: a file is read when its folder (named by its content and the reader) has a
  * marker. One listing of the two record names for the whole dashboard; only the failure records are read.
  * A template that gained a table is only noticed when the tables are put together (the files are then read
  * again), never here.
  */
-export async function spedFilesOverview(access: DashboardRef, files: readonly RawFile[]): Promise<SpedFilesOverview> {
+export async function spedFilesOverview(
+  access: DashboardRef, files: readonly RawFile[],
+  /** The listing of the records, when the caller started it ahead (see spedPartsRecords). */
+  listed: Promise<PartsRecords> = spedPartsRecords(access),
+): Promise<SpedFilesOverview> {
   const root = partsRoot(access);
-  const records = new Map<string, Set<string>>();
-  for (const f of await partsStore.listTree(root, [MARKER, FAILURE])) {
-    const place = f.key.slice(root.length, f.key.length - f.name.length);
-    records.set(place, (records.get(place) ?? new Set()).add(f.name));
-  }
+  const records = await listed;
   const ready = new Set<string>();
   const failed: RawFile[] = [];
   for (const file of files) {

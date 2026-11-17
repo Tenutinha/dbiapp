@@ -63,7 +63,7 @@ const { partsFolderId } = await import("../fiscal/parts-plan");
 const { SPED_READER_VERSION } = await import("../fiscal/sped-kinds");
 const { templateSchema } = await import("../templates/schema");
 const {
-  assembleSpedFromParts, inBatches, withRetries, yearlyMinRows, readBuildStatus, readConcurrency, readSpedFile, rebuildSpedFromParts, spedFilesOverview, spedPartsState,
+  assembleSpedFromParts, inBatches, withRetries, yearlyMinRows, readBuildStatus, readConcurrency, readSpedFile, rebuildSpedFromParts, spedFilesOverview, spedPartsRecords, spedPartsState,
 } = await import("./fiscal-parts");
 
 const template = templateSchema.parse(JSON.parse(await readFile(path.join(process.cwd(), "fiscal-templates", "efd-contribuicoes.json"), "utf8")));
@@ -172,6 +172,15 @@ describe("rebuildSpedFromParts", () => {
     const overview = await spedFilesOverview(access, [jan, broken]);
     expect([...overview.ready]).toEqual([jan.key]);
     expect(overview.failures.get(broken.key)?.error).toBeTruthy();
+
+    // The panel lists the records company by company (and ahead of the raw files): the same answer.
+    const whole = await spedPartsRecords(access);
+    expect(await spedPartsRecords(access, [CNPJ])).toEqual(whole);
+    expect([...whole.values()].map((names) => [...names]).sort()).toEqual([["erro.json"], ["pronto.json"]]);
+    const ahead = await spedFilesOverview(access, [jan, broken], spedPartsRecords(access, [CNPJ, "99888777000166"]));
+    expect(ahead).toEqual(overview);
+    // A company without files has no records: nothing of it is read.
+    expect((await spedFilesOverview(access, [jan, broken], spedPartsRecords(access, []))).ready.size).toBe(0);
   }, 120_000);
 });
 

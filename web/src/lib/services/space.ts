@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import type { ClientRef, OrgRef } from "../access";
 import { getEffectiveBranding, listSpaceLogos } from "../data/branding";
 import { getSpaceLayout } from "../data/layout";
@@ -26,7 +27,8 @@ export interface SpaceView {
   spaces: SpaceOption[];
 }
 
-export async function loadSpace(org: OrgRef, client: ClientRef | null, membership: Membership): Promise<SpaceView> {
+/** Read once per request: a page that needs the space before drawing it (to decide where to open) shares the answer with the screen. */
+export const loadSpace = cache(async (org: OrgRef, client: ClientRef | null, membership: Membership): Promise<SpaceView> => {
   const actions = allowedActions(membership, { clientId: client?.id ?? null });
   const orgScope = allowedActions(membership, { clientId: null });
 
@@ -57,4 +59,4 @@ export async function loadSpace(org: OrgRef, client: ClientRef | null, membershi
       logos,
     ),
   };
-}
+});

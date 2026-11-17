@@ -6,7 +6,6 @@
  */
 import "server-only";
 import type { ClientRef, InstanceAccess, OrgRef } from "../access";
-import { findTemplate } from "../data/catalog";
 import { listSpaceDashboards, type SpaceDashboardRow } from "../data/instances";
 import { getDraft, getVersion, listFiles } from "../data/repository";
 import { FISCAL_IMPORTERS, fiscalImporterFor } from "../fiscal/importers";
@@ -19,11 +18,11 @@ import {
 } from "../fiscal/panel";
 import type { LineageSource } from "../fiscal/lineage";
 import { storage } from "../storage";
-import { templateSchema } from "../templates/schema";
+import { getTemplate } from "../templates/registry";
 import { relativeToOrg } from "../storage-browse";
 import { dashboardFolder } from "../storage-keys";
-import { hostedLimits, LINEAGE_FILE, MAX_HOSTED_READ_BYTES, readBuildStatus, spedFilesOverview } from "./fiscal-parts";
-import { looseSpaceFiles, storedFiscalFiles } from "./fiscal";
+import { hostedLimits, LINEAGE_FILE, MAX_HOSTED_READ_BYTES, readBuildStatus, spedFilesOverview, spedPartsRecords } from "./fiscal-parts";
+import { fiscalCompanies, looseSpaceFiles, storedFiscalFiles } from "./fiscal";
 
 /** One table a dashboard has (published or in its draft). */
 export interface PanelTable {
@@ -111,8 +110,8 @@ async function flowOf(templateId: string): Promise<FiscalFlow | null> {
   const importer = fiscalImporterFor(templateId);
   if (!importer) return null;
   try {
-    const parsed = templateSchema.safeParse((await findTemplate(templateId))?.definition);
-    return parsed.success ? fiscalFlow(parsed.data, importer.mode === "sped" ? importer.kind : null, importer.title) : null;
+    const template = await getTemplate(templateId);
+    return template ? fiscalFlow(template, importer.mode === "sped" ? importer.kind : null, importer.title) : null;
   } catch (err) {
     console.error("[fiscal-panel] could not draw the flow of", templateId, err);
     return null;
@@ -127,17 +126,23 @@ async function loadModel(
   const clientSlug = client?.slug || null;
   const base = { templateId, title: importer.title, mode: importer.mode } as const;
   try {
-    const [stored, dashboard, flow] = await Promise.all([
+    // Everything the model needs is asked at once: the two listings of the bucket (the raw files, and which
+    // of them are already read) are the slow part and do not depend on each other.
+    const ref = row ? { org, client, instanceId: row.id, templateId } : null;
+    const [stored, dashboard, flow, records] = await Promise.all([
       storedFiscalFiles(org.slug, clientSlug, templateId),
       row ? dashboardOf(org, client, row, importer.mode === "sped") : Promise.resolve(null),
       flowOf(templateId),
+      ref && importer.mode === "sped"
+        ? fiscalCompanies(org.slug, clientSlug, templateId).then((companies) => spedPartsRecords(ref, companies))
+        : Promise.resolve(null),
     ]);
     if (!dashboard && stored.files.length === 0 && stored.loose.length === 0) return null;
     const accepted = stored.files.filter((f) => importer.extensions.some((ext) => f.name.toLowerCase().endsWith(ext)));
     let statuses: FileStatus[];
     if (importer.mode === "documents") statuses = documentFileStatuses(accepted);
-    else if (row) {
-      const overview = await spedFilesOverview({ org, client, instanceId: row.id, templateId }, accepted);
+    else if (ref && records) {
+      const overview = await spedFilesOverview(ref, accepted, Promise.resolve(records));
       statuses = spedFileStatuses(accepted, overview.ready, overview.failures, hostedLimits() ? MAX_HOSTED_READ_BYTES : null);
     } else {
       statuses = spedFileStatuses(accepted, new Set(), new Map(), hostedLimits() ? MAX_HOSTED_READ_BYTES : null);

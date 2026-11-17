@@ -124,7 +124,8 @@ export function SidebarShell({
         >
           <HamburgerIcon />
         </button>
-        <Link href={spaceHref} className="flex min-w-0 flex-1 items-center gap-2 font-semibold">
+        {/* Not fetched ahead (nor the links below): it is this very page, and every page of the app is made on request. */}
+        <Link href={spaceHref} prefetch={false} className="flex min-w-0 flex-1 items-center gap-2 font-semibold">
           <SpaceLogo url={logoUrl} className="h-7 max-w-24 shrink-0" />
           <span className="truncate">{title}</span>
         </Link>
@@ -161,7 +162,7 @@ export function SidebarShell({
         <div className="flex items-start justify-between gap-2 border-b border-paper-line px-5 py-3">
           <div className="min-w-0 pt-1">
             {org.href ? (
-              <Link href={org.href} className="block truncate text-base font-bold leading-tight tracking-tight hover:underline" title={org.name}>
+              <Link href={org.href} prefetch={false} className="block truncate text-base font-bold leading-tight tracking-tight hover:underline" title={org.name}>
                 {org.name}
               </Link>
             ) : (

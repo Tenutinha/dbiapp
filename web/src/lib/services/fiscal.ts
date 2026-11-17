@@ -170,6 +170,19 @@ export async function storedFiscalFiles(orgSlug: string, clientSlug: string | nu
   return { files, loose };
 }
 
+/**
+ * The companies (CNPJ/CPF folders) that have files of one model in one space: one listing of the first level
+ * of its folder. Null when they are too many for one listing (the caller then does without the list).
+ */
+export async function fiscalCompanies(orgSlug: string, clientSlug: string | null, templateId: string): Promise<string[] | null> {
+  const folder = relativeToOrg(orgSlug, fiscalFolder(orgSlug, clientSlug, templateId)).replace(/\/$/, "");
+  const listing = await storage.listOrgFolder(orgSlug, folder, MAX_COMPANIES);
+  return listing.truncated ? null : listing.folders.filter((name) => TAX_ID.test(name));
+}
+
+/** Companies one listing of a model's folder answers (files dropped at its root count too). */
+const MAX_COMPANIES = 1000;
+
 /** Every stored file, grouped by company and period. */
 async function walk(access: InstanceAccess): Promise<{
   period: Omit<FiscalPeriod, "files" | "sizeBytes">;

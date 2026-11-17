@@ -55,6 +55,22 @@ async function exists(p: string): Promise<boolean> {
   return stat(p).then(() => true, () => false);
 }
 
+/**
+ * Downloads on their way, by key: requests that need the same object at the same time (the analyses of a
+ * dashboard arriving together on a server that has not read it yet) wait for one download instead of
+ * each fetching the whole file.
+ */
+const downloading = new Map<string, Promise<string>>();
+
+async function download(key: string, file: string): Promise<string> {
+  const data = await bucket().download(key);
+  await mkdir(path.dirname(file), { recursive: true });
+  const tmp = `${file}.${randomUUID()}.part`;
+  await writeFile(tmp, data);
+  await rename(tmp, file);
+  return file;
+}
+
 export interface UploadTarget {
   key: string;
   /** Pre-signed URL the browser PUTs the file to (cloud drivers only). */
@@ -252,12 +268,11 @@ export const storage = {
   async localPath(key: string): Promise<string> {
     const file = workPath(key);
     if (!isRemote() || (await exists(file))) return file;
-    const data = await bucket().download(key);
-    await mkdir(path.dirname(file), { recursive: true });
-    const tmp = `${file}.${randomUUID()}.part`;
-    await writeFile(tmp, data);
-    await rename(tmp, file);
-    return file;
+    const running = downloading.get(key);
+    if (running) return running;
+    const started = download(key, file).finally(() => downloading.delete(key));
+    downloading.set(key, started);
+    return started;
   },
 
   /** MD5 of a stored object, in hex, as the bucket records it; null on local disk or when the bucket keeps none. */

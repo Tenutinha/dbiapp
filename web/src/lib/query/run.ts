@@ -4,8 +4,9 @@
 import { queryRows, withConnection, type Row } from "../duck/engine";
 import type { Template, Visual } from "../templates/schema";
 import {
-  buildFilterOptionsQuery, buildTableTotalQuery, buildVisualQuery, MissingFactError, type FilterSelection, type TableFiles,
+  buildFilterOptionsQuery, buildTableTotalQuery, buildVisualQuery, MissingFactError, type BuiltQuery, type FilterSelection, type TableFiles,
 } from "./build";
+import { cachedRows } from "./result-cache";
 import type { CrossSelection } from "./cross";
 import type { FactFilter } from "./fact-filter";
 
@@ -42,6 +43,31 @@ export interface DashboardData {
   elapsedMs: number;
 }
 
+/** How the queries of a page get their rows (see RunPart). */
+type Read = (conn: Parameters<typeof queryRows>[0], q: BuiltQuery) => Promise<Row[]>;
+
+/** A part of the page, and how its queries reach the data. Default: everything, files already in place, nothing kept. */
+export interface RunPart {
+  /** Only these visuals. */
+  only?: ReadonlySet<string>;
+  /** The filter options too (default: yes). */
+  filterOptions?: boolean;
+  /** Called with each query before it runs: brings the files it reads to this machine (see lazyLocalFiles). */
+  fetchFor?: (sql: string) => Promise<void>;
+  /** Keeps each result for the next request (only where a data file never changes: see result-cache.ts). */
+  keep?: boolean;
+}
+
+function reader(part: RunPart): Read {
+  return (conn, q) => {
+    const run = async (): Promise<Row[]> => {
+      await part.fetchFor?.(q.sql);
+      return queryRows(conn, q.sql, q.params);
+    };
+    return part.keep ? cachedRows(q.sql, q.params, run) : run();
+  };
+}
+
 /** Queries of one page running at the same time, each on its own connection (DuckDB shares its threads among them). */
 const CONCURRENCY = 6;
 
@@ -71,20 +97,20 @@ export async function runDashboard(
   factFilter: FactFilter = [],
   /** Items picked in the visuals (cross-filtering). */
   cross: CrossSelection = [],
-  /** A part of the page: only these visuals, and the filter options only when asked. Default: everything. */
-  part: { only?: ReadonlySet<string>; filterOptions?: boolean } = {},
+  part: RunPart = {},
 ): Promise<DashboardData> {
   const started = performance.now();
-  const resolved = await withConnection(storageRoot, (conn) => resolveSingleFilters(conn, template, files, selection, factFilter));
+  const read = reader(part);
+  const resolved = await withConnection(storageRoot, (conn) => resolveSingleFilters(conn, read, template, files, selection, factFilter));
   // Visuals and filter options do not depend on each other: they run side by side, a few at a time.
   const runVisual = async (conn: Parameters<typeof queryRows>[0], visual: Visual): Promise<VisualResult> => {
     if (visual.type === "text") return { visual, rows: [] };
     try {
       const q = buildVisualQuery(template, files, visual, resolved, factFilter, cross);
-      const rows = await queryRows(conn, q.sql, q.params);
+      const rows = await read(conn, q);
       if (visual.type !== "table" || !visual.total || rows.length === 0) return { visual, rows };
       const totals = buildTableTotalQuery(template, files, visual, resolved, factFilter, cross);
-      return { visual, rows, total: (await queryRows(conn, totals.sql, totals.params))[0] };
+      return { visual, rows, total: (await read(conn, totals))[0] };
     } catch (err) {
       // An extra fact that has no data yet: nothing to show, not a failure.
       if (err instanceof MissingFactError) return { visual, rows: [] };
@@ -97,7 +123,7 @@ export async function runDashboard(
     let values: string[] = [];
     try {
       const q = buildFilterOptionsQuery(template, files, fieldId, resolved, factFilter, cross);
-      const rows = await queryRows(conn, q.sql, q.params);
+      const rows = await read(conn, q);
       values = rows.map((r) => r.value).filter((v): v is string => typeof v === "string");
     } catch (err) {
       console.error(`[dashboard] filter ${template.id}/${fieldId} failed`, err);
@@ -147,7 +173,7 @@ export function chooseSingleValue(options: readonly string[], picked: string | u
  * already chosen before it (cargo first, then the years that cargo has).
  */
 async function resolveSingleFilters(
-  conn: Parameters<typeof queryRows>[0], template: Template, files: TableFiles, selection: FilterSelection,
+  conn: Parameters<typeof queryRows>[0], read: Read, template: Template, files: TableFiles, selection: FilterSelection,
   factFilter: FactFilter,
 ): Promise<FilterSelection> {
   // Single-choice values start unconfirmed: a provisional year must not hide the cargos that lack it.
@@ -158,7 +184,7 @@ async function resolveSingleFilters(
     if (!(fieldId in template.filterDefaults)) continue;
     try {
       const q = buildFilterOptionsQuery(template, files, fieldId, resolved, factFilter);
-      const options = (await queryRows(conn, q.sql, q.params)).map((r) => r.value).filter((v): v is string => typeof v === "string");
+      const options = (await read(conn, q)).map((r) => r.value).filter((v): v is string => typeof v === "string");
       const chosen = chooseSingleValue(options, selection[fieldId]?.[0], defaultPreferences(template, fieldId));
       resolved[fieldId] = chosen === undefined ? [] : [chosen];
     } catch (err) {

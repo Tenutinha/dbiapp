@@ -51,7 +51,7 @@ export async function Workspace({ space, currentId, userName, outlines = {}, not
   // Other spaces are in the switcher at the top; the footer keeps only the DBI logo (back to the platform's
   // home). Who is signed in, the administration and "Sair" are in the avatar at the right of the header.
   const footer = (
-    <Link href="/" aria-label="DBI — voltar à tela inicial" title="Voltar à tela inicial" className="inline-flex rounded-md hover:opacity-80">
+    <Link href="/" prefetch={false} aria-label="DBI — voltar à tela inicial" title="Voltar à tela inicial" className="inline-flex rounded-md hover:opacity-80">
       <DbiLogo />
     </Link>
   );

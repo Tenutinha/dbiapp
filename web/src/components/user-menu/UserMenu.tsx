@@ -133,6 +133,7 @@ export function UserMenu({
               <Link
                 key={l.href}
                 href={l.href}
+                prefetch={false}
                 role="menuitem"
                 className={ITEM}
                 onClick={() => setOpen(false)}

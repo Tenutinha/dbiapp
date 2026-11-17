@@ -8,7 +8,7 @@ import { storage } from "../storage";
 import type { Template } from "../templates/schema";
 import { openingVisuals, withoutHidden } from "../templates/sections";
 import { withChosenFields } from "../templates/field-choice";
-import { requireTemplate, resolveLocalFiles } from "./datasets";
+import { lazyLocalFiles, requireTemplate } from "./datasets";
 
 export interface LoadedDashboard {
   template: Template;
@@ -27,7 +27,10 @@ async function prepare(instanceId: string, templateId: string, activeVersionId: 
   const byTable = Object.fromEntries(files.map((f) => [f.tableName, f.storagePath]));
   const fact = template.tables.find((t) => t.kind === "fact")?.name;
   const totalRows = files.find((f) => f.tableName === fact)?.rowCount ?? 0;
-  return { template, factFilter, totalRows, local: await resolveLocalFiles(byTable) };
+  // The files are fetched query by query (only the tables each one reads); where a data file never changes
+  // (a bucket: every upload gets a new key) the results are kept too.
+  const { files: local, fetchFor } = lazyLocalFiles(byTable);
+  return { template, factFilter, totalRows, local, reach: { fetchFor, keep: storage.remote() } };
 }
 
 /** The data filter of a dashboard, checked against its fact table (invalid parts are dropped). */
@@ -47,11 +50,11 @@ export async function loadDashboard(
   /** "opening": only the first analysis (and the filters) is computed now; the others are left `pending`. */
   how: "whole" | "opening" = "whole",
 ): Promise<LoadedDashboard> {
-  const { template, factFilter, totalRows, local } = await prepare(instanceId, templateId, activeVersionId, searchParams);
+  const { template, factFilter, totalRows, local, reach } = await prepare(instanceId, templateId, activeVersionId, searchParams);
   const opening = how === "opening" ? openingVisuals(template) : null;
   const data = await runDashboard(
     storage.workRoot, template, local, parseSelection(template, searchParams), factFilter, parseCross(template, searchParams),
-    opening ? { only: opening.only } : {},
+    opening ? { ...reach, only: opening.only } : reach,
   );
   return { template, data, totalRows, pending: opening?.pending ?? [] };
 }
@@ -67,12 +70,12 @@ export async function loadAnalysis(
   analysisId: string,
   searchParams: Readonly<Record<string, string | string[] | undefined>>,
 ): Promise<{ template: Template; results: DashboardData["visuals"] } | null> {
-  const { template, factFilter, local } = await prepare(instanceId, templateId, activeVersionId, searchParams);
+  const { template, factFilter, local, reach } = await prepare(instanceId, templateId, activeVersionId, searchParams);
   const analysis = template.analyses.find((a) => a.id === analysisId);
   if (!analysis) return null;
   const data = await runDashboard(
     storage.workRoot, template, local, parseSelection(template, searchParams), factFilter, parseCross(template, searchParams),
-    { only: new Set(analysis.visuals), filterOptions: false },
+    { ...reach, only: new Set(analysis.visuals), filterOptions: false },
   );
   const byId = new Map(data.visuals.map((r) => [r.visual.id, r]));
   return { template, results: analysis.visuals.flatMap((id) => byId.get(id) ?? []) };
