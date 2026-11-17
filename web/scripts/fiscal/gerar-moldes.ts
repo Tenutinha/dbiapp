@@ -55,11 +55,12 @@ const BLOCKS: Record<string, Record<string, string>> = {
 };
 
 /**
- * Where the map of files reads from: the closing block (one 9999 line per file, with the file's count of lines)
- * when it has a table of its own with every period; else the table of the panels of every period, by its lines.
+ * Where the map of files reads from: the closing block (its 9999 line says how many lines the file has) when it
+ * has a table of its own with every period; else the table of the panels of every period, by its lines. Every
+ * line of the block counts, not the 9999 alone: a file that came without it is still a file on the map.
  */
 function fileMap(kind: SpedKind): { fact: string; where?: string; measure: string } {
-  if (kind.blockFacts.bloco_9_encerramento) return { fact: "bloco_9_encerramento", where: isReg("9999"), measure: "linhas_arquivo" };
+  if (kind.blockFacts.bloco_9_encerramento) return { fact: "bloco_9_encerramento", measure: "linhas_arquivo" };
   if (kind.blockFacts.paineis_todos_periodos) return { fact: "paineis_todos_periodos", measure: "linhas" };
   throw new Error(`${kind.templateId}: sem tabela de todos os períodos para o mapa de arquivos`);
 }
@@ -307,7 +308,8 @@ function build(kind: SpedKind, p: Parts): Json {
       ...p.fields,
       { id: "bloco", label: "Bloco", sql: `${F}.bloco` },
       // The file a line came from, as the map of files shows it: its company and its month ("<cnpj>-aaaa-mm").
-      { id: "cnpj_arquivo", label: "Empresa (CNPJ)", sql: `${F}.cnpj` },
+      // The company is the file's own (the name minus "-aaaa-mm"): a line may carry the CNPJ of an establishment.
+      { id: "cnpj_arquivo", label: "Empresa (CNPJ)", sql: `left(${F}.arquivo, length(${F}.arquivo) - 8)` },
       { id: "mes_arquivo", label: "Mês do arquivo", sql: `right(${F}.arquivo, 7)` },
       { id: "registro_nome", label: "Registro", sql: registroNome(kind) },
     ],
