@@ -164,6 +164,31 @@ const visualSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     ...base,
+    /**
+     * A table of indicators on the same plane: one line per measure, with the mini chart of its evolution
+     * along `field`, its latest value, the change from the one before and where it stands against its reference.
+     */
+    type: z.literal("scorecard"),
+    /** The field the evolution runs along (the month). */
+    field: ident,
+    /** How many of its latest values the evolution shows. */
+    limit: z.number().int().min(2).max(240).default(36),
+    items: z.array(z.object({
+      measure: ident,
+      /** Name of the indicator, when the measure's own label is not it. */
+      label: z.string().min(1).max(80).optional(),
+      /** Title of the group of lines this one opens or belongs to (e.g. "Liquidez"). */
+      group: z.string().min(1).max(80).optional(),
+      /** What it tells and how it is worked out, in a few words. */
+      note: z.string().max(200).optional(),
+      /** The usual reference, in the measure's unit (0.5 for 50%). */
+      target: z.number().optional(),
+      /** The side of the reference (or of zero, without one) that is good. */
+      better: z.enum(["higher", "lower"]).optional(),
+    })).min(1).max(40),
+  }),
+  z.object({
+    ...base,
     type: z.literal("donut"),
     field: ident,
     measure: ident,
@@ -433,7 +458,11 @@ export const templateSchema = z
       if (v.fact !== undefined && tables.get(v.fact)?.kind !== "fact") issue(`${where}: "${v.fact}" is not a fact table`);
       if (v.type === "kpi" || v.type === "donut") needMeasure(v.measure, where);
       if (v.type === "kpi" && v.detail?.measure !== undefined) needMeasure(v.detail.measure, `${where} detail`);
-      if (v.type === "bar" || v.type === "line" || v.type === "donut") needField(v.field, where);
+      if (v.type === "bar" || v.type === "line" || v.type === "donut" || v.type === "scorecard") needField(v.field, where);
+      if (v.type === "scorecard") {
+        v.items.forEach((item) => needMeasure(item.measure, where));
+        if (new Set(v.items.map((item) => item.measure)).size !== v.items.length) issue(`${where}: an indicator is repeated`);
+      }
       if (v.type === "bar" || v.type === "line" || v.type === "table") v.measures.forEach((m) => needMeasure(m, where));
       if (v.type === "table") {
         v.fields.forEach((f) => needField(f, where));
