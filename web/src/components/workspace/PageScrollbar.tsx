@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { STRIP_ATTR } from "@/components/dashboard/PageStrip";
+import { CARD_STRIP_ATTR, HEADER_DRIVEN_ATTR } from "@/components/dashboard/strip-attrs";
 
 /** Where the strip of pages is scrolled: its pages, the share on screen and how far along it is (0 to 1). */
 interface StripView {
@@ -11,10 +13,36 @@ interface StripView {
   position: number;
 }
 
-const STRIP = "[data-page-strip]";
+const STRIP = `[${STRIP_ATTR}]`;
+const CARDS = `[${CARD_STRIP_ATTR}]`;
+/** A strip of visuals counts as on screen with at least this much of it in view. */
+const MIN_IN_VIEW = 48;
 
+/** The pages of a strip: the analyses of a dashboard turned sideways, or the visuals of one analysis side by side. */
 function pagesOf(strip: HTMLElement): HTMLElement[] {
-  return Array.from(strip.querySelectorAll<HTMLElement>(":scope > section"));
+  return Array.from(strip.querySelectorAll<HTMLElement>(strip.hasAttribute(CARD_STRIP_ATTR) ? ":scope > *" : ":scope > section"));
+}
+
+/** Where a page starts in its strip (the first one at 0, whatever padding the strip has). */
+function startOf(pages: readonly HTMLElement[], page: HTMLElement): number {
+  return page.offsetLeft - (pages[0]?.offsetLeft ?? 0);
+}
+
+/**
+ * The strip the header scrolls: the dashboard's pages when it has them; else, of the strips of visuals of
+ * the analyses, the one with most of itself on screen (none while they are all out of sight).
+ */
+function findStrip(): HTMLElement | null {
+  const pages = document.querySelector<HTMLElement>(STRIP);
+  if (pages) return pages;
+  let best: HTMLElement | null = null;
+  let most = MIN_IN_VIEW;
+  for (const strip of document.querySelectorAll<HTMLElement>(CARDS)) {
+    const box = strip.getBoundingClientRect();
+    const inView = Math.min(box.bottom, window.innerHeight) - Math.max(box.top, 0);
+    if (inView >= most) [best, most] = [strip, inView];
+  }
+  return best;
 }
 
 function viewOf(strip: HTMLElement): StripView | null {
@@ -31,7 +59,7 @@ function currentPage(strip: HTMLElement): number {
   const pages = pagesOf(strip);
   let best = 0;
   pages.forEach((p, i) => {
-    if (Math.abs(p.offsetLeft - strip.scrollLeft) < Math.abs(pages[best].offsetLeft - strip.scrollLeft)) best = i;
+    if (Math.abs(startOf(pages, p) - strip.scrollLeft) < Math.abs(startOf(pages, pages[best]) - strip.scrollLeft)) best = i;
   });
   return best;
 }
@@ -39,24 +67,32 @@ function currentPage(strip: HTMLElement): number {
 function goTo(strip: HTMLElement, index: number): void {
   const pages = pagesOf(strip);
   const page = pages[Math.max(0, Math.min(index, pages.length - 1))];
-  if (page) strip.scrollTo({ left: page.offsetLeft, behavior: reducedMotion() ? "instant" : "smooth" });
+  if (page) strip.scrollTo({ left: startOf(pages, page), behavior: reducedMotion() ? "instant" : "smooth" });
 }
 
-/** The strip of pages on screen, found again whenever the page content changes (a new dashboard, Suspense). */
+/**
+ * The strip on screen, found again whenever the page content changes (a new dashboard, Suspense) and, for the
+ * strips of visuals, as the reader scrolls from one analysis to another.
+ */
 function useStrip(): HTMLElement | null {
   const [strip, setStrip] = useState<HTMLElement | null>(null);
   useEffect(() => {
     let frame = 0;
     const find = (): void => {
       cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => setStrip(document.querySelector<HTMLElement>(STRIP)));
+      frame = requestAnimationFrame(() => setStrip(findStrip()));
     };
     find();
     const observer = new MutationObserver(find);
     observer.observe(document.body, { childList: true, subtree: true });
+    // Captured: the page scrolls inside the workspace, not the window.
+    document.addEventListener("scroll", find, { capture: true, passive: true });
+    window.addEventListener("resize", find);
     return () => {
       cancelAnimationFrame(frame);
       observer.disconnect();
+      document.removeEventListener("scroll", find, { capture: true });
+      window.removeEventListener("resize", find);
     };
   }, []);
   return strip;
@@ -68,7 +104,8 @@ const ARROW = "grid size-6 shrink-0 place-items-center rounded-md text-sm leadin
  * The sideways scrollbar of a dashboard whose analyses are pages side by side, shown in the fixed header
  * (always in sight) instead of under the strip, which may be a whole screen below: arrows to the previous
  * and next page, and a track whose thumb follows the strip — click a spot to go to that page, or drag it.
- * Nothing for dashboards read top to bottom.
+ * In a dashboard read top to bottom, it shows only while an analysis whose visuals sit side by side is on screen,
+ * and scrolls those.
  */
 export function PageScrollbar() {
   const strip = useStrip();
@@ -103,6 +140,14 @@ export function PageScrollbar() {
       children.disconnect();
     };
   }, [strip]);
+
+  // While this bar stands for the strip's own, the strip hides its native one.
+  const driving = strip !== null && view !== null;
+  useEffect(() => {
+    if (!strip || !driving) return undefined;
+    strip.setAttribute(HEADER_DRIVEN_ATTR, "");
+    return () => strip.removeAttribute(HEADER_DRIVEN_ATTR);
+  }, [strip, driving]);
 
   // Dragging the thumb scrolls the strip freely; the snap comes back (to the nearest page) on release.
   const onThumbDown = useCallback((e: React.PointerEvent<HTMLSpanElement>) => {
