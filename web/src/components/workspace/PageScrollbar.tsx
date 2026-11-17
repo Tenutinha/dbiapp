@@ -15,7 +15,7 @@ interface StripView {
 
 const STRIP = `[${STRIP_ATTR}]`;
 const CARDS = `[${CARD_STRIP_ATTR}]`;
-/** A strip of visuals counts as on screen with at least this much of it in view. */
+/** An analysis counts as on screen with at least this much of it in view. */
 const MIN_IN_VIEW = 48;
 
 /** The pages of a strip: the analyses of a dashboard turned sideways, or the visuals of one analysis side by side. */
@@ -28,21 +28,40 @@ function startOf(pages: readonly HTMLElement[], page: HTMLElement): number {
   return page.offsetLeft - (pages[0]?.offsetLeft ?? 0);
 }
 
+/** How much of an element is on screen, in px of height. */
+function inView(el: Element): number {
+  const box = el.getBoundingClientRect();
+  return Math.min(box.bottom, window.innerHeight) - Math.max(box.top, 0);
+}
+
 /**
- * The strip the header scrolls: the dashboard's pages when it has them; else, of the strips of visuals of
- * the analyses, the one with most of itself on screen (none while they are all out of sight).
+ * The strip the header scrolls: the dashboard's pages when it has them; else the strip of visuals of the
+ * analysis being read — the one with most of itself on screen — even while the strip itself is still below
+ * the fold (under the filters, the cards and a chart): the reader learns from the header that the analysis
+ * has more to the side. None while no analysis with a strip is on screen.
  */
 function findStrip(): HTMLElement | null {
   const pages = document.querySelector<HTMLElement>(STRIP);
   if (pages) return pages;
   let best: HTMLElement | null = null;
   let most = MIN_IN_VIEW;
-  for (const strip of document.querySelectorAll<HTMLElement>(CARDS)) {
-    const box = strip.getBoundingClientRect();
-    const inView = Math.min(box.bottom, window.innerHeight) - Math.max(box.top, 0);
-    if (inView >= most) [best, most] = [strip, inView];
+  // What is on screen besides strips: an analysis without one that takes more of the screen wins, and shows no bar.
+  const strips = new Map<Element, HTMLElement>();
+  for (const strip of document.querySelectorAll<HTMLElement>(CARDS)) strips.set(strip.closest("section[id]") ?? strip, strip);
+  const analyses = new Set<Element>([...strips.keys(), ...document.querySelectorAll("section[id][aria-labelledby]")]);
+  for (const analysis of analyses) {
+    const seen = inView(analysis);
+    if (seen >= most) [best, most] = [strips.get(analysis) ?? null, seen];
   }
   return best;
+}
+
+/** Brings a strip of visuals into sight when the header turns it while it is off screen. */
+function reveal(strip: HTMLElement): void {
+  if (!strip.hasAttribute(CARD_STRIP_ATTR)) return;
+  const box = strip.getBoundingClientRect();
+  if (box.top >= 0 && box.bottom <= window.innerHeight) return;
+  strip.scrollIntoView({ block: box.height > window.innerHeight ? "start" : "nearest", behavior: "instant" });
 }
 
 function viewOf(strip: HTMLElement): StripView | null {
@@ -67,6 +86,7 @@ function currentPage(strip: HTMLElement): number {
 function goTo(strip: HTMLElement, index: number): void {
   const pages = pagesOf(strip);
   const page = pages[Math.max(0, Math.min(index, pages.length - 1))];
+  reveal(strip);
   if (page) strip.scrollTo({ left: startOf(pages, page), behavior: reducedMotion() ? "instant" : "smooth" });
 }
 
@@ -155,6 +175,7 @@ export function PageScrollbar() {
     e.preventDefault();
     e.stopPropagation();
     e.currentTarget.setPointerCapture(e.pointerId);
+    reveal(strip);
     strip.style.scrollSnapType = "none";
     strip.style.scrollBehavior = "auto";
     drag.current = { x: e.clientX, left: strip.scrollLeft };
