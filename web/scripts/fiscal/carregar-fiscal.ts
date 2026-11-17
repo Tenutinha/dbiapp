@@ -33,6 +33,7 @@ import { rebuildFiscal } from "../../src/lib/services/fiscal";
 import { startLiveServer, type LiveServer } from "../../src/lib/fiscal/live-server";
 import { historyDir, openRun, type RunRecorder } from "../../src/lib/fiscal/load-history";
 import { eventLine } from "../../src/lib/fiscal/local-load";
+import { withNewAnalyses } from "../../src/lib/templates/summary-merge";
 import { extraFacts, templateSchema, type Template } from "../../src/lib/templates/schema";
 
 const arg = (flag: string): string | undefined => {
@@ -100,10 +101,11 @@ function keepStructure(fromFile: Template, stored: unknown): Template {
   if (!current.success || current.data.summary.length === 0) return fromFile;
   const known = new Set(fromFile.analyses.map((a) => a.id));
   const hidden = new Set(current.data.analyses.filter((a) => a.hidden).map((a) => a.id));
-  const summary = current.data.summary
+  const kept = current.data.summary
     .map((g) => ({ ...g, analyses: g.analyses.filter((id) => known.has(id)) }))
     .filter((g) => g.analyses.length > 0);
-  if (summary.length === 0) return fromFile;
+  if (kept.length === 0) return fromFile;
+  const summary = withNewAnalyses(kept, fromFile.summary, new Set(current.data.analyses.map((a) => a.id)));
   if (JSON.stringify(summary) !== JSON.stringify(fromFile.summary)) {
     console.log(`catálogo: sumário mantido como está na tela (${summary.flatMap((g) => g.analyses).join(", ")})`);
   }

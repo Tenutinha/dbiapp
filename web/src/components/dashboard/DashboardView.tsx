@@ -11,6 +11,7 @@ import { MapChart, type MapMeasure } from "./MapChart";
 import { PAGE_CLASS, PageStrip } from "./PageStrip";
 import { CARD_STRIP_ATTR } from "./strip-attrs";
 import { CrossTable } from "./CrossTable";
+import { Scorecard } from "./Scorecard";
 import { ScrollTable, type ScrollColumn, type SortValue } from "./ScrollTable";
 import { SnapPages } from "./SnapPages";
 import { FieldPicker } from "./FieldPicker";
@@ -108,6 +109,8 @@ function VisualBody({ template, result }: { template: Template; result: VisualRe
         </div>
       );
     }
+    case "scorecard":
+      return <Scorecard visual={visual} rows={rows} measure={measure} />;
     case "bar":
     case "line":
       return (

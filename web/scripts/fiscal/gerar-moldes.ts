@@ -880,6 +880,37 @@ function ecd(): Json {
   // to compare with: no value, instead of a result of zero and the whole month shown as a difference.
   const hasJ150 = `${countWhen(j150)} > 0`;
   const j150Result = `CASE WHEN ${hasJ150} THEN ROUND(COALESCE(${j150Sum}, 0), 2) END`;
+  // The balance sheet by the referential chart of accounts (I051): 1.01 current assets, 1.02 non-current,
+  // 2.01 current liabilities, 2.02 non-current, 2.03 equity. An account without a referential code falls back
+  // on its nature for assets, liabilities and equity as a whole, and stays out of the current / non-current split.
+  const refCode = "COALESCE(plano_contas.cod_cta_ref, '')";
+  const bal = (cond: string): string => sumWhen(`${i155} AND (${cond})`, fin);
+  const isEquity = `(${refCode} LIKE '2.03%' OR (${refCode} = '' AND plano_contas.natureza = '03'))`;
+  const assets = bal("plano_contas.natureza = '01'");
+  const currentAssets = bal(`plano_contas.natureza = '01' AND ${refCode} LIKE '1.01%'`);
+  const cash = bal(`plano_contas.natureza = '01' AND ${refCode} LIKE '1.01.01%'`);
+  const longTermAssets = bal(`plano_contas.natureza = '01' AND ${refCode} LIKE '1.02.01%'`);
+  const fixedAssets = bal(`plano_contas.natureza = '01' AND ${refCode} LIKE '1.02%' AND NOT ${refCode} LIKE '1.02.01%'`);
+  const currentLiabilities = `(0 - ${bal(`${refCode} LIKE '2.01%'`)})`;
+  const equity = `(0 - ${bal(isEquity)})`;
+  const liabilities = `(0 - ${bal(`plano_contas.natureza IN ('02', '03') AND NOT ${isEquity}`)})`;
+  const netRevenue = dreValue(linesOf("receita_bruta", "deducoes"));
+  const over = (a: string, b: string): string => `(${a}) / NULLIF(${b}, 0)`;
+  const indicatorMeasures: Measure[] = [
+    { id: "pl_referencial", label: "Patrimônio líquido", sql: equity, format: "currency" },
+    { id: "passivo_exigivel", label: "Passivo exigível", sql: liabilities, format: "currency" },
+    { id: "capital_giro", label: "Capital de giro líquido", sql: `${currentAssets} - ${currentLiabilities}`, format: "currency" },
+    { id: "liquidez_corrente", label: "Liquidez corrente", sql: over(currentAssets, currentLiabilities), format: "number" },
+    { id: "liquidez_imediata", label: "Liquidez imediata", sql: over(cash, currentLiabilities), format: "number" },
+    { id: "liquidez_geral", label: "Liquidez geral", sql: over(`${currentAssets} + ${longTermAssets}`, liabilities), format: "number" },
+    { id: "endividamento_geral", label: "Endividamento geral", sql: over(liabilities, assets), format: "percent" },
+    { id: "composicao_endividamento", label: "Composição do endividamento", sql: over(currentLiabilities, liabilities), format: "percent" },
+    { id: "capital_terceiros", label: "Capital de terceiros sobre o patrimônio líquido", sql: over(liabilities, equity), format: "percent" },
+    { id: "imobilizacao_pl", label: "Imobilização do patrimônio líquido", sql: over(fixedAssets, equity), format: "percent" },
+    { id: "retorno_pl", label: "Retorno sobre o patrimônio líquido", sql: over(dreValue(), equity), format: "percent" },
+    { id: "retorno_ativo", label: "Retorno sobre o ativo", sql: over(dreValue(), assets), format: "percent" },
+    { id: "giro_ativo", label: "Giro do ativo", sql: over(netRevenue, assets), format: "number" },
+  ];
   const dreMeasures: Measure[] = [
     { id: "valor_dre", label: "Valor", sql: dreValue(), format: "currency" },
     { id: "receita_liquida_dre", label: "Receita líquida", sql: dreValue(linesOf("receita_bruta", "deducoes")), format: "currency" },
@@ -892,6 +923,7 @@ function ecd(): Json {
     { id: "margem_liquida", label: "Margem líquida", sql: `(${dreValue()}) / NULLIF(${dreValue(linesOf("receita_bruta", "deducoes"))}, 0)`, format: "percent" },
     { id: "margem_bruta", label: "Margem bruta", sql: `(${dreValue(linesOf("receita_bruta", "deducoes", "custos"))}) / NULLIF(${dreValue(linesOf("receita_bruta", "deducoes"))}, 0)`, format: "percent" },
     { id: "endividamento", label: "Endividamento", sql: `(0 - ${sumWhen(nat("02"), fin)}) / NULLIF(${sumWhen(nat("01"), fin)}, 0)`, format: "percent" },
+    ...indicatorMeasures,
   ];
   const dreRegs = isReg("I155", "I355");
   const annual = { skipFilters: ["mes", "natureza"] };
@@ -938,16 +970,16 @@ function ecd(): Json {
       visuals: [
         kpi("k_receita_liquida", "Receita líquida do mês", "receita_liquida_dre", 2, dreRegs), kpi("k_resultado_mes", "Resultado do mês", "resultado_dre", 2, dreRegs),
         kpi("k_margem_liquida", "Margem líquida", "margem_liquida", 2, dreRegs), kpi("k_ativo", "Ativo", "ativo", 2, i155),
-        kpi("k_pl", "Patrimônio líquido", "patrimonio_liquido", 2, i155), kpi("k_endividamento", "Endividamento (passivo ÷ ativo)", "endividamento", 2, i155),
+        kpi("k_pl", "Patrimônio líquido", "pl_referencial", 2, i155), kpi("k_endividamento", "Endividamento (passivo ÷ ativo)", "endividamento_geral", 2, i155),
         kpi("k_lucro_bruto", "Lucro bruto do mês", "lucro_bruto_dre", 2, dreRegs), kpi("k_margem_bruta", "Margem bruta", "margem_bruta", 2, dreRegs),
-        kpi("k_passivo", "Passivo", "passivo", 2, i155), kpi("k_debitos", "Débitos do mês", "debitos", 2, i155),
+        kpi("k_passivo", "Passivo exigível", "passivo_exigivel", 2, i155), kpi("k_debitos", "Débitos do mês", "debitos", 2, i155),
         kpi("k_creditos", "Créditos do mês", "creditos", 2, i155), kpi("k_contas", "Contas movimentadas", "contas_movimentadas", 2, i155),
         {
           id: "l_resultado_mes", type: "line", title: "Evolução do resultado: receita líquida e resultado por mês (clique num mês para filtrar)",
           field: "mes", measures: ["receita_liquida_dre", "resultado_dre"], sort: "field", limit: 400, span: 12, where: dreRegs, skipFilters: ["mes"],
         },
         { id: "b_resultado_ano", type: "bar", title: "Receita líquida e resultado por ano", field: "ano", measures: ["receita_liquida_dre", "resultado_dre"], sort: "field", limit: 40, span: 12, where: dreRegs, skipFilters: ["mes", "ano"] },
-        { id: "l_patrimonio_mes", type: "line", title: "Ativo e patrimônio líquido ao fim de cada mês", field: "mes", measures: ["ativo", "patrimonio_liquido"], sort: "field", limit: 400, span: 12, where: i155, skipFilters: ["mes"] },
+        { id: "l_patrimonio_mes", type: "line", title: "Ativo e patrimônio líquido ao fim de cada mês", field: "mes", measures: ["ativo", "pl_referencial"], sort: "field", limit: 400, span: 12, where: i155, skipFilters: ["mes"] },
         { id: "d_ativo", type: "donut", title: "Composição do ativo", field: "grupo_2", measure: "ativo", span: 12, where: nat("01") },
         { id: "d_passivo", type: "donut", title: "Composição do passivo e do patrimônio líquido", field: "grupo_2", measure: "saldo_credor", span: 12, where: `${i155} AND plano_contas.natureza IN ('02', '03')` },
         { id: "b_resultado_grupo_mes", type: "bar", title: "O que formou o resultado do mês, por grupo de contas", field: "grupo_3", measures: ["resultado_dre"], sort: "measure_desc", horizontal: true, limit: 25, span: 12, where: `${dreRegs} AND ${result}` },
@@ -957,6 +989,35 @@ function ecd(): Json {
         },
       ],
       strip: ["b_resultado_ano", "l_patrimonio_mes", "d_ativo", "d_passivo", "b_resultado_grupo_mes", "t_resultado_meses"],
+    },
+    {
+      id: "indicadores", title: "Indicadores",
+      description: "Os indicadores que a escrituração permite calcular, lado a lado: o minigráfico mostra os últimos 36 meses e o valor é o do mês mais recente. "
+        + "Ativo e passivo circulantes, não circulantes e patrimônio líquido seguem o plano de contas referencial (I051); receita e resultado são os da DRE. "
+        + "Os índices de resultado são do mês, não anualizados. As referências são as usuais de análise de balanço, não metas da empresa.",
+      visuals: [{
+        id: "sc_indicadores", type: "scorecard", title: "Indicadores da empresa, mês a mês", span: 12, field: "mes", limit: 36,
+        where: dreRegs, skipFilters: ["mes", "natureza"],
+        items: [
+          { measure: "receita_liquida_dre", group: "Porte", note: "Receita bruta menos deduções, no mês." },
+          { measure: "resultado_dre", label: "Resultado do mês", group: "Porte", note: "Lucro ou prejuízo do mês.", better: "higher" },
+          { measure: "ativo", label: "Ativo total", group: "Porte", note: "Saldo ao fim do mês." },
+          { measure: "pl_referencial", group: "Porte", note: "Capital próprio ao fim do mês.", better: "higher" },
+          { measure: "margem_bruta", group: "Rentabilidade", note: "Lucro bruto ÷ receita líquida.", better: "higher" },
+          { measure: "margem_liquida", group: "Rentabilidade", note: "Resultado ÷ receita líquida.", better: "higher" },
+          { measure: "retorno_pl", group: "Rentabilidade", note: "Resultado do mês ÷ patrimônio líquido.", better: "higher" },
+          { measure: "retorno_ativo", group: "Rentabilidade", note: "Resultado do mês ÷ ativo total.", better: "higher" },
+          { measure: "giro_ativo", group: "Rentabilidade", note: "Receita líquida do mês ÷ ativo total." },
+          { measure: "liquidez_corrente", group: "Liquidez", note: "Ativo circulante ÷ passivo circulante.", target: 1, better: "higher" },
+          { measure: "liquidez_imediata", group: "Liquidez", note: "Disponível ÷ passivo circulante.", better: "higher" },
+          { measure: "liquidez_geral", group: "Liquidez", note: "(Ativo circulante + realizável a longo prazo) ÷ passivo exigível.", target: 1, better: "higher" },
+          { measure: "capital_giro", group: "Liquidez", note: "Ativo circulante − passivo circulante.", better: "higher" },
+          { measure: "endividamento_geral", group: "Estrutura de capital", note: "Passivo exigível ÷ ativo total.", target: 0.5, better: "lower" },
+          { measure: "composicao_endividamento", group: "Estrutura de capital", note: "Passivo circulante ÷ passivo exigível: quanto da dívida vence no curto prazo.", target: 0.5, better: "lower" },
+          { measure: "capital_terceiros", group: "Estrutura de capital", note: "Passivo exigível ÷ patrimônio líquido.", target: 1, better: "lower" },
+          { measure: "imobilizacao_pl", group: "Estrutura de capital", note: "Ativo não circulante (sem o realizável a longo prazo) ÷ patrimônio líquido.", target: 1, better: "lower" },
+        ],
+      }],
     },
     dreSection,
     {

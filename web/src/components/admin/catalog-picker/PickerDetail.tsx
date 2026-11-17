@@ -14,6 +14,7 @@ const KIND_LABEL: Record<VisualKind, string> = {
   rows: "listagens",
   text: "textos",
   statement: "demonstrativos",
+  scorecard: "tabelas de indicadores",
 };
 
 function Stat({ value, label }: { value: number; label: string }) {

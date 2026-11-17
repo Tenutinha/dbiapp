@@ -14,6 +14,7 @@ export const VISUAL_TYPE_LABEL: Record<VisualType, string> = {
   rows: "Listagem (dados originais)",
   text: "Texto explicativo",
   statement: "Demonstrativo (DRE)",
+  scorecard: "Tabela de indicadores",
 };
 const TYPE_OPTIONS = (Object.keys(VISUAL_TYPE_LABEL) as VisualType[]).map((v) => ({ value: v, label: VISUAL_TYPE_LABEL[v] }));
 const SPAN_OPTIONS = [
@@ -151,6 +152,13 @@ function TypeSettings({ visual: v, onChange, fields, measures }: TypeSettingsPro
             <NumberInput value={v.limit} min={1} max={1000} onChange={(limit) => onChange({ ...v, limit })} />
           </Field>
         </div>
+      );
+    case "scorecard":
+      return (
+        <p className="text-xs text-muted">
+          Tabela com {v.items.length} indicador(es), cada um com o minigráfico da sua evolução. Os indicadores, as referências e os
+          grupos são definidos no JSON do dashboard.
+        </p>
       );
     case "statement":
       return (

@@ -96,6 +96,8 @@ export function defaultVisual(type: VisualType, id: string, title: string): Visu
       return { ...base, type, body: "" };
     case "statement":
       return { ...base, type, measure: "", column: "", levels: [], lines: [] };
+    case "scorecard":
+      return { ...base, type, field: "", limit: 36, items: [] };
   }
 }
 
@@ -151,6 +153,10 @@ export function usedIds(t: Template): UsedIds {
       case "donut":
         fields.add(v.field);
         measures.add(v.measure);
+        break;
+      case "scorecard":
+        fields.add(v.field);
+        v.items.forEach((item) => measures.add(item.measure));
         break;
       case "table":
         v.fields.forEach((f) => fields.add(f));
