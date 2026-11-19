@@ -3,13 +3,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import DeckGL from "@deck.gl/react";
 import { FlyToInterpolator, MapView, WebMercatorViewport, type MapViewState, type PickingInfo } from "@deck.gl/core";
-import { ArcLayer, ColumnLayer, GeoJsonLayer, TextLayer } from "@deck.gl/layers";
+import { ArcLayer, GeoJsonLayer, IconLayer, ScatterplotLayer, TextLayer } from "@deck.gl/layers";
 import { feature } from "topojson-client";
 import type { GeometryCollection, Topology } from "topojson-specification";
 import type { FeatureCollection, Geometry } from "geojson";
+import { nextPeriod, periodsOf } from "@/lib/network-timeline";
 import { boundsOf, buildNetwork, neighbourhood, throughput, type NetworkEdge, type NetworkNode, type NetworkRow } from "@/lib/network-graph";
 import type { NetworkVisual } from "@/lib/templates/schema";
 import { CATEGORY_PALETTE, KIND_PALETTE, colorMap, lighten, readTheme, withAlpha, type NetworkTheme, type Rgb } from "./colors";
+import { iconOf, iconShape } from "./icons";
+import { NetworkTimeline } from "./NetworkTimeline";
 import {
   EdgeTip, NetworkLegend, NetworkSummary, NetworkTooltip, NodeDetail, NodeTip, categoryKey, kindKey, type PanelMeasure,
 } from "./NetworkPanels";
@@ -22,10 +25,22 @@ export interface NetworkMapProps {
 
 type Areas = FeatureCollection<Geometry, { codarea: string }>;
 
-/** Tallest place, in metres: tall enough to read from far, short of hiding the map ("an interesting scale"). */
-const MAX_HEIGHT = 560_000;
-const MIN_HEIGHT = 18_000;
-const COLUMN_RADIUS = 20_000;
+/**
+ * Height of the drawing of a place on the map, in metres: it grows as the reader comes closer, like a
+ * building would, within the limits in pixels below (the smallest still readable, the largest a landmark).
+ */
+const MIN_ICON_M = 14_000;
+const MAX_ICON_M = 70_000;
+const MIN_ICON_PX = 16;
+const MAX_ICON_PX = 140;
+/** Metres per pixel at the equator, zoom 0 (Web Mercator, 512-pixel tiles as deck.gl draws them). */
+const EQUATOR_M_PER_PX = 78_271.517;
+/** Height of the map surface (the states are raised this much), in metres. */
+const GROUND = 9_000;
+/** Time each period stays on the map while the timeline plays. */
+const PLAY_STEP_MS = 1_600;
+/** Drawn over the arcs whatever their depth: a place is never hidden behind the lines that reach it. */
+const ON_TOP = { depthCompare: "always", depthWriteEnabled: false } as const;
 const PITCH_3D = 52;
 const BEARING_3D = -14;
 /** Places named on the map without hovering (the largest); the others show their name on hover. */
@@ -106,9 +121,35 @@ export default function NetworkMap({ visual, rows, measures }: NetworkMapProps) 
   const box = useRef<HTMLDivElement>(null);
   const theme = useTheme(box);
   const { width, height } = useSize(box);
-  const graph = useMemo(() => buildNetwork(visual, rows), [visual, rows]);
-  const kindColor = useMemo(() => colorMap(graph.kinds, KIND_PALETTE), [graph.kinds]);
-  const categoryColor = useMemo(() => colorMap(graph.categories, CATEGORY_PALETTE), [graph.categories]);
+  // The whole time span: it fixes the colours, the legend and the frame, so they hold while periods change.
+  const whole = useMemo(() => buildNetwork(visual, rows), [visual, rows]);
+  const periods = useMemo(() => (visual.time ? periodsOf(rows, visual.time, visual.measure) : []), [visual.time, visual.measure, rows]);
+  const [period, setPeriod] = useState<string | null>(null);
+  const [playing, setPlaying] = useState(false);
+  useEffect(() => {
+    if (period !== null && !periods.some((p) => p.key === period)) setPeriod(null);
+  }, [periods, period]);
+  const graph = useMemo(() => {
+    const time = visual.time;
+    return time && period !== null ? buildNetwork(visual, rows.filter((r) => String(r[time] ?? "") === period)) : whole;
+  }, [visual, rows, period, whole]);
+  // Playing: one period after the other, stopping at the last.
+  useEffect(() => {
+    if (!playing) return;
+    const step = (): void => setPeriod((current) => {
+      const next = nextPeriod(periods, current);
+      if (next === null) setPlaying(false);
+      return next ?? current;
+    });
+    // From "Todos" or the last period, playing starts over at the first.
+    if (period === null || period === periods[periods.length - 1]?.key) setPeriod(periods[0]?.key ?? null);
+    const timer = window.setInterval(step, PLAY_STEP_MS);
+    return () => window.clearInterval(timer);
+    // The period changes on every step: only starting and stopping restart the clock.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playing, periods]);
+  const kindColor = useMemo(() => colorMap(whole.kinds, KIND_PALETTE), [whole.kinds]);
+  const categoryColor = useMemo(() => colorMap(whole.categories, CATEGORY_PALETTE), [whole.categories]);
   const byId = useMemo(() => new Map(graph.nodes.map((n) => [n.id, n])), [graph.nodes]);
   const main: PanelMeasure = measures[visual.measure] ?? { id: visual.measure, label: visual.measure, format: "number" };
   const edgeMeasures = useMemo(
@@ -136,13 +177,13 @@ export default function NetworkMap({ visual, rows, measures }: NetworkMapProps) 
   const framed = useRef<string>("");
   useEffect(() => {
     if (width === 0 || height === 0) return;
-    const key = graph.nodes.map((n) => n.id).sort().join("|");
+    const key = whole.nodes.map((n) => n.id).sort().join("|");
     if (framed.current === key && view) return;
     framed.current = key;
-    setView(fitView(graph.nodes, width, height, flat));
-    // Only a new network or the first size reframes; turning 2D/3D and resizing keep the reader's place.
+    setView(fitView(whole.nodes, width, height, flat));
+    // Only a new network or the first size reframes; turning 2D/3D, resizing and the timeline keep the reader's place.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [graph.nodes, width > 0 && height > 0]);
+  }, [whole.nodes, width > 0 && height > 0]);
   useEffect(() => {
     if (picked && !byId.has(picked)) setPicked(null);
   }, [byId, picked]);
@@ -160,8 +201,8 @@ export default function NetworkMap({ visual, rows, measures }: NetworkMapProps) 
   }, [spin]);
 
   const reframe = useCallback((toFlat: boolean) => {
-    setView({ ...fitView(graph.nodes, width, height, toFlat), transitionDuration: 900, transitionInterpolator: new FlyToInterpolator() });
-  }, [graph.nodes, width, height]);
+    setView({ ...fitView(whole.nodes, width, height, toFlat), transitionDuration: 900, transitionInterpolator: new FlyToInterpolator() });
+  }, [whole.nodes, width, height]);
 
   // A place picked (on the map or in the list of partners) comes to the middle of the free part of the map.
   useEffect(() => {
@@ -189,7 +230,16 @@ export default function NetworkMap({ visual, rows, measures }: NetworkMapProps) 
   );
   const maxNode = useMemo(() => Math.max(1, ...graph.nodes.map(throughput)), [graph.nodes]);
   const maxEdge = useMemo(() => Math.max(1, ...graph.edges.map((e) => e.value)), [graph.edges]);
-  const elevation = useCallback((n: NetworkNode) => MIN_HEIGHT + (MAX_HEIGHT - MIN_HEIGHT) * Math.sqrt(throughput(n) / maxNode), [maxNode]);
+  const iconSize = useCallback((n: NetworkNode) => MIN_ICON_M + (MAX_ICON_M - MIN_ICON_M) * Math.sqrt(throughput(n) / maxNode), [maxNode]);
+  // The zoom in steps (a label offset is redone per step, not per frame of a pan).
+  const zoomStep = Math.round((view?.zoom ?? 4) * 4) / 4;
+  /** The drawing's height on screen now, in pixels (to put the name right above it). */
+  const iconPixels = useCallback((n: NetworkNode) => {
+    const metresPerPixel = (EQUATOR_M_PER_PX * Math.cos((n.lat * Math.PI) / 180)) / 2 ** zoomStep;
+    return Math.min(MAX_ICON_PX, Math.max(MIN_ICON_PX, iconSize(n) / metresPerPixel));
+  }, [iconSize, zoomStep]);
+  // Farther (north) first, so the nearer drawings stand in front of them in the tilted view.
+  const drawOrder = useMemo(() => [...visibleNodes].sort((a, b) => b.lat - a.lat), [visibleNodes]);
   const labeled = useMemo(() => {
     const top = [...visibleNodes].sort((a, b) => throughput(b) - throughput(a)).slice(0, LABELED);
     const ids = new Set(top.map((n) => n.id));
@@ -214,7 +264,7 @@ export default function NetworkMap({ visual, rows, measures }: NetworkMapProps) 
         filled: true,
         extruded: true,
         wireframe: true,
-        getElevation: 9_000,
+        getElevation: GROUND,
         getFillColor: withAlpha(theme.dark ? lighten(theme.card, 0.04) : theme.bg, 255),
         getLineColor: withAlpha(theme.dark ? lighten(theme.line, 0.15) : theme.line, 255),
         material: { ambient: 0.55, diffuse: 0.5, shininess: 8, specularColor: [40, 40, 40] },
@@ -223,8 +273,8 @@ export default function NetworkMap({ visual, rows, measures }: NetworkMapProps) 
       new ArcLayer<NetworkEdge>({
         id: "relacoes",
         data: visibleEdges,
-        getSourcePosition: (e) => { const n = byId.get(e.source); return n ? [n.lon, n.lat, 9_000] : [0, 0]; },
-        getTargetPosition: (e) => { const n = byId.get(e.target); return n ? [n.lon, n.lat, 9_000] : [0, 0]; },
+        getSourcePosition: (e) => { const n = byId.get(e.source); return n ? [n.lon, n.lat, GROUND] : [0, 0]; },
+        getTargetPosition: (e) => { const n = byId.get(e.target); return n ? [n.lon, n.lat, GROUND] : [0, 0]; },
         getSourceColor: (e) => withAlpha(catColor(e), edgeAlpha(e)),
         getTargetColor: (e) => withAlpha(lighten(catColor(e), 0.45), edgeAlpha(e)),
         getWidth: (e) => 1 + 7 * Math.sqrt(e.value / maxEdge),
@@ -236,31 +286,47 @@ export default function NetworkMap({ visual, rows, measures }: NetworkMapProps) 
         highlightColor: [255, 255, 255, 220],
         updateTriggers: { getSourceColor: [lit, categoryColor], getTargetColor: [lit, categoryColor], getWidth: maxEdge },
       }),
-      new ColumnLayer<NetworkNode>({
+      // The shadow of each drawing on the ground: it shows where the place is and gives the scene depth.
+      new ScatterplotLayer<NetworkNode>({
+        id: "sombras",
+        data: drawOrder,
+        getPosition: (n) => [n.lon, n.lat, GROUND],
+        getRadius: (n) => iconSize(n) * 0.3,
+        radiusUnits: "meters",
+        radiusMinPixels: MIN_ICON_PX * 0.3,
+        radiusMaxPixels: MAX_ICON_PX * 0.3,
+        getFillColor: (n) => [0, 0, 0, (theme.dark ? 120 : 55) * dim(!lit || lit.nodes.has(n.id))],
+        parameters: ON_TOP,
+        updateTriggers: { getRadius: maxNode, getFillColor: [lit, theme] },
+      }),
+      new IconLayer<NetworkNode>({
         id: "locais",
-        data: visibleNodes,
-        diskResolution: 28,
-        radius: COLUMN_RADIUS,
-        extruded: true,
-        getPosition: (n) => [n.lon, n.lat, 9_000],
-        getElevation: elevation,
-        getFillColor: nodeColor,
-        material: { ambient: 0.6, diffuse: 0.6, shininess: 32 },
+        data: drawOrder,
+        getIcon: (n) => iconOf(iconShape(n.kind)),
+        getPosition: (n) => [n.lon, n.lat, GROUND],
+        getSize: iconSize,
+        sizeUnits: "meters",
+        sizeMinPixels: MIN_ICON_PX,
+        sizeMaxPixels: MAX_ICON_PX,
+        getColor: nodeColor,
+        billboard: true,
+        alphaCutoff: 0.05,
+        parameters: ON_TOP,
         pickable: true,
         autoHighlight: true,
-        highlightColor: [255, 255, 255, 120],
-        transitions: { getElevation: { duration: 900 } },
-        updateTriggers: { getFillColor: [lit, kindColor], getElevation: maxNode },
+        highlightColor: [255, 255, 255, 140],
+        transitions: { getSize: { duration: 700 } },
+        updateTriggers: { getColor: [lit, kindColor], getSize: maxNode },
       }),
       new TextLayer<NetworkNode>({
         id: "nomes",
         data: labeled,
         characterSet: "auto",
-        getPosition: (n) => [n.lon, n.lat, 9_000 + elevation(n) + 12_000],
+        getPosition: (n) => [n.lon, n.lat, GROUND],
         getText: (n) => n.label,
         getSize: 12,
         getColor: withAlpha(theme.text, 255),
-        getPixelOffset: [0, -6],
+        getPixelOffset: (n) => [0, -(iconPixels(n) + 4)],
         background: true,
         getBackgroundColor: withAlpha(theme.card, 215),
         backgroundPadding: [5, 2],
@@ -269,10 +335,11 @@ export default function NetworkMap({ visual, rows, measures }: NetworkMapProps) 
         billboard: true,
         getTextAnchor: "middle",
         getAlignmentBaseline: "bottom",
-        updateTriggers: { getPosition: maxNode, getColor: theme, getBackgroundColor: theme },
+        parameters: ON_TOP,
+        updateTriggers: { getPixelOffset: [maxNode, zoomStep], getColor: theme, getBackgroundColor: theme },
       }),
     ].filter(Boolean);
-  }, [theme, states, visibleEdges, visibleNodes, labeled, byId, kindColor, categoryColor, lit, maxEdge, maxNode, elevation]);
+  }, [theme, states, visibleEdges, labeled, byId, kindColor, categoryColor, lit, maxEdge, maxNode, iconSize, iconPixels, drawOrder, zoomStep]);
 
   const onHover = useCallback((info: PickingInfo) => {
     if (!info.object) return setHover(null);
@@ -294,6 +361,7 @@ export default function NetworkMap({ visual, rows, measures }: NetworkMapProps) 
   }, []);
 
   const pickedNode = picked ? byId.get(picked) : undefined;
+  const periodTitle = period !== null ? periods.find((p) => p.key === period)?.title : undefined;
   const bg = theme?.bg ?? [7, 9, 15];
   return (
     <div ref={box} className="relative size-full overflow-hidden" style={{ background: `radial-gradient(ellipse at 50% 30%, rgb(${lighten(bg, theme?.dark ? 0.06 : 0).join(",")}), rgb(${bg.join(",")}) 70%)` }}>
@@ -322,16 +390,29 @@ export default function NetworkMap({ visual, rows, measures }: NetworkMapProps) 
         <p className="absolute inset-0 grid place-items-center text-sm text-muted">Sem locais com coordenadas para os filtros atuais.</p>
       )}
 
-      <div className="pointer-events-none absolute left-4 top-4 z-10"><NetworkSummary graph={graph} kindColor={kindColor} measure={main} title={visual.title} /></div>
-      <div className="pointer-events-none absolute bottom-4 left-4 z-10 flex max-h-[calc(100%-12rem)] flex-col justify-end">
-        <NetworkLegend kinds={graph.kinds} categories={graph.categories} kindColor={kindColor} categoryColor={categoryColor} hidden={hidden} onToggle={toggle} />
-      </div>
-      <div className="absolute right-4 top-4 z-10 flex flex-wrap justify-end gap-2">
+      {/* Top: what the map holds, the timeline, the view buttons (the timeline goes under them on narrow screens). */}
+      <div className="pointer-events-none absolute inset-x-4 top-4 z-10 flex flex-wrap items-start gap-3 xl:flex-nowrap">
+        <div className="w-80 max-w-full shrink-0">
+          <NetworkSummary graph={graph} kindColor={kindColor} measure={main} title={periodTitle ? `${visual.title} · ${periodTitle}` : visual.title} />
+        </div>
+        {periods.length > 1 && (
+          <div className="order-last flex min-w-0 basis-full justify-center xl:order-none xl:basis-auto xl:flex-1">
+            <NetworkTimeline
+              periods={periods} value={period} onChange={setPeriod} playing={playing} onPlay={setPlaying}
+              format={main.format} measureLabel={main.label}
+            />
+          </div>
+        )}
+        <div className="pointer-events-auto ml-auto flex shrink-0 flex-wrap justify-end gap-2">
         <button type="button" className={BUTTON} aria-pressed={!flat} onClick={() => { setFlat(!flat); reframe(!flat); }} title="Alternar entre a vista inclinada (3D) e a de cima (2D)">
           {flat ? "Ver em 3D" : "Ver de cima"}
         </button>
         <button type="button" className={BUTTON} aria-pressed={spin} onClick={() => setSpin(!spin)}>Girar</button>
         <button type="button" className={BUTTON} onClick={() => { setSpin(false); reframe(flat); }}>Recentralizar</button>
+        </div>
+      </div>
+      <div className="pointer-events-none absolute bottom-4 left-4 z-10 flex max-h-[calc(100%-12rem)] flex-col justify-end">
+        <NetworkLegend kinds={whole.kinds} categories={whole.categories} kindColor={kindColor} categoryColor={categoryColor} hidden={hidden} onToggle={toggle} />
       </div>
       {pickedNode && (
         <div className="pointer-events-none absolute bottom-4 right-4 top-16 z-10 flex justify-end">

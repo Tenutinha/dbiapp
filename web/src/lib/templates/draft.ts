@@ -186,6 +186,7 @@ export function usedIds(t: Template): UsedIds {
       case "network":
         for (const e of [v.source, v.target]) [e.id, e.label, e.lat, e.lon, e.kind, ...(e.detail ? [e.detail] : [])].forEach((f) => fields.add(f));
         if (v.category) fields.add(v.category);
+        if (v.time) fields.add(v.time);
         [v.measure, ...v.tooltip].forEach((m) => measures.add(m));
         break;
       case "statement":

@@ -304,7 +304,13 @@ const visualSchema = z.discriminatedUnion("type", [
     measure: ident,
     /** Extra measures shown in the tooltip of an arc. */
     tooltip: z.array(ident).default([]),
-    limit: z.number().int().min(1).max(5000).default(2000),
+    /**
+     * Field with the period of each relationship, sortable as text (e.g. the month "2026-03"): the map gets a
+     * timeline over it, to see one period at a time or play them in order. The rows then come per period.
+     */
+    time: ident.optional(),
+    /** Rows (pairs of places, per period with `time`), the largest first. */
+    limit: z.number().int().min(1).max(20000).default(2000),
   }),
   /**
    * Plain listing of rows, not aggregated: the original data as it came (e.g. every field of a SPED
@@ -556,6 +562,7 @@ export const templateSchema = z
           [end.id, end.label, end.lat, end.lon, end.kind, ...(end.detail ? [end.detail] : [])].forEach((f) => needField(f, where));
         }
         if (v.category) needField(v.category, where);
+        if (v.time) needField(v.time, where);
         needMeasure(v.measure, where);
         v.tooltip.forEach((m) => needMeasure(m, where));
         if (v.source.id === v.target.id) issue(`${where}: source and target must use different fields`);
