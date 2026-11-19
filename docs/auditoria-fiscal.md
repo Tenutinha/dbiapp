@@ -24,6 +24,7 @@ NF-e (dashboard publicado) ────────────┘              
 | Preparar | `preparar.py` | roda as regras e grava `dados/achados.parquet`, `dados/regras.parquet`, `dados/cobertura.parquet` e `dados/glossario.parquet` |
 | Glossário | `glossario.py` | lê o [catálogo](auditorias-catalogo.md) e as regras do preparo e grava só `dados/glossario.parquet` (o preparo já faz isso; rodar sozinho serve para atualizar o glossário sem refazer as regras) |
 | Intragrupo | `intragrupo_extrair.py` e `intragrupo.py` | leem 0000, 0150, C100 e C190 dos originais da EFD ICMS/IPI de uma pasta local e gravam `dados/intragrupo.parquet` (ver [Notas entre estabelecimentos do grupo](#notas-entre-estabelecimentos-do-grupo)) |
+| NCM | `ncm_extrair.py`, `ncm_contrib_extrair.py`, `tabelas_sped.py` e `ncm.py` | leem o 0200 e os itens das duas EFD dos originais locais, baixam as tabelas de PIS/COFINS do SPED e a NCM vigente, e gravam `dados/ncm_fornecedor.parquet`, `dados/ncm_matriz.parquet` e `dados/ncm_cadastro.parquet` (ver [Cadastro e NCM](#cadastro-e-ncm)) |
 | Reforma | `reforma.py` | lê os resumos de todos os períodos da EFD ICMS/IPI e da EFD Contribuições e grava `dados/reforma.parquet`, `dados/reforma_apuracao.parquet` e `dados/reforma_transicao.parquet` (ver [Reforma tributária](#reforma-tributária)) |
 | Molde | `molde.py` | gera o `template.json` (o texto da seção Regras vem da lista de regras do preparo; os temas do Glossário, do catálogo) |
 | Carregar | `scripts/pbix/carregar-dashboard.ts` | cadastra o molde no catálogo (como rascunho), ativa o dashboard no espaço, sobe as tabelas e publica |
@@ -382,6 +383,59 @@ notas de uma vez não cabem. Depois, `molde.py`, o validador e `carregar-dashboa
 - Notas sem chave (modelos sem chave de acesso) e participantes identificados só por CPF.
 - Notas de outros arquivos (EFD Contribuições, XML): só a EFD ICMS/IPI.
 
+## Cadastro e NCM
+
+A seção **Cadastro e NCM** (itens CD01, CD02 e CD04 do [catálogo](auditorias-catalogo.md), que passam a Ativas) confere o
+NCM do cadastro de itens (0200) de três jeitos. Não muda NCM nenhum: aponta onde a classificação pode estar errada e o que
+isso muda no tributo, para o tributarista decidir.
+
+| Bloco | Tabela | O que confere |
+|---|---|---|
+| NCM × fornecedor (CD02) | `ncm_fornecedor` | cada item de compra de fora do grupo (XML, da fato `nfe_itens` publicada) é ligado ao C170 de entrada da EFD ICMS/IPI pela chave e pelo número do item, e ao 0200 do estabelecimento no mês. Situação: igual ao fornecedor, outro subitem da mesma posição (4 dígitos iguais) ou outra posição. Grupo de entrada pelo CFOP (revenda, uso e consumo, ativo, remessa e retorno, outras). Código que recebe mais de 20 NCM é genérico |
+| Matriz de PIS/COFINS (CD04) | `ncm_matriz` | cada venda (C170 de saída da EFD Contribuições, somado por mês, item, CST e alíquota) contra a linha das tabelas 4.3.10 a 4.3.17 em que o NCM está: a de prefixo mais longo, vigente no mês e sem o NCM nas exceções. **M1**: tributado (CST 01 a 03) e a tabela diz monofásico, substituição ou alíquota zero; **M2**: sem débito (CST 04 a 09) e o NCM em nenhuma linha que traz NCM. "No prazo" = últimos 5 anos |
+| Cadastro (CD01) | `ncm_cadastro` | uma linha por código de item, com o NCM do último mês: fora da NCM vigente ou vazio, NCM diferente entre estabelecimentos ou entre as duas EFD no mesmo mês, código de barras com mais de um NCM, genérico, vendido nos últimos 12 meses |
+
+Na matriz, só o que não bate tem uma linha por mês e item; o resto vem somado por ano, situação e tabela.
+
+### Fontes externas
+
+`tabelas_sped.py` baixa:
+
+- as tabelas 4.3.10 a 4.3.17 do **Portal do Sped Tabelas** (sistema PIS/COFINS, pacote "Tabelas de Operações com
+  Contribuição"). A página é ASP.NET: o script refaz os postbacks de escolher o pacote e a tabela e o do botão "Baixar
+  tabela". Os .txt ficam em `tabelas-sped/` (a primeira linha traz a versão);
+- a **NCM vigente** do Portal Único Siscomex (`nomenclatura/download/json`), só com os códigos em vigor. Um NCM do cadastro que
+  não está nela foi extinto (como o 8517.12.31, trocado em 2022) ou nunca existiu.
+
+O texto das fontes (versões e data) vai para `entrada/tabelas_fontes.txt` e aparece na seção.
+
+### Rodar
+
+```bash
+# em web/; ORIGEM = pasta do cliente com <cnpj>/original/efd_icms_ipi e efd_contribuicoes
+AUDITORIA_PASTA="$PASTA" uv run -q --no-project --python 3.11 --with duckdb python -I scripts/fiscal/auditoria/ncm_extrair.py --origem "$ORIGEM"
+AUDITORIA_PASTA="$PASTA" uv run -q --no-project --python 3.11 --with duckdb python -I scripts/fiscal/auditoria/ncm_contrib_extrair.py --origem "$ORIGEM"
+AUDITORIA_PASTA="$PASTA" uv run -q --no-project --python 3.11 --with duckdb --with requests python -I scripts/fiscal/auditoria/tabelas_sped.py
+# nfe_itens_*.parquet em $PASTA/entrada: a fato publicada do dashboard NF-e (extrair.ts copia)
+AUDITORIA_PASTA="$PASTA" uv run -q --no-project --python 3.11 --with duckdb python -I scripts/fiscal/auditoria/ncm.py [--contar]
+```
+
+Tempo de referência (120 estabelecimentos, 103 meses): EFD ICMS/IPI ~7 min, EFD Contribuições ~5 min, preparo 15 s.
+`ncm_contrib_extrair.py` soma os itens ao ler; as duas extrações usam uma janela de arquivos em memória (`ex.map` guardava os
+resultados de todos e estourou a memória).
+
+### Cuidados
+
+- As colunas `ncm_vigencia`, `ncm_aliq_pis`, `ncm_aliq_cofins` e `ncm_monofasico` da `nfe_itens` vêm prontas da extração
+  dos XML e casam o NCM só pelo capítulo (todo o capítulo 94 aparece como "alíquota zero"). **Não use** essas colunas; a
+  seção usa as tabelas oficiais.
+- As tabelas do SPED descrevem várias regras sem NCM (autopeças e veículos da Lei 10.485, programas com condição de preço,
+  como a Lei do Bem). Venda sem débito de um desses produtos aparece em M2 ("fora das tabelas"): confira na lei antes de
+  tratar como erro.
+- A Lei do Bem (alíquota zero no varejo de computadores, celulares e modems) termina em 30/11/2015 na tabela 4.3.13.
+- Nada aqui é mudança automática de NCM. A classificação segue as regras gerais da TIPI; mudar o NCM para pagar menos, sem
+  que o produto seja aquilo, é risco de autuação.
+
 ## Reforma tributária
 
 A seção **Reforma tributária** simula o efeito da reforma do consumo (EC 132/2023 e LC 214/2025: CBS e IBS no lugar de
@@ -456,7 +510,7 @@ ao total de débitos do dashboard EFD ICMS/IPI, e o de PIS ficar a menos de 2% d
 ## Atualizar todo mês
 
 Depois de atualizar os dashboards fiscais com o mês novo: `extrair.ts` (só o arquivo novo é lido), `preparar.py`,
-`intragrupo_extrair.py` e `intragrupo.py` (relêem todos os meses), `reforma.py`, `molde.py` (só se as regras ou o catálogo mudaram) e `carregar-dashboard.ts`.
+`intragrupo_extrair.py` e `intragrupo.py` (relêem todos os meses), as extrações de NCM e `ncm.py`, `reforma.py`, `molde.py` (só se as regras ou o catálogo mudaram) e `carregar-dashboard.ts`.
 
 ## Próximos passos
 

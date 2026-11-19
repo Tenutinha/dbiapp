@@ -20,8 +20,9 @@ ATIVA = "Ativa"
 PLANEJADA = "Planejada"
 
 # Auditorias do catálogo que já rodam: CR17 fora da tela (por script); CZ11 na seção "Notas entre estabelecimentos do grupo"
-# (intragrupo.py), que confere chave, sentido, mês, situação e VL_DOC, sem os valores de ICMS e ST.
-ATIVAS_DO_CATALOGO = frozenset({"CR17", "CZ11"})
+# (intragrupo.py), que confere chave, sentido, mês, situação e VL_DOC, sem os valores de ICMS e ST; CD01, CD02 e CD04 na seção
+# "Cadastro e NCM" (ncm.py).
+ATIVAS_DO_CATALOGO = frozenset({"CR17", "CZ11", "CD01", "CD02", "CD04"})
 
 # Tema do catálogo em que cada regra ativa do dashboard se encaixa.
 TEMA_DA_REGRA = {

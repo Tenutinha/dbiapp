@@ -10,6 +10,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import molde_intragrupo
+import molde_ncm
 import molde_reforma
 from preparar import REGRAS
 
@@ -237,6 +238,12 @@ for prefixo, sid, titulo, descricao, extra in (
         vis_ig, sec_ig = molde_intragrupo.secao(FILTROS)
         visuals += vis_ig
         analyses.append(sec_ig)
+        # Depois, o cadastro de itens: o NCM contra o fornecedor, as tabelas de PIS/COFINS e a NCM vigente (ncm.py).
+        fontes = PASTA / "entrada" / "tabelas_fontes.txt"
+        vis_ncm, sec_ncm = molde_ncm.secao(FILTROS, fontes.read_text(encoding="utf-8") if fontes.exists() else
+                                           "tabelas do SPED da EFD Contribuições e NCM vigente do Portal Único Siscomex.")
+        visuals += vis_ncm
+        analyses.append(sec_ncm)
 
 vis_reforma, sec_reforma = molde_reforma.secao(FILTROS)
 visuals += vis_reforma
@@ -266,10 +273,10 @@ template = {
                    "consistência de cada nota e item, cruzamento entre os arquivos, oportunidades a validar e a simulação da "
                    "reforma tributária.",
     "density": "compact",
-    "tables": tables + molde_intragrupo.TABELAS + molde_reforma.TABELAS,
+    "tables": tables + molde_intragrupo.TABELAS + molde_ncm.TABELAS + molde_reforma.TABELAS,
     "relationships": [{"from": {"table": "achados", "column": "regra"}, "to": {"table": "regras", "column": "regra"}}],
-    "fields": fields + molde_intragrupo.CAMPOS + molde_reforma.CAMPOS,
-    "measures": measures + molde_intragrupo.MEDIDAS + molde_reforma.MEDIDAS, "filters": FILTROS, "filterDefaults": {},
+    "fields": fields + molde_intragrupo.CAMPOS + molde_ncm.CAMPOS + molde_reforma.CAMPOS,
+    "measures": measures + molde_intragrupo.MEDIDAS + molde_ncm.MEDIDAS + molde_reforma.MEDIDAS, "filters": FILTROS, "filterDefaults": {},
     "visuals": visuals, "analyses": analyses,
     "summary": [{"title": "Auditoria", "analyses": [a["id"] for a in analyses]}],
 }
