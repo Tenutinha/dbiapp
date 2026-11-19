@@ -104,6 +104,8 @@ export function defaultVisual(type: VisualType, id: string, title: string): Visu
     }
     case "waterfall":
       return { ...base, type, items: [] };
+    case "tree":
+      return { ...base, type, levels: [], columns: [], open: 1 };
     case "ledger":
       return { ...base, type, field: "", opening: "", debit: "", credit: "", closing: "", limit: 60 };
     case "matrix":
@@ -166,6 +168,10 @@ export function usedIds(t: Template): UsedIds {
         break;
       case "waterfall":
         v.items.forEach((item) => measures.add(item.measure));
+        break;
+      case "tree":
+        v.levels.forEach((f) => fields.add(f));
+        v.columns.forEach((c) => measures.add(c.measure));
         break;
       case "ledger":
         fields.add(v.field);

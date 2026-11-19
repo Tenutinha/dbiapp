@@ -247,6 +247,15 @@ function selectFor(t: Template, visual: QueryVisual, filters: FilterSelection): 
         tail: `ORDER BY (${diffs.join(" OR ")}) DESC, ${v(visual.debit)} + ${v(visual.credit)} DESC, 1 LIMIT ${visual.limit}`,
       };
     }
+    case "tree": {
+      // The leaves (one line per full path of levels): the page adds them up into each group.
+      const fs = visual.levels.map(field);
+      return {
+        select: [...fs.map(fieldCol), ...[...new Set(visual.columns.map((c) => c.measure))].map((m) => measureCol(measure(m)))],
+        groupBy: fs.map((_, i) => String(i + 1)),
+        tail: `ORDER BY ${fs.map((_, i) => String(i + 1)).join(", ")} LIMIT ${MAX_STATEMENT_ROWS}`,
+      };
+    }
     case "matrix": {
       const row = field(visual.row);
       const column = field(visual.column);

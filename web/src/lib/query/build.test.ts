@@ -124,6 +124,18 @@ describe("buildVisualQuery", () => {
     expect(q.sql).toMatch(/ORDER BY \(ABS\(.+\) > 0\.015 OR .+\) DESC, COALESCE\(\w+, 0\) \+ COALESCE\(\w+, 0\) DESC, 1 LIMIT 30/);
   });
 
+  it("brings the leaves of a tree, one line per full path, in the order of the levels", () => {
+    const [m] = t.measures.map((x) => x.id);
+    const tree = {
+      id: "arvore", type: "tree", title: "Árvore", span: 12, levels: ["regiao", "canal"], open: 1,
+      columns: [{ measure: m }, { measure: m, balance: true }],
+    } as QueryVisual;
+    const q = buildVisualQuery(t, files, tree, {});
+    expect(q.sql).toContain("GROUP BY 1, 2");
+    expect(q.sql).toContain("ORDER BY 1, 2 LIMIT 50000");
+    expect(q.sql.split(` AS ${m}`).length - 1).toBe(1);
+  });
+
   it("escapes quotes in file paths", () => {
     const q = buildVisualQuery(t, { ...files, fato_vendas: "/d/o'brien.parquet" }, visual("k_receita"), {});
     expect(q.sql).toContain("read_parquet('/d/o''brien.parquet')");

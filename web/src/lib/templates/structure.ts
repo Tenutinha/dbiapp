@@ -41,6 +41,8 @@ export function visualRefs(v: Visual): { fields: string[]; measures: string[]; s
       return { fields: [v.field], measures: [v.measure], sql: where };
     case "waterfall":
       return { fields: [], measures: v.items.map((item) => item.measure), sql: where };
+    case "tree":
+      return { fields: v.levels, measures: v.columns.map((c) => c.measure), sql: where };
     case "ledger":
       return { fields: [v.field, ...(v.detail ? [v.detail] : [])], measures: ledgerMeasures(v), sql: where };
     case "matrix":

@@ -251,6 +251,26 @@ const visualSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     ...base,
+    /**
+     * A tree that opens level by level (a trial balance: group → synthetic account → account), each line with
+     * its columns and the totals of what is under it. The columns must add up across the lines (balances,
+     * debits, credits): the page sums the leaves into each group.
+     */
+    type: z.literal("tree"),
+    /** Fields the tree opens into, in order. A level empty or equal to the one above is skipped for that line. */
+    levels: z.array(ident).min(1).max(6),
+    columns: z.array(z.object({
+      measure: ident,
+      /** Column title, when the measure's own label is not it. */
+      label: z.string().min(1).max(40).optional(),
+      /** A balance signed debit-positive: written with its side (D or C) instead of a sign. */
+      balance: z.boolean().optional(),
+    })).min(1).max(8),
+    /** Levels open when the page loads (1: only the first level shows its lines). */
+    open: z.number().int().min(0).max(6).default(1),
+  }),
+  z.object({
+    ...base,
     type: z.literal("donut"),
     field: ident,
     measure: ident,
@@ -553,6 +573,10 @@ export const templateSchema = z
       if (v.type === "kpi" && v.detail?.measure !== undefined) needMeasure(v.detail.measure, `${where} detail`);
       if (v.type === "bar" || v.type === "line" || v.type === "donut" || v.type === "scorecard") needField(v.field, where);
       if (v.type === "waterfall") v.items.forEach((item) => needMeasure(item.measure, where));
+      if (v.type === "tree") {
+        v.levels.forEach((f) => needField(f, where));
+        v.columns.forEach((c) => needMeasure(c.measure, where));
+      }
       if (v.type === "ledger") {
         needField(v.field, where);
         if (v.detail !== undefined) needField(v.detail, where);
@@ -703,6 +727,7 @@ export type MapVisual = Extract<Visual, { type: "map" }>;
 export type NetworkVisual = Extract<Visual, { type: "network" }>;
 export type StatementVisual = Extract<Visual, { type: "statement" }>;
 export type LedgerVisual = Extract<Visual, { type: "ledger" }>;
+export type TreeVisual = Extract<Visual, { type: "tree" }>;
 export type StatementLine = StatementVisual["lines"][number];
 export type StatementIcon = (typeof STATEMENT_ICONS)[number];
 export type Analysis = Template["analyses"][number];

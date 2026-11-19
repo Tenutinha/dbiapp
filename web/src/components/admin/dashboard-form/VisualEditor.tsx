@@ -18,6 +18,7 @@ export const VISUAL_TYPE_LABEL: Record<VisualType, string> = {
   matrix: "Mapa de dados (linha × coluna)",
   waterfall: "Cascata (de um valor a outro, passo a passo)",
   ledger: "Razonetes (contas em T, com conferência)",
+  tree: "Árvore com subtotais (balancete)",
   network: "Mapa 3D da rede (origem → destino)",
 };
 const TYPE_OPTIONS = (Object.keys(VISUAL_TYPE_LABEL) as VisualType[]).map((v) => ({ value: v, label: VISUAL_TYPE_LABEL[v] }));
@@ -156,6 +157,13 @@ function TypeSettings({ visual: v, onChange, fields, measures }: TypeSettingsPro
             <NumberInput value={v.limit} min={1} max={1000} onChange={(limit) => onChange({ ...v, limit })} />
           </Field>
         </div>
+      );
+    case "tree":
+      return (
+        <p className="text-xs text-muted">
+          Árvore em {v.levels.length} nível(is) com {v.columns.length} coluna(s), cada grupo com a soma do que está nele. Os níveis e as
+          colunas são definidos no JSON do dashboard.
+        </p>
       );
     case "ledger":
       return (

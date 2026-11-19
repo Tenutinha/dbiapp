@@ -887,6 +887,11 @@ function ecd(): Json {
     { id: "patrimonio_liquido", label: "Patrimônio líquido", sql: `0 - ${lastSum(nat("03"), fin)}`, format: "currency" },
     { id: "resultado_acumulado", label: "Resultado acumulado", sql: `0 - ${lastSum(nat("04"), fin)}`, format: "currency" },
     { id: "resultado_mes", label: "Resultado do mês", sql: sumWhen(nat("04"), `${cre} - ${deb}`), format: "currency" },
+    { id: "dif_movimento", label: "Débitos − créditos", sql: `ROUND(${nz(sumWhen(i155, deb))} - ${nz(sumWhen(i155, cre))}, 2) + 0`, format: "currency" },
+    // Rounded to the cent, and + 0 so a rounded "-0" shows as zero.
+    { id: "dif_saldos", label: "Devedores − credores", sql: `ROUND(COALESCE(${lastSum(i155, fin)}, 0), 2) + 0`, format: "currency" },
+    { id: "saldos_devedores", label: "Saldos devedores", sql: lastSum(`${i155} AND (${fin}) > 0`, fin), format: "currency" },
+    { id: "saldos_credores", label: "Saldos credores", sql: `0 - ${lastSum(`${i155} AND (${fin}) < 0`, fin)}`, format: "currency" },
     { id: "contas_movimentadas", label: "Contas movimentadas", sql: `COUNT(DISTINCT CASE WHEN ${i155} AND (${deb} <> 0 OR ${cre} <> 0) THEN ${F}.id_cta END)`, format: "integer" },
     { id: "resultado_antes_encerramento", label: "Resultado antes do encerramento", sql: `0 - ${sumWhen(i355, signed("I355", "VL_CTA", "IND_DC"))}`, format: "currency" },
     { id: "receitas_antes_encerramento", label: "Contas credoras (receitas)", sql: sumWhen(`${i355} AND ${col(k, "I355", "IND_DC")} = 'C'`, num(col(k, "I355", "VL_CTA"))), format: "currency" },
@@ -1110,12 +1115,28 @@ function ecd(): Json {
     },
     dreSection,
     {
-      id: "balancete", title: "Balancete", description: "",
+      id: "balancete", title: "Balancete",
+      description: "O balancete em árvore, como o plano de contas: cada grupo abre nas contas, com a soma do que está nele, e os saldos com o lado (D ou C). "
+        + "Os saldos são o inicial do primeiro mês e o final do último mês da seleção; débitos e créditos somam o período. "
+        + "Em cima, as duas provas do balancete: débitos iguais aos créditos e saldos devedores iguais aos credores (a diferença deve ser zero).",
       visuals: [
-        { id: "t_balancete", type: "table", title: "Balancete por grupo", fields: ["natureza", "grupo_1", "grupo_2", "grupo_3"], measures: ["debitos", "creditos", "saldo_inicial", "saldo_final"], limit: 400, span: 12, where: i155 },
-        { id: "b_resultado", type: "bar", title: "Resultado acumulado por grupo (saldos periódicos)", field: "grupo_3", measures: ["resultado_acumulado"], sort: "measure_desc", horizontal: true, limit: 25, span: 12, where: nat("04") },
+        { ...kpi("k_bal_debitos", "Débitos", "debitos", 2, i155), detail: { text: "no período" } },
+        { ...kpi("k_bal_creditos", "Créditos", "creditos", 2, i155), detail: { text: "no período" } },
+        { ...kpi("k_bal_dif_movimento", "Débitos − créditos", "dif_movimento", 2, i155), detail: { text: "deve ser zero" } },
+        { ...kpi("k_bal_devedores", "Saldos devedores", "saldos_devedores", 2, i155), detail: { text: "no fim do período" } },
+        { ...kpi("k_bal_credores", "Saldos credores", "saldos_credores", 2, i155), detail: { text: "no fim do período" } },
+        { ...kpi("k_bal_dif_saldos", "Devedores − credores", "dif_saldos", 2, i155), detail: { text: "deve ser zero" } },
+        {
+          id: "a_balancete", type: "tree", title: "Balancete", levels: ["grupo_1", "grupo_2", "grupo_3", "conta_sintetica", "conta"],
+          columns: [
+            { measure: "saldo_inicial", balance: true }, { measure: "debitos" }, { measure: "creditos" }, { measure: "saldo_final", balance: true },
+          ],
+          open: 1, span: 12, where: i155,
+        },
+        { id: "l_movimento_mes", type: "line", title: "Débitos e créditos por mês (devem andar juntos)", field: "mes", measures: ["debitos", "creditos"], sort: "field", limit: 400, span: 12, where: i155 },
         { id: "t_contas", type: "table", title: "Contas analíticas", fields: ["natureza", "conta", "conta_referencial"], measures: ["debitos", "creditos", "saldo_inicial", "saldo_final"], limit: 600, span: 12, where: i155 },
       ],
+      strip: ["l_movimento_mes", "t_contas"],
     },
     {
       // The balancete and the journal of the same file, account by account: both checks need the entries,
