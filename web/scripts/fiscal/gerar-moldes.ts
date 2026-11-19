@@ -469,6 +469,28 @@ function efdIcms(): Json {
 
 // ------------------------------------------------------------------ EFD Contribuições
 
+/** What each CST of PIS and COFINS means (Tabela 4.3.3 / 4.3.4 of the EFD Contribuições). */
+const CST_PIS_COFINS: Readonly<Record<string, string>> = {
+  "01": "Tributável, alíquota básica", "02": "Tributável, alíquota diferenciada", "03": "Tributável, alíquota por unidade",
+  "04": "Monofásica, revenda a alíquota zero", "05": "Tributável por substituição tributária", "06": "Alíquota zero",
+  "07": "Isenta", "08": "Sem incidência", "09": "Com suspensão", "49": "Outras operações de saída",
+  "50": "Crédito, receita tributada no mercado interno", "51": "Crédito, receita não tributada no mercado interno",
+  "52": "Crédito, receita de exportação", "53": "Crédito, receitas tributadas e não tributadas no mercado interno",
+  "54": "Crédito, receitas tributadas no mercado interno e de exportação", "55": "Crédito, receitas não tributadas no mercado interno e de exportação",
+  "56": "Crédito, receitas tributadas, não tributadas e de exportação", "60": "Crédito presumido, receita tributada no mercado interno",
+  "61": "Crédito presumido, receita não tributada no mercado interno", "62": "Crédito presumido, receita de exportação",
+  "63": "Crédito presumido, receitas tributadas e não tributadas no mercado interno", "64": "Crédito presumido, receitas tributadas no mercado interno e de exportação",
+  "65": "Crédito presumido, receitas não tributadas no mercado interno e de exportação", "66": "Crédito presumido, receitas tributadas, não tributadas e de exportação",
+  "67": "Crédito presumido, outras operações", "70": "Aquisição sem direito a crédito", "71": "Aquisição com isenção", "72": "Aquisição com suspensão",
+  "73": "Aquisição a alíquota zero", "74": "Aquisição sem incidência", "75": "Aquisição por substituição tributária",
+  "98": "Outras operações de entrada", "99": "Outras operações",
+};
+/** "01 - Tributável, alíquota básica" from the code in `expr` (the code alone when it is not in the table). */
+const cstDescribed = (expr: string): string =>
+  `CASE ${expr} ${Object.entries(CST_PIS_COFINS).map(([code, text]) => `WHEN '${code}' THEN '${code} - ${text}'`).join(" ")} ELSE ${expr} END`;
+/** A rate as text, whatever way the file wrote it ("1,65", "1,6500"): "1,65%". */
+const rateText = (expr: string): string => `concat(replace(printf('%.2f', ${num(expr)}), '.', ','), '%')`;
+
 function efdContrib(): Json {
   const k = kindOf("efd-contribuicoes");
   const detail = Object.entries(k.layout).filter(([code]) => "ACDF".includes(code[0]));
@@ -504,6 +526,13 @@ function efdContrib(): Json {
   const notaValida = `${isA100} AND ${a100("COD_SIT")} <> '02'`;
   const nota = (name: string, extra = ""): string => sumWhen(`${notaValida}${extra}`, num(a100(name)));
   const itemServico = (name: string): string => sumWhen(isA170, num(a170(name)));
+  /** How far an item's tax is from its base × rate, in absolute value. */
+  const offBy = (base: string, rate: string, tax: string): string =>
+    `abs(${nz(num(a170(base)))} * ${nz(num(a170(rate)))} / 100 - ${nz(num(a170(tax)))})`;
+  const pisOff = offBy("VL_BC_PIS", "ALIQ_PIS", "VL_PIS");
+  const cofOff = offBy("VL_BC_COFINS", "ALIQ_COFINS", "VL_COFINS");
+  /** A code that may come empty: one "Não informado" for both the empty and the missing. */
+  const informed = (expr: string): string => `COALESCE(NULLIF(trim(${expr}), ''), 'Não informado')`;
   const m200 = isReg("M200");
   const m600 = isReg("M600");
   const pisDeb = sumWhen(deb, vlPis);
@@ -530,7 +559,14 @@ function efdContrib(): Json {
     { id: "nota_servico", label: "Nota de serviço", sql: `${F}.doc` },
     { id: "servico_operacao", label: "Operação do serviço", sql: `CASE ${F}.oper WHEN '0' THEN 'Serviço contratado' WHEN '1' THEN 'Serviço prestado' END` },
     { id: "servico_situacao", label: "Situação da nota de serviço", sql: `CASE ${a100("COD_SIT")} WHEN '00' THEN '00 - Regular' WHEN '02' THEN '02 - Cancelada' ELSE ${a100("COD_SIT")} END` },
-    { id: "servico_aliquotas", label: "Alíquotas de PIS e COFINS", sql: `concat(${a170("ALIQ_PIS")}, '% e ', ${a170("ALIQ_COFINS")}, '%')` },
+    { id: "servico_aliquotas", label: "Alíquotas de PIS e COFINS", sql: `concat(${rateText(a170("ALIQ_PIS"))}, ' e ', ${rateText(a170("ALIQ_COFINS"))})` },
+    { id: "cst_pis_desc", label: "CST PIS", sql: cstDescribed(cstPis) },
+    { id: "cst_cofins_desc", label: "CST COFINS", sql: cstDescribed(cstCof) },
+    { id: "servico_pagamento", label: "Forma de pagamento", sql: `CASE ${a100("IND_PGTO")} WHEN '0' THEN 'À vista' WHEN '1' THEN 'A prazo' WHEN '2' THEN 'Outras' WHEN '9' THEN 'Sem pagamento' ELSE ${a100("IND_PGTO")} END` },
+    { id: "servico_emitente", label: "Emitente da nota", sql: `CASE ${a100("IND_EMIT")} WHEN '0' THEN 'Emissão própria' WHEN '1' THEN 'Emitida por terceiros' ELSE ${a100("IND_EMIT")} END` },
+    { id: "servico_conta", label: "Conta contábil (A170)", sql: informed(a170("COD_CTA")) },
+    { id: "servico_centro_custo", label: "Centro de custo (A170)", sql: informed(a170("COD_CCUS")) },
+    { id: "servico_origem_credito", label: "Origem do crédito", sql: `CASE ${a170("IND_ORIG_CRED")} WHEN '0' THEN 'Mercado interno' WHEN '1' THEN 'Importação' ELSE ${a170("IND_ORIG_CRED")} END` },
   ];
   const measures: Measure[] = [
     { id: "receita", label: "Receita", sql: sumWhen(deb, vlItem), format: "currency" },
@@ -573,6 +609,20 @@ function efdContrib(): Json {
     { id: "serv_itens_base", label: "Base de cálculo dos itens", sql: itemServico("VL_BC_PIS"), format: "currency" },
     { id: "serv_itens_pis", label: "PIS dos itens", sql: itemServico("VL_PIS"), format: "currency" },
     { id: "serv_itens_cofins", label: "COFINS dos itens", sql: itemServico("VL_COFINS"), format: "currency" },
+    { id: "serv_itens_qtd", label: "Itens", sql: countWhen(isA170), format: "integer" },
+    { id: "serv_itens_tributado", label: "Tributado (CST 01 a 05)", sql: sumWhen(`${isA170} AND ${a170("CST_COFINS")} IN ('01', '02', '03', '05')`, num(a170("VL_ITEM"))), format: "currency" },
+    { id: "serv_itens_nao_tributado", label: "Não tributado e outras saídas", sql: sumWhen(`${isA170} AND ${a170("CST_COFINS")} IN ('04', '06', '07', '08', '09', '49')`, num(a170("VL_ITEM"))), format: "currency" },
+    { id: "serv_itens_credito", label: "Contratado com crédito (CST 50 a 66)", sql: sumWhen(`${isA170} AND ${a170("CST_COFINS")} BETWEEN '50' AND '66'`, num(a170("VL_ITEM"))), format: "currency" },
+    { id: "serv_itens_base_cofins", label: "Base da COFINS dos itens", sql: itemServico("VL_BC_COFINS"), format: "currency" },
+    { id: "serv_itens_aliq_pis", label: "Alíquota efetiva do PIS", sql: `${itemServico("VL_PIS")} / NULLIF(${itemServico("VL_BC_PIS")}, 0)`, format: "percent" },
+    { id: "serv_itens_aliq_cofins", label: "Alíquota efetiva da COFINS", sql: `${itemServico("VL_COFINS")} / NULLIF(${itemServico("VL_BC_COFINS")}, 0)`, format: "percent" },
+    { id: "serv_itens_carga", label: "PIS + COFINS sobre o valor", sql: `(${nz(itemServico("VL_PIS"))} + ${nz(itemServico("VL_COFINS"))}) / NULLIF(${itemServico("VL_ITEM")}, 0)`, format: "percent" },
+    // Each item worked out again (base × alíquota): what the file says beyond that, item by item, in absolute value.
+    { id: "serv_pis_calculado", label: "PIS calculado (base × alíquota)", sql: `ROUND(${sumWhen(isA170, `${num(a170("VL_BC_PIS"))} * ${num(a170("ALIQ_PIS"))} / 100`)}, 2)`, format: "currency" },
+    { id: "serv_cofins_calculada", label: "COFINS calculada (base × alíquota)", sql: `ROUND(${sumWhen(isA170, `${num(a170("VL_BC_COFINS"))} * ${num(a170("ALIQ_COFINS"))} / 100`)}, 2)`, format: "currency" },
+    // Rounding to the cent leaves up to half a cent per item: only what goes beyond a cent is a difference.
+    { id: "serv_dif_calculo", label: "Diferença de cálculo (PIS + COFINS)", sql: `ROUND(COALESCE(${sumWhen(`${isA170} AND ${pisOff} > 0.01`, pisOff)}, 0) + COALESCE(${sumWhen(`${isA170} AND ${cofOff} > 0.01`, cofOff)}, 0), 2) + 0`, format: "currency" },
+    { id: "serv_itens_dif_calculo", label: "Itens com diferença de cálculo", sql: countWhen(`${isA170} AND (${pisOff} > 0.01 OR ${cofOff} > 0.01)`), format: "integer" },
     { id: "serv_diferenca", label: "Diferença entre nota e itens", sql: `abs(${nz(nota("VL_DOC"))} - (${nz(itemServico("VL_ITEM"))} - ${nz(itemServico("VL_DESC"))}))`, format: "currency" },
   ];
   // Bloco M: only fields whose position is the same in every layout version (M210/M610 changed after the third field).
@@ -703,8 +753,7 @@ function efdContrib(): Json {
       { id: "d_serv_situacao", type: "donut", title: "Notas por situação", field: "servico_situacao", measure: "linhas", span: 4, where: isA100 },
       { id: "t_serv_ano", type: "table", title: "Serviços por ano", fields: ["ano", "servico_operacao"], measures: ["serv_valor", "serv_notas", "serv_desconto", "serv_base_pis", "serv_pis", "serv_cofins", "serv_pis_retido", "serv_cofins_retido", "serv_iss", "serv_carga"], limit: 60, span: 12, where: isA100 },
       { id: "t_serv_participantes", type: "table", title: "Tomadores e prestadores", fields: ["participante", "uf_participante", "servico_operacao"], measures: ["serv_valor", "serv_notas", "serv_pis", "serv_cofins", "serv_retencoes", "serv_iss"], limit: 200, span: 12, where: isA100 },
-      { id: "b_serv_itens", type: "bar", title: "Valor por serviço (itens A170)", field: "item", measures: ["serv_itens_valor"], sort: "measure_desc", horizontal: true, limit: 15, span: 6, where: isA170 },
-      { id: "t_serv_cst", type: "table", title: "CST e alíquotas dos itens", fields: ["cst_pis", "cst_cofins", "servico_aliquotas"], measures: ["serv_itens_valor", "serv_itens_base", "serv_itens_pis", "serv_itens_cofins"], limit: 60, span: 6, where: isA170 },
+      { id: "b_serv_itens", type: "bar", title: "Valor por serviço (itens A170)", field: "item", measures: ["serv_itens_valor"], sort: "measure_desc", horizontal: true, limit: 15, span: 12, where: isA170 },
       { id: "t_serv_estabelecimentos", type: "table", title: "Serviços por estabelecimento", fields: ["estabelecimento"], measures: ["serv_valor", "serv_notas", "serv_pis", "serv_cofins", "serv_iss"], limit: 100, span: 12, where: isA100 },
       { id: "t_serv_conferencia", type: "table", title: "Conferência: valor da nota (A100) e soma dos itens (A170)", fields: ["mes", "nota_servico", "participante"], measures: ["serv_diferenca", "serv_valor", "serv_itens_liquido"], limit: 100, span: 12, where: isReg("A100", "A170") },
       {
@@ -717,6 +766,59 @@ function efdContrib(): Json {
         ],
       },
     ].map(servico),
+  };
+  // The items of the services (A170) by how they are taxed: CST, rates, the tax worked out again, credits, accounts.
+  const credItem = `${isA170} AND ${a170("CST_COFINS")} BETWEEN '50' AND '66'`;
+  const servicosTributacao: Section = {
+    id: "servicos_tributacao", title: "Serviços: CST, alíquotas e conferência",
+    description: "Os itens das notas de serviço (A170) pela tributação: o valor por CST de PIS e COFINS, as alíquotas como estão nos arquivos, "
+      + "o PIS e a COFINS refeitos item a item (base × alíquota) contra o informado, os créditos dos serviços contratados e as contas contábeis. Todos os períodos enviados.",
+    visuals: [
+      { ...kpi("k_st_tributado", "Tributado", "serv_itens_tributado", 2, isA170), detail: { text: "CST 01 a 05" } },
+      { ...kpi("k_st_nao_tributado", "Não tributado e outras", "serv_itens_nao_tributado", 2, isA170), detail: { text: "CST 04, 06 a 09 e 49" } },
+      { ...kpi("k_st_credito", "Contratado com crédito", "serv_itens_credito", 2, isA170), detail: { text: "CST 50 a 66" } },
+      { ...kpi("k_st_aliq_cofins", "Alíquota efetiva da COFINS", "serv_itens_aliq_cofins", 2, isA170), detail: { text: "COFINS ÷ base" } },
+      { ...kpi("k_st_carga", "PIS + COFINS sobre o valor", "serv_itens_carga", 2, isA170), detail: { text: "dos itens" } },
+      { ...kpi("k_st_dif_calculo", "Itens com diferença de cálculo", "serv_itens_dif_calculo", 2, isA170), detail: { measure: "serv_dif_calculo", text: "acima de 1 centavo" } },
+      {
+        id: "t_st_cst_cofins", type: "table", title: "Valor e COFINS por CST", fields: ["cst_cofins_desc"],
+        measures: ["serv_itens_valor", "serv_itens_qtd", "serv_itens_base_cofins", "serv_itens_cofins", "serv_itens_aliq_cofins"], total: true, limit: 40, span: 7, where: isA170,
+      },
+      { id: "d_st_cst_cofins", type: "donut", title: "Valor dos itens por CST da COFINS", field: "cst_cofins_desc", measure: "serv_itens_valor", span: 5, where: isA170 },
+      { id: "l_st_mes", type: "line", title: "Tributado e não tributado por mês", field: "mes", measures: ["serv_itens_tributado", "serv_itens_nao_tributado", "serv_itens_credito"], sort: "field", limit: 240, span: 12, where: isA170 },
+      {
+        id: "t_st_calculo", type: "table", title: "Conferência do cálculo por mês: base × alíquota contra o informado", fields: ["mes"],
+        measures: ["serv_itens_base_cofins", "serv_cofins_calculada", "serv_itens_cofins", "serv_pis_calculado", "serv_itens_pis", "serv_itens_dif_calculo", "serv_dif_calculo"],
+        sort: "field_desc", total: true, limit: 240, span: 12, where: isA170,
+      },
+      {
+        id: "t_st_cst_pis", type: "table", title: "Valor e PIS por CST", fields: ["cst_pis_desc"],
+        measures: ["serv_itens_valor", "serv_itens_qtd", "serv_itens_base", "serv_itens_pis", "serv_itens_aliq_pis"], total: true, limit: 40, span: 12, where: isA170,
+      },
+      {
+        id: "t_st_aliquotas", type: "table", title: "Alíquotas por CST", fields: ["servico_aliquotas", "cst_cofins_desc"],
+        measures: ["serv_itens_valor", "serv_itens_qtd", "serv_itens_pis", "serv_itens_cofins"], limit: 60, span: 12, where: isA170,
+      },
+      {
+        id: "t_st_servico_cst", type: "table", title: "Serviços por CST e alíquota", fields: ["item", "cst_cofins_desc", "servico_aliquotas"],
+        measures: ["serv_itens_valor", "serv_itens_qtd", "serv_itens_pis", "serv_itens_cofins", "serv_itens_carga"], limit: 200, span: 12, where: isA170,
+      },
+      {
+        id: "t_st_participante_cst", type: "table", title: "Tomadores e prestadores por CST", fields: ["participante", "cst_cofins_desc"],
+        measures: ["serv_itens_valor", "serv_itens_qtd", "serv_itens_pis", "serv_itens_cofins"], limit: 200, span: 12, where: isA170,
+      },
+      { id: "d_st_pagamento", type: "donut", title: "Valor das notas por forma de pagamento", field: "servico_pagamento", measure: "serv_valor", span: 6, where: isA100 },
+      { id: "d_st_emitente", type: "donut", title: "Valor das notas por emitente", field: "servico_emitente", measure: "serv_valor", span: 6, where: isA100 },
+      {
+        id: "t_st_credito", type: "table", title: "Créditos dos serviços contratados: natureza, origem e CST", fields: ["nat_bc_cred", "servico_origem_credito", "cst_cofins_desc"],
+        measures: ["serv_itens_valor", "serv_itens_base", "serv_itens_pis", "serv_itens_cofins"], total: true, limit: 100, span: 12, where: credItem, hideEmpty: true,
+      },
+      {
+        id: "t_st_contas", type: "table", title: "Contas contábeis e centros de custo", fields: ["servico_conta", "servico_centro_custo", "cst_cofins_desc"],
+        measures: ["serv_itens_valor", "serv_itens_qtd", "serv_itens_pis", "serv_itens_cofins"], limit: 200, span: 12, where: isA170,
+      },
+    ].map(servico),
+    strip: ["t_st_cst_pis", "t_st_aliquotas", "t_st_servico_cst", "t_st_participante_cst", "d_st_pagamento", "d_st_emitente", "t_st_credito", "t_st_contas"],
   };
   const mx = isReg("M200", "M600");
   const panels: Section[] = [
@@ -765,6 +867,7 @@ function efdContrib(): Json {
       ],
     },
     servicos,
+    servicosTributacao,
     {
       id: "apuracao_periodos", title: "Apuração de todos os períodos (bloco M)",
       description: "Consolidação de PIS (M200) e COFINS (M600) e receita bruta do detalhamento (M210 e M610) de todos os períodos enviados, lidas de uma tabela só com o bloco M.",
