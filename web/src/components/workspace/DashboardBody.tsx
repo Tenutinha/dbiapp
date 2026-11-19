@@ -40,13 +40,24 @@ export async function DashboardBody({
   // The ticket goes with every dashboard: besides the analyses left for later, it is what lets a click on a
   // visual or a filter bring only the numbers, without this page being made again (see dashboard/live).
   const later = { pending: dashboard.pending, ticket: issueSectionTicket({ instanceId, templateId, activeVersionId }), search: canonicalSearchOf(searchParams), version: activeVersionId };
+  const view = <DashboardView template={dashboard.template} data={dashboard.data} totalRows={dashboard.totalRows} later={later} notesInSummary />;
+  // A dashboard over the whole content area (a 3D map): the wheel belongs to it, so the ways to the
+  // neighbouring dashboards (opened by scrolling past the page's ends) are left out; the summary still opens them.
+  if (dashboard.template.fill) {
+    return (
+      <>
+        <DashboardLanding anchorsKey={anchorsKey} />
+        {view}
+      </>
+    );
+  }
   return (
     <>
       <DashboardLanding anchorsKey={anchorsKey} />
       {/* At least a screen tall (less the header): the next dashboard only shows once the reader scrolls. */}
       <div className="min-h-[calc(100dvh-6rem)]">
         {before}
-        <DashboardView template={dashboard.template} data={dashboard.data} totalRows={dashboard.totalRows} later={later} notesInSummary />
+        {view}
       </div>
       {after}
     </>

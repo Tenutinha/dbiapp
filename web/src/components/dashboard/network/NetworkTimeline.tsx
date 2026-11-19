@@ -21,6 +21,8 @@ interface TimelineProps {
  */
 export function NetworkTimeline({ periods, value, onChange, playing, onPlay, format, measureLabel }: TimelineProps) {
   const max = Math.max(1, ...periods.map((p) => p.total));
+  // Many periods (years of months, or many years): narrower bars, so more of them fit without scrolling.
+  const width = periods.length > 8 ? "w-9" : "w-11";
   const button = "rounded-md px-2 py-1 text-xs font-medium transition hover:bg-text/10";
   return (
     <div
@@ -30,7 +32,7 @@ export function NetworkTimeline({ periods, value, onChange, playing, onPlay, for
       <button
         type="button" onClick={() => onPlay(!playing)} aria-pressed={playing}
         className={`${button} grid size-8 shrink-0 place-items-center self-center bg-brand/15 text-brand hover:bg-brand/25`}
-        aria-label={playing ? "Pausar" : "Reproduzir mês a mês"} title={playing ? "Pausar" : "Reproduzir mês a mês"}
+        aria-label={playing ? "Pausar" : "Reproduzir em ordem"} title={playing ? "Pausar" : "Reproduzir os períodos em ordem"}
       >
         {playing ? (
           <svg viewBox="0 0 16 16" className="size-3.5" aria-hidden><path fill="currentColor" d="M4 3h3v10H4zM9 3h3v10H9z" /></svg>
@@ -52,7 +54,7 @@ export function NetworkTimeline({ periods, value, onChange, playing, onPlay, for
               <button
                 type="button" onClick={() => { onPlay(false); onChange(on ? null : p.key); }} aria-pressed={on}
                 title={`${p.title}: ${formatValue(p.total, format)} (${measureLabel.toLowerCase()})`}
-                className={`group flex w-11 flex-col items-center gap-1 rounded-md px-1 pb-0.5 pt-1 transition hover:bg-text/10 ${on ? "bg-text/10" : ""}`}
+                className={`group flex ${width} flex-col items-center gap-1 rounded-md px-1 pb-0.5 pt-1 transition hover:bg-text/10 ${on ? "bg-text/10" : ""}`}
               >
                 <span className="flex h-7 w-full items-end justify-center">
                   <span

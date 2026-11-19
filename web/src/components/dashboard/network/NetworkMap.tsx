@@ -49,6 +49,18 @@ const LABELED = 10;
 const FOCUS_LABELS = 12;
 const GRAY: Rgb = [128, 128, 128];
 
+/** Whether this browser can open a WebGL 2 context (what the 3D map is drawn with). */
+function hasWebgl(): boolean {
+  try {
+    const canvas = document.createElement("canvas");
+    const gl = canvas.getContext("webgl2");
+    gl?.getExtension("WEBGL_lose_context")?.loseContext();
+    return gl !== null;
+  } catch {
+    return false;
+  }
+}
+
 let mesh: Promise<Areas> | null = null;
 function loadStates(): Promise<Areas> {
   mesh ??= fetch("/geo/uf.topo.json")
@@ -172,6 +184,12 @@ export default function NetworkMap({ visual, rows, measures }: NetworkMapProps) 
   const [view, setView] = useState<MapViewState | null>(null);
   // WebGL takes a moment to start: until the first frame, the reader is told the map is on its way.
   const [ready, setReady] = useState(false);
+  // The browser may have no WebGL (turned off, no graphics acceleration, a crashed GPU process): the map
+  // then says so instead of waiting forever.
+  const [noWebgl, setNoWebgl] = useState(false);
+  useEffect(() => {
+    if (!hasWebgl()) setNoWebgl(true);
+  }, []);
 
   // The first frame (and every new set of places, after a filter) frames the whole network.
   const framed = useRef<string>("");
@@ -376,6 +394,9 @@ export default function NetworkMap({ visual, rows, measures }: NetworkMapProps) 
           controller={{ dragRotate: true, touchRotate: true, keyboard: true, inertia: 300 }}
           layers={layers}
           onLoad={() => setReady(true)}
+          onError={(error) => {
+            if (/webgl|context/i.test(error?.message ?? "")) setNoWebgl(true);
+          }}
           // Arcs are thin: anything within a few pixels of the pointer counts as hovered.
           pickingRadius={6}
           onHover={onHover}
@@ -383,7 +404,18 @@ export default function NetworkMap({ visual, rows, measures }: NetworkMapProps) 
           getCursor={({ isHovering, isDragging }) => (isDragging ? "grabbing" : isHovering ? "pointer" : "grab")}
         />
       )}
-      {!ready && graph.nodes.length > 0 && (
+      {noWebgl && (
+        <div className="absolute inset-0 grid place-items-center p-6">
+          <p className="max-w-md rounded-xl border border-line/70 bg-card/90 px-5 py-4 text-center text-sm shadow-xl">
+            <b className="block">Este navegador não conseguiu iniciar o mapa 3D.</b>
+            <span className="mt-1 block text-muted">
+              O 3D usa a placa de vídeo (WebGL), que está desativada ou travou. Feche e abra o navegador de novo, ou ative a
+              aceleração por hardware nas configurações dele.
+            </span>
+          </p>
+        </div>
+      )}
+      {!ready && !noWebgl && graph.nodes.length > 0 && (
         <p className="pointer-events-none absolute inset-0 grid place-items-center text-sm text-muted"><span className="animate-pulse">Montando o mapa 3D…</span></p>
       )}
       {graph.nodes.length === 0 && (

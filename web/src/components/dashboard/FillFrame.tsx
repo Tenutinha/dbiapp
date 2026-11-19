@@ -56,6 +56,20 @@ export function FillFrame({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  // While the frame is on screen the page does not scroll: the wheel and the fingers are the visual's alone
+  // (zooming a map), and the page stays with the frame filling the window.
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    const before = { overflow: root.style.overflow, overscroll: root.style.overscrollBehavior };
+    window.scrollTo(0, 0);
+    root.style.overflow = "hidden";
+    root.style.overscrollBehavior = "none";
+    return () => {
+      root.style.overflow = before.overflow;
+      root.style.overscrollBehavior = before.overscroll;
+    };
+  }, []);
+
   return (
     <div
       ref={ref}
