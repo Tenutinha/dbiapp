@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { listUserOrganizations } from "@/lib/access";
 import { getCurrentUser, supabaseAuthEnabled } from "@/lib/auth";
+import { listOrgLogos } from "@/lib/data/branding";
 import { avatarUrl } from "@/lib/data/users";
 import type { SpaceView } from "@/lib/services/space";
 import { orgOptions, type SpaceOption } from "@/lib/space-options";
@@ -48,7 +49,10 @@ async function accountMenu(space: SpaceView, userName: string): Promise<React.Re
 async function myOrgs(currentSlug: string): Promise<SpaceOption[]> {
   try {
     const user = await getCurrentUser();
-    return orgOptions(await listUserOrganizations(user.id, user.isPlatformAdmin), currentSlug);
+    const orgs = await listUserOrganizations(user.id, user.isPlatformAdmin);
+    // One organization: no switcher, so no logos to look up.
+    const logos = orgs.length > 1 ? await listOrgLogos(orgs.map((o) => o.id)) : undefined;
+    return orgOptions(orgs, currentSlug, logos);
   } catch {
     return [];
   }
