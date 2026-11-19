@@ -17,8 +17,11 @@ const folder = z.string().trim().max(300);
 
 /** Converted Parquet of one file (a key the "part" action returned). */
 const partKey = z.string().min(1).max(400);
-/** Files one table can be put together from. */
-const MAX_PARTS = 60;
+/**
+ * Files one table can be put together from. An election year of Mapa da Votação has one file per cargo,
+ * state and round (2022: ~125); the join only stores the list of keys, so the cap guards abuse, not size.
+ */
+const MAX_PARTS = 300;
 
 const body = z.discriminatedUnion("action", [
   z.object({ action: z.literal("list"), folder }),

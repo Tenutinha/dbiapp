@@ -14,7 +14,8 @@
     "sample-data": "node --import tsx scripts/generate-sample-data.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "mapadavotacao:organizar": "node --import tsx scripts/mapadavotacao/organizar-pasta.ts"
+    "mapadavotacao:organizar": "node --import tsx scripts/mapadavotacao/organizar-pasta.ts",
+    "mapadavotacao:cadastros-por-ano": "node --import tsx scripts/mapadavotacao/cadastros-por-ano.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.8.0",
