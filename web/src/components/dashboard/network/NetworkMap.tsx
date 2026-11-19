@@ -30,6 +30,8 @@ const PITCH_3D = 52;
 const BEARING_3D = -14;
 /** Places named on the map without hovering (the largest); the others show their name on hover. */
 const LABELED = 10;
+/** Partners named while a place is in focus: its largest ones. */
+const FOCUS_LABELS = 12;
 const GRAY: Rgb = [128, 128, 128];
 
 let mesh: Promise<Areas> | null = null;
@@ -191,9 +193,13 @@ export default function NetworkMap({ visual, rows, measures }: NetworkMapProps) 
   const labeled = useMemo(() => {
     const top = [...visibleNodes].sort((a, b) => throughput(b) - throughput(a)).slice(0, LABELED);
     const ids = new Set(top.map((n) => n.id));
-    if (lit) for (const id of lit.nodes) ids.add(id);
+    // In focus, the place and its largest partners are named (a hub may relate to hundreds of places).
+    if (focus) {
+      ids.add(focus);
+      for (const p of byId.get(focus)?.partners.slice(0, FOCUS_LABELS) ?? []) ids.add(p.id);
+    }
     return visibleNodes.filter((n) => ids.has(n.id));
-  }, [visibleNodes, lit]);
+  }, [visibleNodes, focus, byId]);
 
   const layers = useMemo(() => {
     if (!theme) return [];

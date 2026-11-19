@@ -23,6 +23,8 @@ export function pluralKind(kind: string, n: number): string {
   if (/[^aeiou]l$/.test(k) || k.endsWith("al") || k.endsWith("el") || k.endsWith("ol") || k.endsWith("ul")) return k.replace(/l$/, "is");
   if (k.endsWith("il")) return k.replace(/il$/, "is");
   if (k.endsWith("ão")) return k.replace(/ão$/, "ões");
+  // Already plural ("clientes"): as it is.
+  if (/[aeiou]s$/.test(k)) return k;
   if (/[rsz]$/.test(k)) return `${k}es`;
   if (/[aeiou]$/.test(k)) return `${k}s`;
   return k;
