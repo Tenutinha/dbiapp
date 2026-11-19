@@ -252,7 +252,7 @@ function StripShell({ className = "", children }: { className?: string; children
       aria-label="Quadros lado a lado: role para o lado para ver os próximos"
       tabIndex={0}
       {...{ [CARD_STRIP_ATTR]: "" }}
-      className={`relative -mx-1 flex snap-x snap-mandatory gap-4 overflow-x-auto px-1 pb-3 data-[header-scrollbar]:[scrollbar-width:none] data-[header-scrollbar]:[&::-webkit-scrollbar]:hidden focus-visible:outline focus-visible:outline-1 focus-visible:outline-brand ${className}`}
+      className={`relative -mx-1 flex snap-x snap-mandatory gap-4 overflow-x-auto px-1 pb-3 focus-visible:outline focus-visible:outline-1 focus-visible:outline-brand ${className}`}
     >
       {children}
     </div>

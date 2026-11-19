@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { STRIP_ATTR } from "@/components/dashboard/PageStrip";
-import { CARD_STRIP_ATTR, HEADER_DRIVEN_ATTR, STRIP_CARD_ATTR } from "@/components/dashboard/strip-attrs";
+import { CARD_STRIP_ATTR, nativeBarRule, STRIP_CARD_ATTR } from "@/components/dashboard/strip-attrs";
 
 /** Where the strip of pages is scrolled: its pages, the share on screen and how far along it is (0 to 1). */
 interface StripView {
@@ -161,14 +161,6 @@ export function PageScrollbar() {
     };
   }, [strip]);
 
-  // While this bar stands for the strip's own, the strip hides its native one.
-  const driving = strip !== null && view !== null;
-  useEffect(() => {
-    if (!strip || !driving) return undefined;
-    strip.setAttribute(HEADER_DRIVEN_ATTR, "");
-    return () => strip.removeAttribute(HEADER_DRIVEN_ATTR);
-  }, [strip, driving]);
-
   // Dragging the thumb scrolls the strip freely; the snap comes back (to the nearest page) on release.
   const onThumbDown = useCallback((e: React.PointerEvent<HTMLSpanElement>) => {
     if (!strip) return;
@@ -200,8 +192,14 @@ export function PageScrollbar() {
     goTo(strip, Math.floor(((e.clientX - box.left) / box.width) * view.pages));
   };
 
+  // While this bar stands for the strip's own, the strip's native one goes — by a rule drawn here, never an
+  // attribute written on the strip (it may not be hydrated yet, and React would find HTML it didn't draw).
+  const section = strip.hasAttribute(CARD_STRIP_ATTR) ? strip.closest("section[id]")?.id : undefined;
+  const rule = section ? nativeBarRule(section) : null;
+
   return (
     <div className="flex items-center gap-2 pb-2">
+      {rule && <style>{rule}</style>}
       <button type="button" className={ARROW} onClick={() => goTo(strip, page - 1)} disabled={page === 0} aria-label="Página anterior">
         ‹
       </button>
