@@ -72,6 +72,19 @@ export async function listSpaceLogos(orgId: string): Promise<Map<string | null, 
   return new Map(rows.map((r) => [r.clientId, `/api/branding/logo/${r.logoKey}`]));
 }
 
+/**
+ * The organization's own logo of each of these organizations that set one, by organization id — for the
+ * sidebar's organization switcher, which shows each organization's logo beside its name.
+ */
+export async function listOrgLogos(orgIds: readonly string[]): Promise<Map<string, string>> {
+  if (orgIds.length === 0) return new Map();
+  const rows = await sql<{ orgId: string; logoKey: string }[]>`
+    SELECT organization_id AS "orgId", logo_key AS "logoKey"
+    FROM space_branding
+    WHERE client_id IS NULL AND logo_key IS NOT NULL AND organization_id IN ${sql(orgIds as string[])}`;
+  return new Map(rows.map((r) => [r.orgId, `/api/branding/logo/${r.logoKey}`]));
+}
+
 /** The database has no background_color column yet (migration 011 missing). */
 export class BackgroundColorUnavailableError extends Error {}
 

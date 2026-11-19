@@ -45,10 +45,16 @@ describe("spaceOptions", () => {
 
 describe("orgOptions", () => {
   it("lists every organization of the person, marking the open one", () => {
-    const opts = orgOptions([{ slug: "davos", name: "Davos" }, { slug: "ntw", name: "NTW" }], "ntw");
+    const opts = orgOptions([{ id: "o1", slug: "davos", name: "Davos" }, { id: "o2", slug: "ntw", name: "NTW" }], "ntw");
     expect(opts).toEqual([
       { href: "/davos", label: "Davos", kind: "org", current: false, logoUrl: null },
       { href: "/ntw", label: "NTW", kind: "org", current: true, logoUrl: null },
     ]);
+  });
+
+  it("gives each organization its own logo, and none to the ones that did not set one", () => {
+    const logos = new Map([["o2", "/api/branding/logo/ntw"]]);
+    const opts = orgOptions([{ id: "o1", slug: "davos", name: "Davos" }, { id: "o2", slug: "ntw", name: "NTW" }], "davos", logos);
+    expect(opts.map((o) => o.logoUrl)).toEqual([null, "/api/branding/logo/ntw"]);
   });
 });

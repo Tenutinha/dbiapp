@@ -56,6 +56,17 @@ export function filterSpaces(spaces: readonly SpaceOption[], query: string): Spa
  * The organizations a person can open, for the switcher on the organization's name in the sidebar (each
  * opens on its own page, which takes them to the last space they used there). One entry = nothing to switch.
  */
-export function orgOptions(orgs: readonly { slug: string; name: string }[], currentSlug: string): SpaceOption[] {
-  return orgs.map((o) => ({ href: `/${o.slug}`, label: o.name, kind: "org" as const, current: o.slug === currentSlug, logoUrl: null }));
+export function orgOptions(
+  orgs: readonly { id: string; slug: string; name: string }[],
+  currentSlug: string,
+  /** Logo address of each organization that has one, by organization id. */
+  logos: ReadonlyMap<string, string> = new Map(),
+): SpaceOption[] {
+  return orgs.map((o) => ({
+    href: `/${o.slug}`,
+    label: o.name,
+    kind: "org" as const,
+    current: o.slug === currentSlug,
+    logoUrl: logos.get(o.id) ?? null,
+  }));
 }
