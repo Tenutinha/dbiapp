@@ -197,7 +197,7 @@ function mapMeasures(visual: Extract<Visual, { type: "map" }>): string[] {
 /** Fields a network visual groups by: both ends of each relationship and its kind, each once. */
 export function networkFields(visual: Extract<Visual, { type: "network" }>): string[] {
   const end = (e: typeof visual.source): string[] => [e.id, e.label, e.lat, e.lon, e.kind, ...(e.detail ? [e.detail] : [])];
-  return [...new Set([...end(visual.source), ...end(visual.target), ...(visual.category ? [visual.category] : [])])];
+  return [...new Set([...end(visual.source), ...end(visual.target), ...(visual.category ? [visual.category] : []), ...(visual.time ? [visual.time] : [])])];
 }
 
 /** Rows a listing shows: its limit, or the expanded one while its filter has a selection. */

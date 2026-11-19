@@ -4,6 +4,17 @@ import { formatValue } from "@/lib/format";
 import { throughput, type NetworkEdge, type NetworkGraph, type NetworkNode } from "@/lib/network-graph";
 import type { ValueFormat } from "@/lib/templates/schema";
 import { css, type Rgb } from "./colors";
+import { drawingOf, ICON_SIZE, iconShape } from "./icons";
+
+/** The drawing of a kind of place, in its colour (the same one the map stands on it). */
+export function KindIcon({ kind, color, className = "size-4" }: { kind: string; color: Rgb; className?: string }) {
+  const d = drawingOf(iconShape(kind));
+  return (
+    <svg viewBox={`0 0 ${ICON_SIZE} ${ICON_SIZE}`} className={`shrink-0 ${className}`} aria-hidden>
+      <path d={d.path} fill={css(color)} fillRule={d.rule} />
+    </svg>
+  );
+}
 
 export interface PanelMeasure {
   id: string;
@@ -42,14 +53,14 @@ export function NetworkSummary({ graph, kindColor, measure, title }: SummaryProp
   const counts = graph.kinds.map((k) => [k, graph.nodes.filter((n) => n.kind === k).length] as const);
   const total = graph.edges.reduce((sum, e) => sum + e.value, 0);
   return (
-    <div className={`${PANEL} pointer-events-auto max-w-[min(22rem,calc(100%-2rem))] px-4 py-3`}>
+    <div className={`${PANEL} pointer-events-auto w-full px-4 py-3`}>
       <p className="text-xs font-medium uppercase tracking-wider text-muted">{title}</p>
       <p className="mt-1 text-2xl font-extrabold tracking-tight">{formatValue(total, measure.format, true)}</p>
       <p className="text-xs text-muted">{measure.label.toLowerCase()} em {graph.edges.length.toLocaleString("pt-BR")} relações</p>
       <ul className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs">
         {counts.map(([kind, n]) => (
           <li key={kind} className="flex items-center gap-1.5">
-            <span className="size-2 rounded-full" style={{ background: css(kindColor.get(kind) ?? [128, 128, 128]) }} aria-hidden />
+            <KindIcon kind={kind} color={kindColor.get(kind) ?? [128, 128, 128]} className="size-3.5" />
             <b className="tabular-nums">{n}</b> {pluralKind(kind, n)}
           </li>
         ))}
@@ -82,10 +93,9 @@ export function NetworkLegend({ kinds, categories, kindColor, categoryColor, hid
           className={`flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left text-xs transition hover:bg-text/10 ${off ? "opacity-40" : ""}`}
           title={off ? "Mostrar" : "Esconder"}
         >
-          <span
-            className={shape === "dot" ? "size-2.5 shrink-0 rounded-sm" : "h-1 w-4 shrink-0 rounded-full"}
-            style={{ background: css(color) }} aria-hidden
-          />
+          {shape === "dot"
+            ? <KindIcon kind={label} color={color} />
+            : <span className="h-1 w-4 shrink-0 rounded-full" style={{ background: css(color) }} aria-hidden />}
           <span className={off ? "line-through" : ""}>{label}</span>
         </button>
       </li>
@@ -137,7 +147,7 @@ export function NodeTip({ node, measure, color }: { node: NetworkNode; measure: 
   return (
     <>
       <p className="flex items-center gap-1.5 text-sm font-semibold">
-        <span className="size-2.5 rounded-sm" style={{ background: css(color) }} aria-hidden />{node.label}
+        <KindIcon kind={node.kind} color={color} />{node.label}
       </p>
       <p className="mb-1.5 text-muted">{[node.kind, node.detail].filter(Boolean).join(" · ")}</p>
       {node.out > 0 && <Line label={`${measure.label} enviado`} value={fmt(node.out)} />}
@@ -197,7 +207,7 @@ export function NodeDetail({ node, graph, measure, color, onPick, onClose }: Det
       <div className="flex items-start justify-between gap-2 border-b border-line/70 px-4 py-3">
         <div className="min-w-0">
           <p className="flex items-center gap-1.5 text-xs text-muted">
-            <span className="size-2.5 rounded-sm" style={{ background: css(color) }} aria-hidden />{node.kind}
+            <KindIcon kind={node.kind} color={color} className="size-3.5" />{node.kind}
           </p>
           <h3 className="truncate text-base font-semibold" title={node.label}>{node.label}</h3>
           {node.detail && <p className="text-xs text-muted">{node.detail}</p>}

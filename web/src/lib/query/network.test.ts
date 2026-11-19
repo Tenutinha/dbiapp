@@ -45,4 +45,12 @@ describe("network visual", () => {
     expect(sql).toMatch(/ORDER BY receita DESC NULLS LAST LIMIT 2000$/);
     expect(sql).toContain("LEFT JOIN");
   });
+
+  it("with a timeline, the rows come per period too", () => {
+    const t = templateSchema.parse({ ...sales, visuals: [...sales.visuals, { ...network, time: "produto", limit: 10000 }] });
+    const v = t.visuals.find((x) => x.id === "rede") as Extract<QueryVisual, { type: "network" }>;
+    expect(networkFields(v)).toContain("produto");
+    expect(buildVisualQuery(t, files, v, {}).sql).toContain("GROUP BY 1, 2, 3, 4, 5, 6, 7, 8\n");
+    expect(withNetwork({ ...network, time: "nada" }).success).toBe(false);
+  });
 });
