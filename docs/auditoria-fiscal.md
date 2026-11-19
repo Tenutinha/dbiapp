@@ -23,6 +23,7 @@ NF-e (dashboard publicado) ────────────┘              
 | Extrair | `extrair.ts` | baixa os SPED de EFD Contribuições do espaço, um a um, e guarda só C010, C100 e C170 de cada um, linha a linha (`entrada/contrib_c/<cnpj>-<mês>-<n>.parquet`); copia a fato `registros` publicada da EFD ICMS/IPI e a `nfe_itens` da NF-e, e os resumos `paineis_todos_periodos` das duas EFD (`icms_paineis.parquet` e `contrib_paineis.parquet`). Arquivo já extraído não é lido de novo. |
 | Preparar | `preparar.py` | roda as regras e grava `dados/achados.parquet`, `dados/regras.parquet`, `dados/cobertura.parquet` e `dados/glossario.parquet` |
 | Glossário | `glossario.py` | lê o [catálogo](auditorias-catalogo.md) e as regras do preparo e grava só `dados/glossario.parquet` (o preparo já faz isso; rodar sozinho serve para atualizar o glossário sem refazer as regras) |
+| Intragrupo | `intragrupo_extrair.py` e `intragrupo.py` | leem 0000, 0150, C100 e C190 dos originais da EFD ICMS/IPI de uma pasta local e gravam `dados/intragrupo.parquet` (ver [Notas entre estabelecimentos do grupo](#notas-entre-estabelecimentos-do-grupo)) |
 | Reforma | `reforma.py` | lê os resumos de todos os períodos da EFD ICMS/IPI e da EFD Contribuições e grava `dados/reforma.parquet`, `dados/reforma_apuracao.parquet` e `dados/reforma_transicao.parquet` (ver [Reforma tributária](#reforma-tributária)) |
 | Molde | `molde.py` | gera o `template.json` (o texto da seção Regras vem da lista de regras do preparo; os temas do Glossário, do catálogo) |
 | Carregar | `scripts/pbix/carregar-dashboard.ts` | cadastra o molde no catálogo (como rascunho), ativa o dashboard no espaço, sobe as tabelas e publica |
@@ -48,6 +49,7 @@ Colunas de `achados`: `regra`, `fonte` (EFD Contribuições, EFD ICMS/IPI, NF-e 
 `cst_pis`, `cst_cofins`, `campo` (o campo do layout conferido), `esperado`, `encontrado`, `diferenca`
 (encontrado − esperado, só quando há os dois), `arquivo`, `linha`.
 
+A tabela `intragrupo` (fato extra) está em [Notas entre estabelecimentos do grupo](#notas-entre-estabelecimentos-do-grupo).
 As tabelas `reforma`, `reforma_apuracao` e `reforma_transicao` (fatos extras) estão em [Reforma tributária](#reforma-tributária).
 
 ## O glossário
@@ -319,6 +321,67 @@ O portal do SPED não abriu o Guia Prático em 16/11/2026; o que segue foi confe
 | `C170.COD_CTA` copiado da EFD ICMS/IPI: se o PVA exige a conta no 0500 da Contribuições | **a confirmar** (o relatório avisa quantos itens entraram com conta que não está no 0500) |
 | Nome da função do PVA que refaz o bloco M | **a confirmar** |
 
+## Notas entre estabelecimentos do grupo
+
+A seção **Notas entre estabelecimentos do grupo** (item CZ11 do [catálogo](auditorias-catalogo.md), que passa a Ativa)
+fecha as notas trocadas entre estabelecimentos do grupo: a saída escriturada na EFD ICMS/IPI de um tem de estar como
+entrada na do outro, com a mesma chave (e vice-versa).
+
+- **Grupo**: quem entrega EFD ICMS/IPI no espaço. Um C100 é do grupo quando o CNPJ do participante (0150 do mesmo
+  arquivo) tem a raiz de um desses estabelecimentos e não é o próprio.
+- **Par**: a chave e os dois estabelecimentos. O lado do emitente é o do CNPJ da chave. Cada lado é procurado pela chave
+  nos arquivos daquele estabelecimento **de todos os meses** (vale a primeira ocorrência; `*_ocorrencias` diz quantas há).
+- **Arquivo que vale**: com mais de um arquivo do mesmo estabelecimento no mês, o gravado por último (como no envio ao bucket).
+
+| Código | Situação | Motivo | Quando |
+|---|---|---|---|
+| F0 | Fecha | Fecha no mesmo mês | dois lados, sentidos opostos, mesmo valor, mesmo mês |
+| F1 | Fecha | Fecha no mês seguinte | idem, a entrada escriturada até 1 mês depois da saída (`MESES_NORMAIS`) |
+| F2 | Fecha | Cancelada nos dois lados | COD_SIT 02 a 05 nos dois |
+| F3 | Fecha | Cancelada pelo emitente e fora da contraparte | |
+| N1 | Não fecha | Chave ausente na contraparte | a contraparte tem o arquivo do mês e a chave não está em nenhum arquivo dela |
+| N2 | Não fecha | Mesmo sentido nos dois lados | IND_OPER igual |
+| N3 | Não fecha | Mês fora do prazo | entrada mais de 1 mês depois da saída, ou antes dela |
+| N4 | Não fecha | Valor diferente | VL_DOC difere mais de R$ 0,05 |
+| N5 | Não fecha | Situação diferente | cancelada/denegada de um lado, regular do outro |
+| A1 | Falta arquivo | Arquivo da contraparte não enviado | a contraparte não tem arquivo no mês da nota nem no vizinho (o seguinte à saída, o anterior à entrada) |
+| A2 | Falta arquivo | Contraparte sem EFD no espaço | participante da raiz do grupo sem nenhum arquivo |
+
+Os motivos são testados nessa ordem; uma nota fica com o primeiro que se aplica.
+
+A tabela `intragrupo` tem uma linha por nota que **não** fecha no mesmo mês (os dois lados lado a lado: mês, operação,
+situação, datas, valor, CFOP dos C190, arquivo e linha do C100) e, das que fecham no mesmo mês, uma linha por mês e par
+de estabelecimentos com a contagem (`notas`) e o valor. Assim o detalhe fica pequeno e a seção filtra tudo junto (o clique
+no mapa, num par ou num motivo vale para todos os visuais dela). A seção não segue os filtros da página.
+
+### Rodar
+
+Lê os **originais locais** (a pasta do cliente com `<cnpj>/original/efd_icms_ipi/*.txt`), não o bucket: o molde da EFD
+ICMS/IPI só guarda inteiro o arquivo mais recente de cada estabelecimento, e o C100 com chave de todos os meses não está
+nas tabelas publicadas.
+
+```bash
+# em web/; a extração lê só 0000, 0150, C100 e C190, linha a linha (≈ 12 GB de texto em ~7 min, pouca memória)
+AUDITORIA_PASTA="$PASTA" uv run -q --no-project --python 3.11 --with duckdb python -I   scripts/fiscal/auditoria/intragrupo_extrair.py --origem <pasta do cliente> [--desde AAAA-MM] [--ate AAAA-MM]
+AUDITORIA_PASTA="$PASTA" uv run -q --no-project --python 3.11 --with duckdb python -I scripts/fiscal/auditoria/intragrupo.py [--contar]
+```
+
+O cruzamento roda em 8 faixas de chave (`FAIXAS`), cada uma com no máximo 5 GB de memória para o DuckDB: as 24 milhões de
+notas de uma vez não cabem. Depois, `molde.py`, o validador e `carregar-dashboard.ts` como nas outras seções
+(a pasta `dados/` precisa ter todas as tabelas da Auditoria).
+
+### Conferir
+
+- `intragrupo.py --contar` mostra notas e valor por motivo.
+- Pegue uma nota de cada motivo na listagem e procure a chave (`grep "|<chave>|"`) nos txt dos dois estabelecimentos.
+- O total de notas da seção é `SELECT sum(notas) FROM 'dados/intragrupo.parquet'`.
+
+### O que não confere
+
+- Valores de ICMS, ICMS-ST e mercadoria (só o VL_DOC); itens (C170).
+- Notas sem chave (modelos sem chave de acesso) e participantes identificados só por CPF.
+- Notas de outros arquivos (EFD Contribuições, XML): só a EFD ICMS/IPI.
+
 ## Reforma tributária
 
 A seção **Reforma tributária** simula o efeito da reforma do consumo (EC 132/2023 e LC 214/2025: CBS e IBS no lugar de
@@ -393,7 +456,7 @@ ao total de débitos do dashboard EFD ICMS/IPI, e o de PIS ficar a menos de 2% d
 ## Atualizar todo mês
 
 Depois de atualizar os dashboards fiscais com o mês novo: `extrair.ts` (só o arquivo novo é lido), `preparar.py`,
-`reforma.py`, `molde.py` (só se as regras ou o catálogo mudaram) e `carregar-dashboard.ts`.
+`intragrupo_extrair.py` e `intragrupo.py` (relêem todos os meses), `reforma.py`, `molde.py` (só se as regras ou o catálogo mudaram) e `carregar-dashboard.ts`.
 
 ## Próximos passos
 
