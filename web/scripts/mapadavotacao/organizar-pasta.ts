@@ -4,6 +4,7 @@
  *   npm run mapadavotacao:organizar                     plano (não move nada): resumo + plano.json
  *   npm run mapadavotacao:organizar -- aplicar          move tudo, menos as fotos
  *   npm run mapadavotacao:organizar -- aplicar fotos    move só midia/fotos (600 mil+ arquivos)
+ *   npm run mapadavotacao:organizar -- por-ano [aplicar] clientes por ano de eleição em vez de cargo (organizar-por-ano.ts)
  *
  * Mover = copiar dentro do Google (os dados não passam por esta máquina), conferir o hash e só então apagar
  * a origem. Cópias idênticas indo para o mesmo destino viram uma só; diferentes vão para
@@ -14,6 +15,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Storage, type Bucket, type File } from "@google-cloud/storage";
 import { destinoDe, destinoDuplicado } from "./organizar-destino";
+import { destinoPorAno, PREFIXOS_POR_ANO } from "./organizar-por-ano";
 
 const BUCKET = "dbi-app-br-arquivos";
 const ORG = "orgs/mapa-da-votacao/";
@@ -41,19 +43,25 @@ async function pastasDe(bucket: Bucket, prefix: string): Promise<string[]> {
   return ((resp as { prefixes?: string[] } | undefined)?.prefixes) ?? [];
 }
 
-/** Tudo o que deve mudar de lugar, menos as fotos (que são movidas em fluxo, página a página). */
+type Regra = (rel: string) => string | null;
+
+/** Primeira organização (acervo → brutos/…, cargos como clientes): tudo menos as fotos, movidas em fluxo. */
 async function planejar(bucket: Bucket): Promise<Movimento[]> {
   const prefixos = [...(await pastasDe(bucket, `${ORG}acervo/`)).filter((p) => p !== FOTOS), `${ORG}preparado/`];
-  const itens: { de: string; para: string; bytes: number; hash: string }[] = [];
   const soltos = (await bucket.getFiles({ prefix: `${ORG}acervo/`, delimiter: "/", autoPaginate: false }))[0];
+  return planejarCom(bucket, prefixos, destinoDe, soltos);
+}
+
+async function planejarCom(bucket: Bucket, prefixos: readonly string[], regra: Regra, soltos: readonly File[] = []): Promise<Movimento[]> {
+  const itens: { de: string; para: string; bytes: number; hash: string }[] = [];
   for (const f of soltos) {
-    const para = destinoDe(rel(f.name));
+    const para = regra(rel(f.name));
     if (para) itens.push({ de: f.name, para: ORG + para, bytes: Number(f.metadata.size ?? 0), hash: hashDe(f) });
   }
   for (const prefixo of prefixos) {
     for await (const pagina of listar(bucket, prefixo)) {
       for (const f of pagina) {
-        const para = destinoDe(rel(f.name));
+        const para = regra(rel(f.name));
         if (para) itens.push({ de: f.name, para: ORG + para, bytes: Number(f.metadata.size ?? 0), hash: hashDe(f) });
       }
     }
@@ -163,10 +171,14 @@ async function moverFotos(bucket: Bucket): Promise<void> {
 async function main(): Promise<void> {
   if (!existsSync(KEY_FILE)) throw new Error(`Credencial não encontrada: ${KEY_FILE}`);
   const bucket = new Storage({ keyFilename: KEY_FILE }).bucket(BUCKET);
-  const [modo, alvo] = process.argv.slice(2);
-  if (modo === "aplicar" && alvo === "fotos") return moverFotos(bucket);
+  const args = process.argv.slice(2);
+  if (args[0] === "aplicar" && args[1] === "fotos") return moverFotos(bucket);
+  const porAno = args[0] === "por-ano";
+  const modo = porAno ? args[1] : args[0];
 
-  const movs = await planejar(bucket);
+  const movs = porAno
+    ? await planejarCom(bucket, PREFIXOS_POR_ANO.map((p) => ORG + p), destinoPorAno)
+    : await planejar(bucket);
   await mkdir(SAIDA, { recursive: true });
   await writeFile(path.join(SAIDA, "plano.json"), JSON.stringify(movs.map((m) => ({ ...m, de: rel(m.de), para: rel(m.para) })), null, 1));
   resumo(movs);
