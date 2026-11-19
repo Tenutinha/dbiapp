@@ -329,10 +329,12 @@ export function DashboardView({ template, data, totalRows, later, notesInSummary
   // Pages turned sideways beside the summary: the summary names and marks the page on screen, so the
   // page itself shows only its visuals (the title stays for screen readers).
   const bare = sideways && notesInSummary;
+  // Keyed: the header is made here and placed by a client part of the page (LazySection) next to its own
+  // children, and React asks every element that comes from outside in such a list for a key.
   const header = (s: (typeof sections)[number]): React.ReactNode => bare && !off.has(s.analysis.id) ? (
-    <h2 id={`${s.anchor}-titulo`} className="sr-only">{s.analysis.title}</h2>
+    <h2 key="cabecalho" id={`${s.anchor}-titulo`} className="sr-only">{s.analysis.title}</h2>
   ) : (
-    <header className={notesInSummary ? "mb-4 border-t border-line pt-4" : "mb-5 border-t border-line pt-6"}>
+    <header key="cabecalho" className={notesInSummary ? "mb-4 border-t border-line pt-4" : "mb-5 border-t border-line pt-6"}>
       {s.number !== null && <p className="font-mono text-xs tabular-nums text-muted">{String(s.number).padStart(2, "0")}</p>}
       {off.has(s.analysis.id) && (
         <p className="w-fit rounded bg-accent/15 px-2 py-0.5 text-xs font-medium text-accent">
@@ -373,7 +375,7 @@ export function DashboardView({ template, data, totalRows, later, notesInSummary
                 <LazySection
                   key={run} cards
                   ticket={later.ticket} analysisId={runPart(s.analysis.id, run)} search={later.search}
-                  initial={computed ? { body: own.length > 0 ? <StripCards template={template} results={own} /> : null } : undefined}
+                  initial={computed ? { body: own.length > 0 ? <StripCards key="corpo" template={template} results={own} /> : null } : undefined}
                 />
               );
             })}
@@ -390,7 +392,7 @@ export function DashboardView({ template, data, totalRows, later, notesInSummary
         <LazySection
           key={s.analysis.id}
           ticket={later.ticket} analysisId={s.analysis.id} search={later.search} anchor={s.anchor} header={header(s)} pageClass={pageClass} sectionClass={sectionClass}
-          initial={computed ? { body: empty ? null : <VisualGrid template={template} results={s.results} layout={s.analysis.layout} /> } : undefined}
+          initial={computed ? { body: empty ? null : <VisualGrid key="corpo" template={template} results={s.results} layout={s.analysis.layout} /> } : undefined}
         />
       );
     }
@@ -401,7 +403,7 @@ export function DashboardView({ template, data, totalRows, later, notesInSummary
       </section>
     );
   });
-  const looseGrid = <VisualGrid template={template} results={loose} />;
+  const looseGrid = <VisualGrid key="corpo" template={template} results={loose} />;
   // `contents`: the scope of the compact type, without a box of its own between the page and its parts.
   const page = (
     <div className={`contents${template.density === "compact" ? " dash-compact" : ""}${snap ? " dash-pages" : ""}`}>
