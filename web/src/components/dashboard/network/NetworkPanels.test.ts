@@ -9,5 +9,7 @@ describe("pluralKind", () => {
     expect(pluralKind("Centro de distribuição", 4)).toBe("centros de distribuição");
     expect(pluralKind("Loja", 5)).toBe("lojas");
     expect(pluralKind("Armazém", 2)).toBe("armazém");
+    expect(pluralKind("Clientes (por cidade)", 138)).toBe("clientes (por cidade)");
+    expect(pluralKind("Fornecedores", 3)).toBe("fornecedores");
   });
 });

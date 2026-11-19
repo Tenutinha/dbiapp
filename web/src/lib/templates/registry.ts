@@ -58,11 +58,16 @@ function ensureSynced(): Promise<boolean> {
   return synced;
 }
 
-/** Stored definitions were validated on write; re-parse to apply defaults and guard old rows. */
-function parseStored(definition: unknown, id: string): Template {
+/**
+ * Stored definitions were validated on write; re-parse to apply defaults and guard old rows. A definition
+ * this code cannot read (e.g. a visual type newer than this deployment, or a server running an older branch
+ * against the same database) is left out with a warning instead of taking down every page that lists it.
+ */
+function parseStored(definition: unknown, id: string): Template | null {
   const parsed = templateSchema.safeParse(definition);
-  if (!parsed.success) throw new Error(`Stored template ${id} is invalid: ${parsed.error.issues[0]?.message}`);
-  return parsed.data;
+  if (parsed.success) return parsed.data;
+  console.warn(`[catalog] stored template ${id} is invalid for this version, left out: ${parsed.error.issues[0]?.message}`);
+  return null;
 }
 
 /** Definitions already read by this server, by template, each with the fingerprint it had. */
@@ -98,7 +103,8 @@ export async function getCatalogEntry(id: string): Promise<CatalogEntry | null> 
     return shipped ? { template: shipped, status: "published", builtIn: true } : null;
   }
   const row = await storedTemplate(id);
-  return row ? { template: parseStored(row.definition, id), status: row.status, builtIn: row.builtIn } : null;
+  const template = row ? parseStored(row.definition, id) : null;
+  return row && template ? { template, status: row.status, builtIn: row.builtIn } : null;
 }
 
 export async function getTemplate(id: string): Promise<Template | null> {
@@ -109,7 +115,7 @@ export async function getTemplate(id: string): Promise<Template | null> {
 export async function listTemplates(): Promise<Template[]> {
   if (!(await ensureSynced())) return [...(await shippedTemplates()).values()];
   const rows = await listDefinitions("published");
-  return rows.map((d) => parseStored(d, "?"));
+  return rows.flatMap((d) => parseStored(d, "?") ?? []);
 }
 
 /** For the platform catalog page: makes sure built-ins are in the table before listing it. */
