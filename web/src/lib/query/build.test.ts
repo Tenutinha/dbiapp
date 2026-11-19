@@ -111,6 +111,19 @@ describe("buildVisualQuery", () => {
     expect(q.sql).toContain("LIMIT 10");
   });
 
+  it("lists razonetes one per account, the ones that don't close first, then the most moved", () => {
+    const [d, c] = t.measures.map((m) => m.id);
+    const ledger = {
+      id: "razonetes", type: "ledger", title: "Razonetes", span: 12, field: "regiao", limit: 30,
+      opening: d, debit: d, credit: c, closing: c, journal: { debit: c, credit: d },
+    } as QueryVisual;
+    const q = buildVisualQuery(t, files, ledger, {});
+    expect(q.sql).toContain(`AS ${d}`);
+    expect(q.sql).toContain(`AS ${c}`);
+    expect(q.sql).toContain("GROUP BY 1");
+    expect(q.sql).toMatch(/ORDER BY \(ABS\(.+\) > 0\.015 OR .+\) DESC, COALESCE\(\w+, 0\) \+ COALESCE\(\w+, 0\) DESC, 1 LIMIT 30/);
+  });
+
   it("escapes quotes in file paths", () => {
     const q = buildVisualQuery(t, { ...files, fato_vendas: "/d/o'brien.parquet" }, visual("k_receita"), {});
     expect(q.sql).toContain("read_parquet('/d/o''brien.parquet')");

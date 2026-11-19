@@ -2,7 +2,7 @@
  * Editing helpers for the dashboard registration form. Pure and immutable: every function
  * returns a new template (or list) and never touches its input. Safe in client components.
  */
-import type { Template, TemplateTable, Visual } from "./schema";
+import { ledgerMeasures, type Template, type TemplateTable, type Visual } from "./schema";
 
 export type VisualType = Visual["type"];
 
@@ -104,6 +104,8 @@ export function defaultVisual(type: VisualType, id: string, title: string): Visu
     }
     case "waterfall":
       return { ...base, type, items: [] };
+    case "ledger":
+      return { ...base, type, field: "", opening: "", debit: "", credit: "", closing: "", limit: 60 };
     case "matrix":
       return { ...base, type, row: "", column: "", measure: "", limit: 20000 };
   }
@@ -164,6 +166,11 @@ export function usedIds(t: Template): UsedIds {
         break;
       case "waterfall":
         v.items.forEach((item) => measures.add(item.measure));
+        break;
+      case "ledger":
+        fields.add(v.field);
+        if (v.detail) fields.add(v.detail);
+        ledgerMeasures(v).forEach((m) => measures.add(m));
         break;
       case "matrix":
         fields.add(v.row);

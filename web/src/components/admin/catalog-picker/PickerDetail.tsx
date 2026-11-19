@@ -17,6 +17,7 @@ const KIND_LABEL: Record<VisualKind, string> = {
   scorecard: "tabelas de indicadores",
   matrix: "mapas de dados",
   waterfall: "cascatas",
+  ledger: "razonetes",
   network: "mapas 3D de rede",
 };
 

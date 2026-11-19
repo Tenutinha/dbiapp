@@ -5,7 +5,7 @@
  * Identifiers and expressions come from the (validated, trusted) template;
  * user-provided filter values are always bound as parameters.
  */
-import { mainFact, type Field, type Measure, type Template, type Visual } from "../templates/schema";
+import { LEDGER_TOLERANCE, ledgerMeasures, mainFact, type Field, type Measure, type Template, type Visual } from "../templates/schema";
 import { readParquet } from "../duck/engine";
 import { joinParts, splitParts } from "../storage-parts";
 import type { CrossSelection } from "./cross";
@@ -230,6 +230,22 @@ function selectFor(t: Template, visual: QueryVisual, filters: FilterSelection): 
       // One line: every step is a measure over everything the visual covers.
       const ids = [...new Set(visual.items.map((item) => item.measure))];
       return { select: ids.map((id) => measureCol(measure(id))), groupBy: [], tail: "" };
+    }
+    case "ledger": {
+      // One line per account. The ones that don't close come first (balance, or journal against the
+      // balancete), then the most moved: the limit never hides a difference behind quiet accounts.
+      const fs = [field(visual.field), ...(visual.detail ? [field(visual.detail)] : [])];
+      const v = (id: string): string => `COALESCE(${id}, 0)`;
+      const off = (a: string, b: string): string => `ABS(${a} - (${b})) > ${LEDGER_TOLERANCE}`;
+      const diffs = [
+        off(`${v(visual.opening)} + ${v(visual.debit)} - ${v(visual.credit)}`, v(visual.closing)),
+        ...(visual.journal ? [off(v(visual.journal.debit), v(visual.debit)), off(v(visual.journal.credit), v(visual.credit))] : []),
+      ];
+      return {
+        select: [...fs.map(fieldCol), ...ledgerMeasures(visual).map((m) => measureCol(measure(m)))],
+        groupBy: fs.map((_, i) => String(i + 1)),
+        tail: `ORDER BY (${diffs.join(" OR ")}) DESC, ${v(visual.debit)} + ${v(visual.credit)} DESC, 1 LIMIT ${visual.limit}`,
+      };
     }
     case "matrix": {
       const row = field(visual.row);

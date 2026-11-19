@@ -1118,6 +1118,21 @@ function ecd(): Json {
       ],
     },
     {
+      // The balancete and the journal of the same file, account by account: both checks need the entries,
+      // which only the main fact (the latest file of each company) keeps.
+      id: "razonetes", title: "Razonetes",
+      description: "Cada conta em T: débitos à esquerda, créditos à direita, saldo inicial em cima e final embaixo. "
+        + "Cada razonete se confere: o saldo final é o inicial mais os débitos menos os créditos (I155), e os débitos e créditos do balancete batem com as partidas do diário (I250). "
+        + "Abre nas contas que não fecham, com a diferença; o seletor mostra todas. Do arquivo mais recente de cada empresa, onde estão os lançamentos.",
+      visuals: [
+        {
+          id: "r_razonetes", type: "ledger", title: "Razonetes das contas", field: "conta", detail: "empresa",
+          opening: "saldo_inicial", debit: "debitos", credit: "creditos", closing: "saldo_final",
+          journal: { debit: "partidas_debito", credit: "partidas_credito" }, limit: 240, span: 12, where: isReg("I155", "I250"),
+        },
+      ],
+    },
+    {
       id: "resultado", title: "Resultado do exercício",
       description: "O último exercício da seleção (sem filtro, o mais recente; um clique num ano do gráfico por ano leva a ele): quanto entrou, quanto ficou e para onde foi o resto. "
         + "A cascata vai da receita bruta ao lucro líquido, linha a linha da DRE; ao lado, o mesmo resultado ano a ano, as margens e as contas que mais pesaram. "
@@ -1200,8 +1215,8 @@ function ecd(): Json {
       ],
     },
   ];
-  // Every panel but the entries reads all the periods from the table made for them (the main fact holds one file whole).
-  const panelsAllPeriods = panels.map((s) => (s.id === "lancamentos"
+  // Every panel but the entries and the razonetes reads all the periods from the table made for them (the main fact holds one file whole).
+  const panelsAllPeriods = panels.map((s) => (s.id === "lancamentos" || s.id === "razonetes"
     ? s
     : { ...s, visuals: s.visuals.map((v) => (v.fact ? v : { ...v, fact: "paineis_todos_periodos" })) }));
   measures.push({ id: "saldo_credor", label: "Saldo", sql: `0 - ${lastSum(i155, fin)}`, format: "currency" });
