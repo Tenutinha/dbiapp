@@ -16,6 +16,7 @@ export const VISUAL_TYPE_LABEL: Record<VisualType, string> = {
   statement: "Demonstrativo (DRE)",
   scorecard: "Tabela de indicadores",
   matrix: "Mapa de dados (linha × coluna)",
+  waterfall: "Cascata (de um valor a outro, passo a passo)",
   network: "Mapa 3D da rede (origem → destino)",
 };
 const TYPE_OPTIONS = (Object.keys(VISUAL_TYPE_LABEL) as VisualType[]).map((v) => ({ value: v, label: VISUAL_TYPE_LABEL[v] }));
@@ -154,6 +155,12 @@ function TypeSettings({ visual: v, onChange, fields, measures }: TypeSettingsPro
             <NumberInput value={v.limit} min={1} max={1000} onChange={(limit) => onChange({ ...v, limit })} />
           </Field>
         </div>
+      );
+    case "waterfall":
+      return (
+        <p className="text-xs text-muted">
+          Cascata com {v.items.length} passo(s). Os passos e os totais são definidos no JSON do dashboard.
+        </p>
       );
     case "matrix":
       return (

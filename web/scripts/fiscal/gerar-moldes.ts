@@ -908,6 +908,49 @@ function ecd(): Json {
       + `COALESCE(SUM(CASE WHEN ${i355} AND ${result}${c} THEN ${signed("I355", "VL_CTA", "IND_DC")} END), 0), 2)`;
   };
   const linesOf = (...ids: string[]): string => ids.map((id) => `(${lines.find((l) => l.id === id)?.where ?? "FALSE"})`).join(" OR ");
+  // The same, for the latest year of what is selected alone (the exercise the page shows): the (year, value)
+  // pairs of the lines, those of the latest year, their sum — so the page needs no year fixed in the filters.
+  const yearNumber = `year(${F}.periodo)`;
+  const exercise = (cond?: string): string => {
+    const c = cond ? ` AND (${cond})` : "";
+    const value = `CASE WHEN ${i155} THEN (${ini}) - (${fin}) ELSE 0 - (${signed("I355", "VL_CTA", "IND_DC")}) END`;
+    return `ROUND(COALESCE(list_sum(list_transform(list_filter(list(list_value(${yearNumber}, ${value})) FILTER (WHERE (${i155} OR ${i355}) AND ${result}${c}), `
+      + `lambda e: list_extract(e, 1) = MAX(${yearNumber}) FILTER (WHERE ${i155})), lambda e: list_extract(e, 2))), 0), 2)`;
+  };
+  const OPERATING = ["despesas_operacionais", "outras_despesas_operacionais", "outras_receitas_operacionais"];
+  const UP_TO_OPERATING = ["receita_bruta", "deducoes", "custos", ...OPERATING];
+  const ratio = (a: string, b: string): string => `(${a}) / NULLIF(${b}, 0)`;
+  const exerciseMeasures: Measure[] = [
+    { id: "ex_ano", label: "Exercício", sql: `CAST(MAX(${yearNumber}) FILTER (WHERE ${i155}) AS VARCHAR)`, format: "text" },
+    { id: "ex_receita_bruta", label: "Receita bruta", sql: exercise(linesOf("receita_bruta")), format: "currency" },
+    { id: "ex_deducoes", label: "Deduções", sql: exercise(linesOf("deducoes")), format: "currency" },
+    { id: "ex_receita_liquida", label: "Receita líquida", sql: exercise(linesOf("receita_bruta", "deducoes")), format: "currency" },
+    { id: "ex_custos", label: "Custos", sql: exercise(linesOf("custos")), format: "currency" },
+    { id: "ex_lucro_bruto", label: "Lucro bruto", sql: exercise(linesOf("receita_bruta", "deducoes", "custos")), format: "currency" },
+    { id: "ex_despesas_operacionais", label: "Despesas operacionais", sql: exercise(linesOf(...OPERATING)), format: "currency" },
+    { id: "ex_resultado_operacional", label: "Resultado operacional", sql: exercise(linesOf(...UP_TO_OPERATING)), format: "currency" },
+    { id: "ex_resultado_financeiro", label: "Resultado financeiro", sql: exercise(linesOf("resultado_financeiro")), format: "currency" },
+    { id: "ex_ir_csll", label: "IR e CSLL", sql: exercise(linesOf("ir_csll")), format: "currency" },
+    // What is left (other revenues and expenses, profit sharing, accounts with no line): the result minus the rest,
+    // so the steps always add up to it.
+    {
+      id: "ex_outros", label: "Outras receitas e despesas",
+      sql: `(${exercise()}) - (${exercise(linesOf(...UP_TO_OPERATING, "resultado_financeiro", "ir_csll"))})`, format: "currency",
+    },
+    { id: "ex_resultado_antes_ir", label: "Resultado antes do IR e da CSLL", sql: `(${exercise()}) - (${exercise(linesOf("ir_csll"))})`, format: "currency" },
+    { id: "ex_lucro_liquido", label: "Lucro líquido", sql: exercise(), format: "currency" },
+    { id: "ex_margem_liquida", label: "Margem líquida", sql: ratio(exercise(), exercise(linesOf("receita_bruta", "deducoes"))), format: "percent" },
+    { id: "ex_margem_bruta", label: "Margem bruta", sql: ratio(exercise(linesOf("receita_bruta", "deducoes", "custos")), exercise(linesOf("receita_bruta", "deducoes"))), format: "percent" },
+    { id: "ex_valor", label: "Resultado", sql: exercise(), format: "currency" },
+    // Year by year (a chart or a table by year): the lines of the DRE and what they are of the revenue.
+    { id: "dre_despesas_operacionais", label: "Despesas operacionais", sql: dreValue(linesOf(...OPERATING)), format: "currency" },
+    { id: "dre_resultado_operacional", label: "Resultado operacional", sql: dreValue(linesOf(...UP_TO_OPERATING)), format: "currency" },
+    { id: "dre_resultado_financeiro", label: "Resultado financeiro", sql: dreValue(linesOf("resultado_financeiro")), format: "currency" },
+    { id: "dre_ir_csll", label: "IR e CSLL", sql: dreValue(linesOf("ir_csll")), format: "currency" },
+    { id: "margem_operacional", label: "Margem operacional", sql: ratio(dreValue(linesOf(...UP_TO_OPERATING)), dreValue(linesOf("receita_bruta", "deducoes"))), format: "percent" },
+    { id: "peso_despesas", label: "Despesas operacionais sobre a receita", sql: ratio(`0 - ${dreValue(linesOf(...OPERATING))}`, dreValue(linesOf("receita_bruta", "deducoes"))), format: "percent" },
+    { id: "aliquota_efetiva", label: "Alíquota efetiva de IR e CSLL", sql: ratio(`0 - ${dreValue(linesOf("ir_csll"))}`, `${dreValue()} - ${dreValue(linesOf("ir_csll"))}`), format: "percent" },
+  ];
   const j150 = isReg("J150");
   // The J150 changed in the leiaute 7 (2019). The current one says which lines are totals (IND_COD_AGL T/D);
   // the old one — |J150|COD_AGL|NIVEL_AGL|DESCR_COD_AGL|VL_CTA|IND_VL|… — has no such field: there the third
@@ -969,6 +1012,7 @@ function ecd(): Json {
     { id: "margem_bruta", label: "Margem bruta", sql: `(${dreValue(linesOf("receita_bruta", "deducoes", "custos"))}) / NULLIF(${dreValue(linesOf("receita_bruta", "deducoes"))}, 0)`, format: "percent" },
     { id: "endividamento", label: "Endividamento", sql: `(0 - ${lastSum(nat("02"), fin)}) / NULLIF(${lastSum(nat("01"), fin)}, 0)`, format: "percent" },
     ...indicatorMeasures,
+    ...exerciseMeasures,
   ];
   const dreRegs = isReg("I155", "I355");
   const annual = { skipFilters: ["mes", "natureza"] };
@@ -1075,14 +1119,66 @@ function ecd(): Json {
     },
     {
       id: "resultado", title: "Resultado do exercício",
-      description: "Saldos das contas de resultado antes do encerramento (I355). No mês do encerramento os saldos periódicos dessas contas já estão zerados; aqui eles aparecem como estavam.",
+      description: "O último exercício da seleção (sem filtro, o mais recente; um clique num ano do gráfico por ano leva a ele): quanto entrou, quanto ficou e para onde foi o resto. "
+        + "A cascata vai da receita bruta ao lucro líquido, linha a linha da DRE; ao lado, o mesmo resultado ano a ano, as margens e as contas que mais pesaram. "
+        + "Os valores são os da DRE gerencial (contas pela referencial, I051; no mês do encerramento, os saldos antes dele, I355).",
       visuals: [
-        { ...kpi("k_resultado_exercicio", "Resultado antes do encerramento", "resultado_antes_encerramento", 4, i355), hideEmpty: true },
-        { ...kpi("k_receitas_exercicio", "Contas credoras (receitas)", "receitas_antes_encerramento", 4, i355), hideEmpty: true },
-        { ...kpi("k_despesas_exercicio", "Contas devedoras (custos e despesas)", "despesas_antes_encerramento", 4, i355), hideEmpty: true },
-        { id: "b_resultado_grupo", type: "bar", title: "Resultado antes do encerramento por grupo", field: "grupo_3", measures: ["resultado_antes_encerramento"], sort: "measure_desc", horizontal: true, limit: 25, span: 12, where: i355, hideEmpty: true },
-        { id: "t_resultado_contas", type: "table", title: "Contas de resultado antes do encerramento", fields: ["grupo_3", "conta"], measures: ["resultado_antes_encerramento"], limit: 400, span: 12, where: i355, hideEmpty: true },
+        { ...kpi("k_ex_ano", "Exercício", "ex_ano", 3, dreRegs), skipFilters: ["mes", "natureza"] },
+        { ...kpi("k_ex_receita", "Receita líquida", "ex_receita_liquida", 3, dreRegs), skipFilters: ["mes", "natureza"] },
+        { ...kpi("k_ex_lucro", "Lucro líquido", "ex_lucro_liquido", 3, dreRegs), skipFilters: ["mes", "natureza"] },
+        { ...kpi("k_ex_margem", "Margem líquida", "ex_margem_liquida", 3, dreRegs), skipFilters: ["mes", "natureza"] },
+        {
+          id: "w_receita_lucro", type: "waterfall", title: "Da receita ao lucro: para onde vai cada real do exercício", span: 12,
+          where: `${dreRegs} AND ${result}`, skipFilters: ["mes", "natureza"],
+          items: [
+            { measure: "ex_receita_bruta", label: "Receita bruta", total: true },
+            { measure: "ex_deducoes", label: "Deduções" },
+            { measure: "ex_receita_liquida", label: "Receita líquida", total: true },
+            { measure: "ex_custos", label: "Custos" },
+            { measure: "ex_lucro_bruto", label: "Lucro bruto", total: true },
+            { measure: "ex_despesas_operacionais", label: "Despesas operacionais" },
+            { measure: "ex_resultado_operacional", label: "Resultado operacional", total: true },
+            { measure: "ex_resultado_financeiro", label: "Resultado financeiro" },
+            { measure: "ex_outros", label: "Outras receitas e despesas" },
+            { measure: "ex_resultado_antes_ir", label: "Antes do IR e da CSLL", total: true },
+            { measure: "ex_ir_csll", label: "IR e CSLL" },
+            { measure: "ex_lucro_liquido", label: "Lucro líquido", total: true },
+          ],
+        },
+        {
+          id: "sc_resultado_anos", type: "scorecard", title: "O resultado ano a ano: cada linha da DRE e o que ela é da receita", span: 12, field: "ano", limit: 12,
+          where: dreRegs, skipFilters: ["ano", "mes", "natureza"],
+          items: [
+            { measure: "receita_liquida_dre", group: "Receita e lucro", note: "Receita bruta menos deduções.", better: "higher" },
+            { measure: "lucro_bruto_dre", group: "Receita e lucro", note: "Receita líquida menos custos.", better: "higher" },
+            { measure: "dre_resultado_operacional", group: "Receita e lucro", note: "Lucro bruto menos as despesas da operação.", better: "higher" },
+            { measure: "dre_resultado_financeiro", group: "Receita e lucro", note: "Receitas menos despesas financeiras.", better: "higher" },
+            { measure: "resultado_dre", label: "Lucro líquido", group: "Receita e lucro", note: "O que ficou depois de tudo, inclusive IR e CSLL.", better: "higher" },
+            { measure: "margem_bruta", group: "Margens", note: "Lucro bruto ÷ receita líquida.", better: "higher" },
+            { measure: "margem_operacional", group: "Margens", note: "Resultado operacional ÷ receita líquida.", better: "higher" },
+            { measure: "margem_liquida", group: "Margens", note: "Lucro líquido ÷ receita líquida.", better: "higher" },
+            { measure: "peso_despesas", group: "Eficiência", note: "Quanto da receita as despesas operacionais levam.", better: "lower" },
+            { measure: "aliquota_efetiva", group: "Eficiência", note: "IR e CSLL ÷ resultado antes deles.", better: "lower" },
+          ],
+        },
+        {
+          id: "b_resultado_anos", type: "bar", title: "Receita líquida e lucro líquido por ano (clique num ano para ver o exercício dele)",
+          field: "ano", measures: ["receita_liquida_dre", "resultado_dre"], sort: "field", limit: 40, span: 12, where: dreRegs, skipFilters: ["ano", "mes", "natureza"],
+        },
+        {
+          id: "l_margens_anos", type: "line", title: "Margens por ano: bruta, operacional e líquida",
+          field: "ano", measures: ["margem_bruta", "margem_operacional", "margem_liquida"], sort: "field", limit: 40, span: 12, where: dreRegs, skipFilters: ["ano", "mes", "natureza"],
+        },
+        {
+          id: "b_resultado_grupo", type: "bar", title: "O que formou o resultado do exercício, por grupo de contas", field: "grupo_3", measures: ["ex_valor"],
+          sort: "measure_desc", horizontal: true, limit: 25, span: 12, where: `${dreRegs} AND ${result}`, skipFilters: ["mes", "natureza"],
+        },
+        {
+          id: "t_resultado_contas", type: "table", title: "Contas de resultado do exercício, da que mais somou à que mais tirou", fields: ["grupo_3", "conta"],
+          measures: ["ex_valor"], limit: 400, span: 12, where: `${dreRegs} AND ${result}`, skipFilters: ["mes", "natureza"],
+        },
       ],
+      strip: ["sc_resultado_anos", "b_resultado_anos", "l_margens_anos", "b_resultado_grupo", "t_resultado_contas"],
     },
     {
       id: "lancamentos", title: "Lançamentos",

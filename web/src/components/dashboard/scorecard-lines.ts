@@ -29,7 +29,7 @@ const num = (value: unknown): number | null => {
   return Number.isFinite(n) ? n : null;
 };
 
-/** Where a value stands: against the reference when the indicator has one, else by its sign when a side is better. */
+/** Where a value stands: against the reference when the indicator has one, else by its sign when higher is better. */
 export function statusOf(item: ScorecardItem, current: number | null): ScorecardLine["status"] {
   if (current === null) return null;
   const good = (isGood: boolean): Tone => (item.better === undefined ? "neutral" : isGood ? "ok" : "danger");
@@ -38,7 +38,8 @@ export function statusOf(item: ScorecardItem, current: number | null): Scorecard
     const above = current > item.target;
     return { label: above ? "Acima da referência" : "Abaixo da referência", tone: good(above === (item.better === "higher")) };
   }
-  if (item.better === undefined || current === 0) return null;
+  // Without a reference, the sign only says something of what is better higher (a result: profit or loss).
+  if (item.better !== "higher" || current === 0) return null;
   const positive = current > 0;
   return { label: positive ? "Positivo" : "Negativo", tone: good(positive === (item.better === "higher")) };
 }
