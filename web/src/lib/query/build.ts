@@ -226,6 +226,11 @@ function selectFor(t: Template, visual: QueryVisual, filters: FilterSelection): 
         tail: `ORDER BY ${order} LIMIT ${visual.limit}`,
       };
     }
+    case "waterfall": {
+      // One line: every step is a measure over everything the visual covers.
+      const ids = [...new Set(visual.items.map((item) => item.measure))];
+      return { select: ids.map((id) => measureCol(measure(id))), groupBy: [], tail: "" };
+    }
     case "matrix": {
       const row = field(visual.row);
       const column = field(visual.column);

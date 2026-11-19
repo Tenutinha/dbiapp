@@ -39,8 +39,8 @@ describe("scorecardLines", () => {
     expect(periods).toEqual(["2025-01", "2025-02", "2025-03"]);
     expect(lines[0]).toMatchObject({ series: [1.1, 1.2, 0.9], current: 0.9, previous: 1.2, changeTone: "danger", status: { label: "Abaixo da referência", tone: "danger" } });
     expect(lines[0].change).toBeCloseTo(-0.3);
-    // Falling is good for the one that is better lower; without a reference and positive, it reads "Positivo" against it.
-    expect(lines[1]).toMatchObject({ current: 0.4, changeTone: "ok", status: { label: "Positivo", tone: "danger" } });
+    // Falling is good for the one that is better lower; without a reference, its sign tells nothing.
+    expect(lines[1]).toMatchObject({ current: 0.4, changeTone: "ok", status: null });
     // A missing month leaves a gap and no change to tell.
     expect(lines[2]).toMatchObject({ series: [100, null, 300], current: 300, previous: null, change: null, changeTone: "neutral", status: null });
   });

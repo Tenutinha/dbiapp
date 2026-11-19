@@ -102,6 +102,8 @@ export function defaultVisual(type: VisualType, id: string, title: string): Visu
       const end = { id: "", label: "", lat: "", lon: "", kind: "" };
       return { ...base, type, source: end, target: { ...end }, measure: "", tooltip: [], limit: 2000 };
     }
+    case "waterfall":
+      return { ...base, type, items: [] };
     case "matrix":
       return { ...base, type, row: "", column: "", measure: "", limit: 20000 };
   }
@@ -159,6 +161,9 @@ export function usedIds(t: Template): UsedIds {
       case "donut":
         fields.add(v.field);
         measures.add(v.measure);
+        break;
+      case "waterfall":
+        v.items.forEach((item) => measures.add(item.measure));
         break;
       case "matrix":
         fields.add(v.row);

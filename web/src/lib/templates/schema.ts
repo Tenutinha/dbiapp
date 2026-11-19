@@ -219,6 +219,19 @@ const visualSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     ...base,
+    /**
+     * From one number to another, step by step (receita → lucro): each item a measure of one line of the data;
+     * a total stands on zero, a step hangs from where the one before ended, up when it adds, down when it takes away.
+     */
+    type: z.literal("waterfall"),
+    items: z.array(z.object({
+      measure: ident,
+      label: z.string().min(1).max(60),
+      total: z.boolean().optional(),
+    })).min(2).max(20),
+  }),
+  z.object({
+    ...base,
     type: z.literal("donut"),
     field: ident,
     measure: ident,
@@ -520,6 +533,7 @@ export const templateSchema = z
       if (v.type === "kpi" || v.type === "donut") needMeasure(v.measure, where);
       if (v.type === "kpi" && v.detail?.measure !== undefined) needMeasure(v.detail.measure, `${where} detail`);
       if (v.type === "bar" || v.type === "line" || v.type === "donut" || v.type === "scorecard") needField(v.field, where);
+      if (v.type === "waterfall") v.items.forEach((item) => needMeasure(item.measure, where));
       if (v.type === "matrix") {
         needField(v.row, where);
         needField(v.column, where);
