@@ -104,6 +104,21 @@ const measureSchema = z.object({
   tones: z.record(z.string().min(1).max(80), z.enum(TONES)).optional(),
 });
 
+/** One end of a relationship of a network visual: fields that say which place it is and where it is. */
+const networkEndSchema = z.object({
+  /** Field identifying the place (one point per value). */
+  id: ident,
+  /** Field with the place's name. */
+  label: ident,
+  /** Fields with its latitude and longitude, in decimal degrees. */
+  lat: ident,
+  lon: ident,
+  /** Field with the kind of place (head office, branch, supplier…): its colour and legend. */
+  kind: ident,
+  /** Field with a line about the place (e.g. "Curitiba - PR"), in its tooltip. */
+  detail: ident.optional(),
+});
+
 const span = z.number().int().min(1).max(12).default(12);
 const base = {
   id: ident,
@@ -272,6 +287,26 @@ const visualSchema = z.discriminatedUnion("type", [
     tooltip: z.array(ident).default([]),
   }),
   /**
+   * A network of places on a 3D map (e.g. a company's branches, distribution centres and suppliers): each
+   * row is a relationship from one place to another, drawn as an arc; each place is a column as tall as
+   * what goes through it. Places sit at their latitude and longitude over the map of Brazil.
+   */
+  z.object({
+    ...base,
+    type: z.literal("network"),
+    /** Where each relationship starts (e.g. the supplier). */
+    source: networkEndSchema,
+    /** Where it ends (e.g. the branch supplied). */
+    target: networkEndSchema,
+    /** Field with the kind of relationship (supply, transfer…): the colour of the arcs. */
+    category: ident.optional(),
+    /** Additive measure: the width of the arcs and the height of the places. */
+    measure: ident,
+    /** Extra measures shown in the tooltip of an arc. */
+    tooltip: z.array(ident).default([]),
+    limit: z.number().int().min(1).max(5000).default(2000),
+  }),
+  /**
    * Plain listing of rows, not aggregated: the original data as it came (e.g. every field of a SPED
    * record type). Columns carry their own label and expression instead of pointing to fields.
    */
@@ -393,6 +428,11 @@ export const templateSchema = z
      */
     filterLayout: z.enum(["floating", "inline"]).optional(),
     /**
+     * The dashboard is one visual filling the whole content area, below the header and beside the sidebar
+     * (e.g. a 3D map of the company), with no section titles: the first visual of the template is shown.
+     */
+    fill: z.boolean().optional(),
+    /**
      * Extra restriction on every dashboard built on this template. "platformAdmin": only the platform
      * administrator sees it (internal dashboards); it never shows in the showcase nor opens through links.
      */
@@ -511,6 +551,15 @@ export const templateSchema = z
         }
         v.tooltip.forEach((m) => needMeasure(m, where));
       }
+      if (v.type === "network") {
+        for (const end of [v.source, v.target]) {
+          [end.id, end.label, end.lat, end.lon, end.kind, ...(end.detail ? [end.detail] : [])].forEach((f) => needField(f, where));
+        }
+        if (v.category) needField(v.category, where);
+        needMeasure(v.measure, where);
+        v.tooltip.forEach((m) => needMeasure(m, where));
+        if (v.source.id === v.target.id) issue(`${where}: source and target must use different fields`);
+      }
       if (v.type === "statement") {
         needMeasure(v.measure, where);
         needField(v.column, where);
@@ -598,6 +647,7 @@ export type Measure = Template["measures"][number];
 export type Field = Template["fields"][number];
 export type ValueFormat = Measure["format"];
 export type MapVisual = Extract<Visual, { type: "map" }>;
+export type NetworkVisual = Extract<Visual, { type: "network" }>;
 export type StatementVisual = Extract<Visual, { type: "statement" }>;
 export type StatementLine = StatementVisual["lines"][number];
 export type StatementIcon = (typeof STATEMENT_ICONS)[number];

@@ -21,6 +21,7 @@ A primeira seção é sempre a **Visão geral**: quem abre o dashboard e lê só
 | Como se divide? | `donut` | só com até 8 fatias; mais que isso, use barra deitada |
 | Quero ver os números | `table` | campos à esquerda, medidas à direita; ordena pela primeira medida |
 | Onde acontece? | `map` | só com código IBGE de município ou UF |
+| Como os locais se relacionam? | `network` | mapa 3D: cada linha é uma relação de um local a outro, com latitude e longitude; veja abaixo |
 | Quero o dado como veio | `rows` | listagem sem soma; colunas próprias |
 | Preciso explicar algo | `text` | um ou dois parágrafos; não substitui a descrição da seção |
 
@@ -92,6 +93,7 @@ Prefixo pelo tipo, depois o assunto, em snake_case e sem repetir:
 | donut | `d_` | `d_situacao` |
 | table | `t_` | `t_participantes` |
 | map | `m_` | `m_municipios` |
+| network | `n_` | `n_rede` |
 | rows | `r_` | `r_c100` |
 
 Cada visual entra em **uma** seção. Seção: `id` em snake_case, título curto.
@@ -105,6 +107,15 @@ Cada visual entra em **uma** seção. Seção: `id` em snake_case, título curto
 Com `"paging": "horizontal"` no molde, cada seção vira uma página, e as páginas ficam lado a lado, como num relatório do Power BI. Abas no alto, o sumário lateral ou um arrasto de lado trocam de página, e a faixa tem a altura da página que está na tela. Sem a opção, as seções ficam uma abaixo da outra.
 
 Use quando o pedido vem de um relatório com páginas (o .pbix com navegação por botões) ou quando cada seção é um assunto que se lê sozinho. Cada página deve caber em uma ou duas telas.
+
+## Mapa 3D da rede (`network`) e tela cheia (`fill`)
+
+Para mostrar locais na posição real e as relações entre eles (matriz, filiais, centros de distribuição, fornecedores; quem abastece quem). Cada local vira uma coluna, mais alta quanto mais movimenta; cada relação vira um arco, mais grosso quanto maior a medida, na cor do tipo de relação. Passar o mouse mostra o resumo do local ou da relação; clicar num local abre o painel com tudo o que ele movimenta e com quem.
+
+- `source` e `target`: os campos de cada ponta (`id`, `label`, `lat`, `lon`, `kind` e, opcional, `detail`, uma linha como "Curitiba - PR"). Latitude e longitude em graus decimais; relações com coordenada vazia ou inválida ficam fora e o mapa avisa quantas.
+- `category`: o campo do tipo de relação (a cor dos arcos). `measure`: medida que se soma (largura dos arcos, altura das colunas). `tooltip`: as outras medidas da relação.
+- O cadastro de locais entra **duas vezes**, como dimensões `origem` e `destino` com as mesmas colunas (o motor junta cada dimensão uma vez só). Veja o molde de exemplo em `%USERPROFILE%\dbi-importacoes\mapa-empresa\`.
+- Com `"fill": true` no molde, o dashboard é esse único visual ocupando toda a área abaixo do cabeçalho e ao lado da barra lateral, sem seções. Os filtros ficam no botão flutuante.
 
 ## Mais de uma fato
 

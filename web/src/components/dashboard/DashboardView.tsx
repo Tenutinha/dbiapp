@@ -7,7 +7,9 @@ import { FilterBar } from "./FilterBar";
 import { LazySection } from "./LazySection";
 import { DashboardLive } from "./live";
 import { LOOSE_PART } from "./live-types";
+import { FillFrame } from "./FillFrame";
 import { MapChart, type MapMeasure } from "./MapChart";
+import { NetworkChart } from "./network/NetworkChart";
 import { PAGE_CLASS, PageStrip } from "./PageStrip";
 import { CARD_STRIP_ATTR, runPart, runsOf, STRIP_CARD_CLASS, STRIP_RUN } from "./strip-attrs";
 import { CrossTable } from "./CrossTable";
@@ -137,6 +139,10 @@ function VisualBody({ template, result }: { template: Template; result: VisualRe
     case "map": {
       const all: Record<string, MapMeasure> = Object.fromEntries(template.measures.map((m) => [m.id, measure(m.id)]));
       return <MapChart visual={visual} rows={rows} measures={all} />;
+    }
+    case "network": {
+      const all: Record<string, MapMeasure> = Object.fromEntries(template.measures.map((m) => [m.id, measure(m.id)]));
+      return <NetworkChart visual={visual} rows={rows} measures={all} />;
     }
     case "donut":
       return <Chart visualId={visual.id} type="donut" fieldId={visual.field} measures={[measure(visual.measure)]} rows={rows} />;
@@ -278,6 +284,14 @@ export function stripOf(template: Pick<Template, "analyses">, results: readonly 
 export function VisualGrid({ template, results: all, layout }: VisualGridProps) {
   const results = visibleResults(all);
   if (results.length === 0) return null;
+  // A dashboard that is one visual over the whole content area: no card, no title, no grid.
+  if (template.fill) {
+    return (
+      <FillFrame key="tela">
+        <VisualBody template={template} result={results[0]} />
+      </FillFrame>
+    );
+  }
   if (layout === "row" && results.length > 1) return <VisualStrip template={template} results={results} />;
   const inStrip = stripOf(template, results);
   const grid = results.filter((r) => !inStrip.has(r.visual.id));
@@ -394,10 +408,10 @@ export function DashboardView({ template, data, totalRows, later, notesInSummary
         <LazySection ticket={later.ticket} analysisId={LOOSE_PART} search={later.search} initial={{ body: visibleResults(loose).length > 0 ? looseGrid : null }} />
       ) : looseGrid}
       {sideways ? <PageStrip pages={(later ? sections : shown).map((s) => ({ anchor: s.anchor, title: s.analysis.title }))} tabs={!notesInSummary}>{body}</PageStrip> : body}
-      <p className="mt-6 text-right font-mono text-xs text-muted">
+      {!template.fill && <p className="mt-6 text-right font-mono text-xs text-muted">
         {totalRows.toLocaleString("pt-BR")} linhas na fato · {data.visuals.length} visuais calculados em {data.elapsedMs} ms
         {pending.size > 0 && " · as demais análises carregam ao chegar nelas"}
-      </p>
+      </p>}
     </div>
   );
   return later

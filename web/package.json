@@ -18,6 +18,9 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.8.0",
+    "@deck.gl/core": "^9.4.1",
+    "@deck.gl/layers": "^9.4.1",
+    "@deck.gl/react": "^9.4.1",
     "@duckdb/node-api": "^2.0.0-r.1",
     "@google-cloud/storage": "^7.22.0",
     "@supabase/ssr": "^0.12.7",

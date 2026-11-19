@@ -16,6 +16,7 @@ export const VISUAL_TYPE_LABEL: Record<VisualType, string> = {
   statement: "Demonstrativo (DRE)",
   scorecard: "Tabela de indicadores",
   matrix: "Mapa de dados (linha × coluna)",
+  network: "Mapa 3D da rede (origem → destino)",
 };
 const TYPE_OPTIONS = (Object.keys(VISUAL_TYPE_LABEL) as VisualType[]).map((v) => ({ value: v, label: VISUAL_TYPE_LABEL[v] }));
 const SPAN_OPTIONS = [

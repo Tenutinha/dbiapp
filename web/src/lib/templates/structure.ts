@@ -56,6 +56,10 @@ export function visualRefs(v: Visual): { fields: string[]; measures: string[]; s
       return { fields: [], measures: [], sql: [...where, ...v.columns.map((c) => c.sql), ...(v.orderBy ? [v.orderBy] : []), ...(v.groupBy ? [v.groupBy] : [])] };
     case "text":
       return { fields: [], measures: [], sql: [] };
+    case "network": {
+      const ends = [v.source, v.target].flatMap((e) => [e.id, e.label, e.lat, e.lon, e.kind, ...(e.detail ? [e.detail] : [])]);
+      return { fields: unique([...ends, ...(v.category ? [v.category] : [])]), measures: unique([v.measure, ...v.tooltip]), sql: where };
+    }
     case "statement":
       return {
         fields: [...v.levels, v.column],
