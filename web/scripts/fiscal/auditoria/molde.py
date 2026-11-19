@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import molde_intragrupo
 import molde_reforma
 from preparar import REGRAS
 
@@ -231,6 +232,11 @@ for prefixo, sid, titulo, descricao, extra in (
     vis, sec = secao_grupo(prefixo, sid, titulo, descricao, extra)
     visuals += vis
     analyses.append(sec)
+    if sid == "cruzamento":
+        # Logo depois do cruzamento entre arquivos: a mesma nota nos arquivos de dois estabelecimentos do grupo.
+        vis_ig, sec_ig = molde_intragrupo.secao(FILTROS)
+        visuals += vis_ig
+        analyses.append(sec_ig)
 
 vis_reforma, sec_reforma = molde_reforma.secao(FILTROS)
 visuals += vis_reforma
@@ -260,9 +266,10 @@ template = {
                    "consistência de cada nota e item, cruzamento entre os arquivos, oportunidades a validar e a simulação da "
                    "reforma tributária.",
     "density": "compact",
-    "tables": tables + molde_reforma.TABELAS,
+    "tables": tables + molde_intragrupo.TABELAS + molde_reforma.TABELAS,
     "relationships": [{"from": {"table": "achados", "column": "regra"}, "to": {"table": "regras", "column": "regra"}}],
-    "fields": fields + molde_reforma.CAMPOS, "measures": measures + molde_reforma.MEDIDAS, "filters": FILTROS, "filterDefaults": {},
+    "fields": fields + molde_intragrupo.CAMPOS + molde_reforma.CAMPOS,
+    "measures": measures + molde_intragrupo.MEDIDAS + molde_reforma.MEDIDAS, "filters": FILTROS, "filterDefaults": {},
     "visuals": visuals, "analyses": analyses,
     "summary": [{"title": "Auditoria", "analyses": [a["id"] for a in analyses]}],
 }
