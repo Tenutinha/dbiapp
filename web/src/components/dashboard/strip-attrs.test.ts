@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readPart, runPart, runsOf, STRIP_RUN, STRIP_RUNS_FROM } from "./strip-attrs";
+import { nativeBarRule, readPart, runPart, runsOf, STRIP_RUN, STRIP_RUNS_FROM } from "./strip-attrs";
 
 describe("runs of a strip", () => {
   it("names a run of an analysis and reads it back", () => {
@@ -14,5 +14,19 @@ describe("runs of a strip", () => {
     expect(runsOf(STRIP_RUNS_FROM)).toBe(0);
     expect(runsOf(STRIP_RUNS_FROM + 1)).toBe(Math.ceil((STRIP_RUNS_FROM + 1) / STRIP_RUN));
     expect(runsOf(204)).toBe(26);
+  });
+});
+
+describe("the rule that hides a strip's native bar", () => {
+  it("targets the strip of visuals inside the analysis", () => {
+    const rule = nativeBarRule("analise-visao_geral");
+    expect(rule).toContain('[id="analise-visao_geral"] [data-card-strip]{scrollbar-width:none}');
+    expect(rule).toContain('[id="analise-visao_geral"] [data-card-strip]::-webkit-scrollbar{display:none}');
+  });
+
+  it("refuses ids that could break out of the selector", () => {
+    expect(nativeBarRule('x"]{}body{display:none}')).toBeNull();
+    expect(nativeBarRule("")).toBeNull();
+    expect(nativeBarRule("1abc")).toBeNull();
   });
 });

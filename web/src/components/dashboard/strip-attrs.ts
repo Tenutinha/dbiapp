@@ -1,10 +1,10 @@
 /**
  * Marks a strip of visuals side by side inside one analysis (its "row" layout). The header's scrollbar drives
- * the one on screen, and marks it with HEADER_DRIVEN_ATTR while it does, so the native bar under it can go.
+ * the one on screen, and while it does hides the strip's native bar with a rule of its own (nativeBarRule): it
+ * never writes on the strip, which may not be hydrated yet when the header is.
  * Plain constants (no "use client"): the strip is drawn on the server.
  */
 export const CARD_STRIP_ATTR = "data-card-strip";
-export const HEADER_DRIVEN_ATTR = "data-header-scrollbar";
 /** Marks each card of such a strip (and the placeholder of the cards still to come): one page of its scrollbar. */
 export const STRIP_CARD_ATTR = "data-strip-card";
 /** Classes of a card of the strip: a little narrower than the page, so the next one peeks in and says the strip goes on. */
@@ -31,3 +31,13 @@ export function readPart(part: string): { analysisId: string; run: number | null
 
 /** How many runs a strip of `visuals` visuals comes in (0: it comes whole). */
 export const runsOf = (visuals: number): number => (visuals > STRIP_RUNS_FROM ? Math.ceil(visuals / STRIP_RUN) : 0);
+
+/**
+ * The CSS that hides the native scrollbar of the strip of visuals in one analysis (by the analysis' id), while
+ * the header's bar stands for it. Null for an id that can't go in a selector safely.
+ */
+export function nativeBarRule(analysisAnchor: string): string | null {
+  if (!/^[A-Za-z][\w-]{0,200}$/.test(analysisAnchor)) return null;
+  const strip = `[id="${analysisAnchor}"] [${CARD_STRIP_ATTR}]`;
+  return `${strip}{scrollbar-width:none}${strip}::-webkit-scrollbar{display:none}`;
+}
