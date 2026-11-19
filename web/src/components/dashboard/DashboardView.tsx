@@ -15,6 +15,7 @@ import { CARD_STRIP_ATTR, runPart, runsOf, STRIP_CARD_CLASS, STRIP_RUN } from ".
 import { CrossTable } from "./CrossTable";
 import { MatrixMap } from "./MatrixMap";
 import { Ledger } from "./Ledger";
+import { TreeTable } from "./TreeTable";
 import { Waterfall } from "./Waterfall";
 import { Scorecard } from "./Scorecard";
 import { ScrollTable, type ScrollColumn, type SortValue } from "./ScrollTable";
@@ -114,6 +115,16 @@ function VisualBody({ template, result }: { template: Template; result: VisualRe
         </div>
       );
     }
+    case "tree":
+      return (
+        <TreeTable
+          visual={visual} rows={rows}
+          columns={visual.columns.map((c) => {
+            const m = measure(c.measure);
+            return { measure: c.measure, label: c.label ?? m.label, format: m.format, balance: c.balance === true };
+          })}
+        />
+      );
     case "ledger":
       return <Ledger spec={visual} rows={rows} limit={visual.limit} />;
     case "waterfall":
