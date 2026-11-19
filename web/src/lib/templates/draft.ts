@@ -98,6 +98,10 @@ export function defaultVisual(type: VisualType, id: string, title: string): Visu
       return { ...base, type, measure: "", column: "", levels: [], lines: [] };
     case "scorecard":
       return { ...base, type, field: "", limit: 36, items: [] };
+    case "network": {
+      const end = { id: "", label: "", lat: "", lon: "", kind: "" };
+      return { ...base, type, source: end, target: { ...end }, measure: "", tooltip: [], limit: 2000 };
+    }
     case "matrix":
       return { ...base, type, row: "", column: "", measure: "", limit: 20000 };
   }
@@ -178,6 +182,11 @@ export function usedIds(t: Template): UsedIds {
           if (v.color.strengthMeasure) measures.add(v.color.strengthMeasure);
         }
         v.tooltip.forEach((m) => measures.add(m));
+        break;
+      case "network":
+        for (const e of [v.source, v.target]) [e.id, e.label, e.lat, e.lon, e.kind, ...(e.detail ? [e.detail] : [])].forEach((f) => fields.add(f));
+        if (v.category) fields.add(v.category);
+        [v.measure, ...v.tooltip].forEach((m) => measures.add(m));
         break;
       case "statement":
         measures.add(v.measure);

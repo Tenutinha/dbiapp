@@ -70,7 +70,7 @@ export function DashHeader({ title, topics, updated }: DashHeaderProps) {
   const collapsed = sidebar?.collapsed === true;
   const ref = useRef<HTMLElement>(null);
   return (
-    <header ref={ref} className="sticky top-14 z-20 -mx-4 mb-5 bg-header text-on-header shadow-sm sm:-mx-8 lg:top-0 lg:-mx-14">
+    <header ref={ref} data-dash-header className="sticky top-14 z-20 -mx-4 mb-5 bg-header text-on-header shadow-sm sm:-mx-8 lg:top-0 lg:-mx-14">
       {/* Panel collapsed (wide screens): the button that opens it and the space's logo, where the panel had them,
           out of the flow so the title stays in line with the visuals below. */}
       {collapsed && (

@@ -194,6 +194,12 @@ function mapMeasures(visual: Extract<Visual, { type: "map" }>): string[] {
   return [...new Set([...ids, ...visual.tooltip])];
 }
 
+/** Fields a network visual groups by: both ends of each relationship and its kind, each once. */
+export function networkFields(visual: Extract<Visual, { type: "network" }>): string[] {
+  const end = (e: typeof visual.source): string[] => [e.id, e.label, e.lat, e.lon, e.kind, ...(e.detail ? [e.detail] : [])];
+  return [...new Set([...end(visual.source), ...end(visual.target), ...(visual.category ? [visual.category] : [])])];
+}
+
 /** Rows a listing shows: its limit, or the expanded one while its filter has a selection. */
 export function rowsLimit(visual: Extract<Visual, { type: "rows" }>, filters: FilterSelection): number {
   const expanded = visual.expand && (filters[visual.expand.filter]?.length ?? 0) > 0;
@@ -276,6 +282,17 @@ function selectFor(t: Template, visual: QueryVisual, filters: FilterSelection): 
         select: [line, ...fs.map(fieldCol), measureCol(measure(visual.measure))],
         groupBy: ["1", ...fs.map((_, i) => String(i + 2))],
         tail: `ORDER BY ${fs.map((f) => f.id).join(", ")} LIMIT ${MAX_STATEMENT_ROWS}`,
+      };
+    }
+    case "network": {
+      // One row per pair of places (and kind of relationship): the page builds the places and the arcs.
+      const ids = networkFields(visual);
+      const fs = ids.map(field);
+      const ms = [...new Set([visual.measure, ...visual.tooltip])];
+      return {
+        select: [...fs.map(fieldCol), ...ms.map((m) => measureCol(measure(m)))],
+        groupBy: fs.map((_, i) => String(i + 1)),
+        tail: `ORDER BY ${visual.measure} DESC NULLS LAST LIMIT ${visual.limit}`,
       };
     }
     case "map": {
