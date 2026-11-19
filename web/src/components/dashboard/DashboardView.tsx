@@ -14,6 +14,7 @@ import { PAGE_CLASS, PageStrip } from "./PageStrip";
 import { CARD_STRIP_ATTR, runPart, runsOf, STRIP_CARD_CLASS, STRIP_RUN } from "./strip-attrs";
 import { CrossTable } from "./CrossTable";
 import { MatrixMap } from "./MatrixMap";
+import { Ledger } from "./Ledger";
 import { Waterfall } from "./Waterfall";
 import { Scorecard } from "./Scorecard";
 import { ScrollTable, type ScrollColumn, type SortValue } from "./ScrollTable";
@@ -113,6 +114,8 @@ function VisualBody({ template, result }: { template: Template; result: VisualRe
         </div>
       );
     }
+    case "ledger":
+      return <Ledger spec={visual} rows={rows} limit={visual.limit} />;
     case "waterfall":
       return <Waterfall items={visual.items} row={rows[0]} format={measure(visual.items[0].measure).format} />;
     case "matrix": {

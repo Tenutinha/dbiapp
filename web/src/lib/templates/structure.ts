@@ -3,7 +3,7 @@
  * topic, and what each analysis uses — the files (tables) it reads, its charts, its fields and measures.
  * Pure: safe in client components and unit tested.
  */
-import type { Analysis, Template, Visual } from "./schema";
+import { ledgerMeasures, type Analysis, type Template, type Visual } from "./schema";
 
 export interface UsedItem {
   id: string;
@@ -41,6 +41,8 @@ export function visualRefs(v: Visual): { fields: string[]; measures: string[]; s
       return { fields: [v.field], measures: [v.measure], sql: where };
     case "waterfall":
       return { fields: [], measures: v.items.map((item) => item.measure), sql: where };
+    case "ledger":
+      return { fields: [v.field, ...(v.detail ? [v.detail] : [])], measures: ledgerMeasures(v), sql: where };
     case "matrix":
       return { fields: [v.row, v.column], measures: [v.measure], sql: where };
     case "scorecard":

@@ -232,6 +232,25 @@ const visualSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     ...base,
+    /**
+     * Razonetes (T accounts): one card per value of `field` (an account), debits on the left and credits on
+     * the right, the opening balance on top and the closing one at the bottom, signed debit-positive. Each card
+     * checks itself — opening + debits − credits = closing — and, with `journal`, that the journal's entries
+     * of the account add up to the same debits and credits. The cards that don't close come first.
+     */
+    type: z.literal("ledger"),
+    field: ident,
+    /** A second field under the account's name (the company, when the same chart serves several). */
+    detail: ident.optional(),
+    opening: ident,
+    debit: ident,
+    credit: ident,
+    closing: ident,
+    journal: z.object({ debit: ident, credit: ident }).optional(),
+    limit: z.number().int().min(1).max(600).default(60),
+  }),
+  z.object({
+    ...base,
     type: z.literal("donut"),
     field: ident,
     measure: ident,
@@ -534,6 +553,11 @@ export const templateSchema = z
       if (v.type === "kpi" && v.detail?.measure !== undefined) needMeasure(v.detail.measure, `${where} detail`);
       if (v.type === "bar" || v.type === "line" || v.type === "donut" || v.type === "scorecard") needField(v.field, where);
       if (v.type === "waterfall") v.items.forEach((item) => needMeasure(item.measure, where));
+      if (v.type === "ledger") {
+        needField(v.field, where);
+        if (v.detail !== undefined) needField(v.detail, where);
+        ledgerMeasures(v).forEach((m) => needMeasure(m, where));
+      }
       if (v.type === "matrix") {
         needField(v.row, where);
         needField(v.column, where);
@@ -661,6 +685,14 @@ export function extraFacts(t: Pick<Template, "tables">): TemplateTable[] {
 export function sortColumns(table: { sortBy?: string }): string[] {
   return table.sortBy ? table.sortBy.split(",").map((c) => c.trim()).filter(Boolean) : [];
 }
+/** Differences up to a cent and a half are rounding, not a razonete that fails to close. */
+export const LEDGER_TOLERANCE = 0.015;
+/** The measures of a razonete: the balances, the movement and, when it has one, the journal's. */
+export function ledgerMeasures(v: {
+  opening: string; debit: string; credit: string; closing: string; journal?: { debit: string; credit: string };
+}): string[] {
+  return [...new Set([v.opening, v.debit, v.credit, v.closing, ...(v.journal ? [v.journal.debit, v.journal.credit] : [])])];
+}
 export type TemplateTable = Template["tables"][number];
 export type TemplateColumn = TemplateTable["columns"][number];
 export type Visual = Template["visuals"][number];
@@ -670,6 +702,7 @@ export type ValueFormat = Measure["format"];
 export type MapVisual = Extract<Visual, { type: "map" }>;
 export type NetworkVisual = Extract<Visual, { type: "network" }>;
 export type StatementVisual = Extract<Visual, { type: "statement" }>;
+export type LedgerVisual = Extract<Visual, { type: "ledger" }>;
 export type StatementLine = StatementVisual["lines"][number];
 export type StatementIcon = (typeof STATEMENT_ICONS)[number];
 export type Analysis = Template["analyses"][number];
